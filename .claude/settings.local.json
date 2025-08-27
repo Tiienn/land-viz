@@ -10,7 +10,9 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "Bash(git log:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebSearch",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
