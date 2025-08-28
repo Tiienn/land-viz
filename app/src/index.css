@@ -1,0 +1,298 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for Land Visualizer */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background-color: #fcfcfd;
+    color: #0f172a;
+    font-smoothing: antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* Professional Button System */
+  .btn-primary {
+    @apply bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium shadow-soft hover:bg-blue-700 hover:shadow-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98];
+  }
+  
+  .btn-secondary {
+    @apply bg-white text-neutral-700 px-4 py-2.5 rounded-lg font-medium border border-neutral-200 shadow-soft hover:bg-neutral-50 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98];
+  }
+  
+  .btn-accent {
+    @apply bg-accent-500 text-white px-4 py-2.5 rounded-lg font-medium shadow-soft hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98];
+  }
+  
+  .btn-ghost {
+    @apply text-neutral-600 px-3 py-2 rounded-lg font-medium hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200;
+  }
+  
+  /* Professional Tool Button */
+  .tool-btn {
+    @apply flex flex-col items-center justify-center p-3 rounded-xl border text-sm font-medium transition-all duration-200 min-h-[4rem] group;
+  }
+  
+  .tool-btn-inactive {
+    @apply border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-800 shadow-soft hover:shadow-medium;
+  }
+  
+  .tool-btn-active {
+    @apply border-primary-500 bg-primary-50 text-primary-700 shadow-medium ring-2 ring-primary-200;
+  }
+  
+  /* Professional Input System */
+  .input-field {
+    @apply w-full px-3 py-2.5 rounded-lg border border-neutral-200 bg-white text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200;
+  }
+  
+  .input-label {
+    @apply block text-sm font-medium text-neutral-700 mb-2;
+  }
+  
+  /* Professional Card System */
+  .card {
+    @apply bg-white border border-neutral-200 rounded-xl shadow-soft;
+  }
+  
+  .card-header {
+    @apply px-4 py-3 border-b border-neutral-200;
+  }
+  
+  .card-content {
+    @apply p-4;
+  }
+  
+  /* Status Badge System */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badge-success {
+    @apply bg-primary-100 text-primary-800;
+  }
+  
+  .badge-warning {
+    @apply bg-earth-100 text-earth-800;
+  }
+  
+  .badge-error {
+    @apply bg-red-100 text-red-800;
+  }
+  
+  .badge-neutral {
+    @apply bg-neutral-100 text-neutral-700;
+  }
+  
+  /* Professional Panel System */
+  .panel {
+    @apply bg-white border-r border-neutral-200 shadow-soft;
+  }
+  
+  .panel-header {
+    @apply px-4 py-3 border-b border-neutral-200 bg-neutral-25;
+  }
+  
+  .panel-content {
+    @apply p-4;
+  }
+  
+  /* Professional Tab System */
+  .tab-nav {
+    @apply flex border-b border-neutral-200;
+  }
+  
+  .tab-button {
+    @apply flex-1 px-4 py-3 text-sm font-medium text-center border-b-2 border-transparent transition-all duration-200;
+  }
+  
+  .tab-button-inactive {
+    @apply text-neutral-500 hover:text-neutral-700 hover:border-neutral-300;
+  }
+  
+  .tab-button-active {
+    @apply text-primary-600 border-primary-500;
+  }
+  
+  /* Professional Coordinate Display */
+  .coordinate-display {
+    @apply font-mono text-sm text-neutral-600 bg-neutral-50 px-3 py-1.5 rounded border;
+  }
+  
+  /* Professional Status Bar */
+  .status-bar {
+    @apply bg-neutral-800 text-neutral-200 px-4 py-2 text-sm font-medium border-t border-neutral-700;
+  }
+  
+  /* Professional Tooltips */
+  .tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs font-medium text-white bg-neutral-900 rounded shadow-strong whitespace-nowrap;
+  }
+  
+  /* Ribbon-style Interface */
+  .ribbon-group {
+    @apply border-r border-neutral-200 last:border-r-0;
+  }
+
+  .ribbon-tool {
+    @apply flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] h-16 
+           transition-all duration-150 group relative cursor-pointer;
+  }
+
+  .ribbon-tool-active {
+    @apply bg-primary-100 text-primary-700 shadow-soft border border-primary-200;
+  }
+
+  .ribbon-tool-inactive {
+    @apply text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800 border border-transparent;
+  }
+
+  .ribbon-tool-btn {
+    @apply flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] h-16 
+           text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800 border border-transparent
+           transition-all duration-150 cursor-pointer;
+  }
+
+  /* Sidebar Enhancement */
+  .sidebar-tool {
+    @apply w-full flex flex-col items-center justify-center py-3 px-2 relative group
+           transition-all duration-150 hover:bg-neutral-50;
+  }
+
+  .sidebar-tool-active {
+    @apply text-primary-600 bg-primary-50;
+  }
+
+  .sidebar-tool-inactive {
+    @apply text-neutral-600 hover:text-neutral-800;
+  }
+
+  .sidebar-indicator {
+    @apply absolute w-1 h-8 bg-blue-600 rounded-full transition-all duration-200;
+  }
+
+  .sidebar-indicator-left {
+    @apply left-0 top-1/2 transform -translate-y-1/2 rounded-r-full;
+  }
+
+  .sidebar-indicator-right {
+    @apply right-0 top-1/2 transform -translate-y-1/2 rounded-l-full;
+  }
+
+  /* Enhanced Tooltips */
+  .tooltip-enhanced {
+    @apply absolute px-2 py-1 bg-neutral-800 text-white text-xs rounded 
+           opacity-0 group-hover:opacity-100 transition-opacity duration-200 
+           whitespace-nowrap pointer-events-none z-10;
+  }
+
+  .tooltip-left {
+    @apply right-full top-1/2 transform -translate-y-1/2 mr-3;
+  }
+
+  .tooltip-right {
+    @apply left-full top-1/2 transform -translate-y-1/2 ml-3;
+  }
+
+  .tooltip-bottom {
+    @apply bottom-full left-1/2 transform -translate-x-1/2 mb-2;
+  }
+
+  /* Modern Glass Effect */
+  .glass-panel {
+    @apply backdrop-filter backdrop-blur-md bg-white/90 border border-white/20;
+  }
+
+  .glass-panel-dark {
+    @apply backdrop-filter backdrop-blur-md bg-neutral-900/90 border border-white/10;
+  }
+
+  /* 3D Scene Enhancements */
+  .scene-container {
+    @apply relative overflow-hidden;
+  }
+
+  .scene-overlay {
+    @apply absolute inset-0 pointer-events-none z-10;
+  }
+
+  /* Animation Utilities */
+  .animate-slide-in-left {
+    animation: slideInLeft 0.3s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  @keyframes slideInLeft {
+    from {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Scrollbar Styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}

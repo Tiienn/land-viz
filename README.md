@@ -40,7 +40,7 @@ Land Visualizer is an intuitive web application that helps anyone understand pro
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/land-visualizer.git
-cd land-visualizer
+cd land-visualizer/app
 
 # Install dependencies
 npm install
@@ -48,7 +48,7 @@ npm install
 # Start development server
 npm run dev
 
-# Open http://localhost:3000
+# Open http://localhost:5173
 ```
 
 ### Production Build
@@ -164,8 +164,11 @@ We love contributions! See [CONTRIBUTING.md](docs/guides/CONTRIBUTING.md) for gu
 ## 📅 Roadmap
 
 ### Current Sprint (Aug 26 - Sep 8)
-- [x] Core 3D visualization
-- [x] Basic shape drawing
+- [x] Core 3D visualization ✅ **COMPLETE**
+- [x] Basic shape drawing ✅ **COMPLETE**
+- [x] Professional UI with ribbon toolbar ✅ **COMPLETE**
+- [x] Custom camera controls ✅ **COMPLETE**
+- [x] Natural color scheme ✅ **COMPLETE**
 - [ ] Chili3D integration
 - [ ] Mobile rotation fix
 - [ ] 5 comparison objects

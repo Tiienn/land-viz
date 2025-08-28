@@ -1,0 +1,21 @@
+# Build outputs
+dist/
+build/
+
+# Node modules
+node_modules/
+
+# Package files
+package-lock.json
+yarn.lock
+
+# Config files
+*.config.js
+*.config.ts
+
+# Auto-generated files
+*.d.ts
+vite-env.d.ts
+
+# Logs
+*.log
