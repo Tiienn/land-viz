@@ -45,18 +45,22 @@ Every design decision should reduce cognitive load while maintaining professiona
 - Advanced features appear contextually
 - Professional tools hidden behind "Pro Mode" toggle
 - Each interaction level builds on the previous
+- **Expandable panels** reveal full functionality when needed
 
 ### Hierarchy
 ```
 Level 1 (Default): Draw → See → Compare
 Level 2 (On Interaction): Measure → Edit → Units
-Level 3 (Pro Toggle): Subdivide → CAD Export → Precision
+Level 3 (Expanded Panels): Full tool access with text labels
+Level 4 (Pro Toggle): Subdivide → CAD Export → Precision
 ```
 
 ### Examples
 ```
 ✅ DO: Show subdivision tool only after shape is drawn
+✅ DO: Start with collapsed panels, expand when user needs more tools
 ❌ DON'T: Display all 15 tools in initial interface
+❌ DON'T: Make panels always expanded, consuming screen real estate
 ```
 
 ---
@@ -329,12 +333,26 @@ When facing design decisions, ask:
 
 ## 🎨 Visual Design Principles
 
-### Color Psychology
-- **Green**: Valid, go, success
-- **Yellow**: Caution, attention needed
-- **Red**: Invalid, stop, error
-- **Blue**: Information, measurement
-- **Gray**: Inactive, disabled
+### Modern UI Styling (Canva-Inspired)
+While maintaining professional CAD functionality, the visual interface adopts modern design principles:
+
+#### **Updated Color System**
+- **Teal (#00C4CC)**: Primary actions, selected states
+- **Purple (#7C3AED)**: Creative tools, design features  
+- **Pink (#EC4899)**: Highlights, celebrations
+- **Green (#22C55E)**: Valid, success, completion
+- **Orange (#F59E0B)**: Caution, attention needed
+- **Red (#EF4444)**: Invalid, stop, error
+- **Gray Scale**: Neutral elements, disabled states
+
+#### **Visual Characteristics**
+- **Gradient Accents**: Subtle gradients for depth and premium feel
+- **Rounded Corners**: 8-12px radius for approachable interface
+- **Smooth Animations**: 200ms transitions for all interactions
+- **Clean Typography**: Modern sans-serif with clear hierarchy
+- **Consistent Spacing**: 8px base unit grid system
+
+> **Note**: These visual updates enhance the user experience while all professional CAD tools and precision features remain unchanged.
 
 ### Typography Hierarchy
 ```

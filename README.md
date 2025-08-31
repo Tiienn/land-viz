@@ -12,10 +12,20 @@
 
 Land Visualizer is an intuitive web application that helps anyone understand property sizes by converting confusing measurements like "2000m²" into clear, relatable visual comparisons. No CAD knowledge required - just draw your land and instantly see how many soccer fields, parking spaces, or houses fit inside.
 
+### 🎨 Modern Visual Design
+
+The application features a **Canva-inspired modern UI** with professional CAD functionality:
+- Clean, contemporary interface with vibrant teal/purple color scheme
+- Smooth animations and micro-interactions
+- Gradient buttons with elegant hover effects
+- Professional tools wrapped in an approachable, friendly design
+
 ### ✨ Key Features
 
 - **🎨 Smart Drawing** - Click to draw property boundaries with automatic shape completion
 - **📏 Instant Calculations** - Real-time area, perimeter, and dimension measurements
+- **🔧 Expandable Panels** - Collapsible/expandable left and right sidebars with smooth animations
+- **🎛️ Professional Ribbon** - Clean tool grouping with SVG icons and visual separators
 - **🔄 Unit Conversion** - Seamlessly switch between m², ft², acres, and hectares
 - **⚡ Visual Comparisons** - See your land compared to familiar objects
 - **🎯 Precision Mode** - Professional-grade accuracy powered by Chili3D
@@ -73,9 +83,9 @@ npm test
 - **Vite** - Build tool and dev server
 
 ### Professional Features (Chili3D Integration)
-- **@chili3d/geo** - Precision geometry calculations
-- **@chili3d/wasm-core** - WebAssembly performance
-- **@chili3d/io** - CAD format export (STEP, DXF)
+- **Decimal.js** - High-precision calculations (±0.01% accuracy)
+- **Zustand** - Lightweight state management
+- **@react-three/drei** - Three.js helpers and utilities
 
 ### Testing & Quality
 - **Jest** - Unit testing
@@ -86,35 +96,44 @@ npm test
 ## 📁 Project Structure
 
 ```
-land-visualizer/
-├── src/
-│   ├── components/          # React components
-│   │   ├── Scene.tsx       # 3D viewport
-│   │   ├── DrawingTools.tsx # Shape drawing
-│   │   └── Comparisons.tsx # Reference objects
-│   ├── services/           # Business logic
-│   │   ├── calculations.ts # Area/perimeter
-│   │   └── precision.ts   # Chili3D integration
-│   ├── hooks/             # Custom React hooks
-│   ├── utils/             # Helper functions
-│   └── styles/            # CSS modules
-├── public/                # Static assets
-├── tests/                 # Test suites
-└── docs/                  # Documentation
+land-visualizer/app/src/
+├── components/
+│   ├── Scene/              # 3D scene components
+│   │   ├── SceneManager.tsx   # Main 3D canvas
+│   │   ├── DrawingCanvas.tsx  # Interactive drawing
+│   │   ├── ShapeRenderer.tsx  # Shape visualization
+│   │   ├── ShapeDimensions.tsx # Dimension labels
+│   │   ├── DrawingFeedback.tsx # Real-time feedback
+│   │   └── GridBackground.tsx  # Infinite grass grid
+│   ├── PropertiesPanel.tsx # Tool instructions & settings
+│   ├── LayerPanel.tsx      # Layer management
+│   └── CoordinateDisplay.tsx # Mouse coordinates
+├── services/
+│   └── precisionCalculations.ts # High-precision geometry
+├── store/
+│   └── useAppStore.ts     # Zustand state management
+├── types/
+│   └── index.ts           # TypeScript definitions
+└── App.tsx                 # Main application
 ```
 
 ## 🎮 Usage
 
 ### Basic Drawing
-1. Click the **Draw** tool (or press 'D')
-2. Click points on the canvas to create corners
-3. Shape auto-closes after 3+ points
-4. Drag corners to adjust
+1. Select a drawing tool: **Rectangle**, **Circle**, or **Polyline**
+2. Click on the 3D canvas to start drawing
+3. For rectangles: Click two diagonal corners
+4. For circles: Click center, then click radius point  
+5. For polylines: Click multiple points, then click near start to close
+6. Crosshair cursor shows exact drawing position
+7. Real-time dimensions display during drawing
 
-### Adding Comparisons
-1. Click **Compare** tool (or press 'C')
-2. Select reference objects from library
-3. See how many fit in your property
+### Viewing Measurements
+1. Green area labels show total area for closed shapes
+2. Dimension labels show lengths for each side
+3. Circle shapes display radius measurement
+4. Polylines show area if 3+ points (treated as closed shape)
+5. All measurements scale appropriately with camera zoom
 
 ### Precision Mode
 1. Toggle **Pro Mode** in settings
@@ -169,9 +188,12 @@ We love contributions! See [CONTRIBUTING.md](docs/guides/CONTRIBUTING.md) for gu
 - [x] Professional UI with ribbon toolbar ✅ **COMPLETE**
 - [x] Custom camera controls ✅ **COMPLETE**
 - [x] Natural color scheme ✅ **COMPLETE**
+- [x] Drawing tool fixes (area calculations, polyline enhancement) ✅ **COMPLETE**
+- [x] UI improvements (coordinates display, properties panel) ✅ **COMPLETE**
+- [x] Visual feedback enhancements (crosshair cursor, dimension scaling) ✅ **COMPLETE**
+- [ ] Excel export functionality
 - [ ] Chili3D integration
 - [ ] Mobile rotation fix
-- [ ] 5 comparison objects
 
 ### Upcoming Features
 - 🎯 AI-powered shape detection
@@ -181,6 +203,21 @@ We love contributions! See [CONTRIBUTING.md](docs/guides/CONTRIBUTING.md) for gu
 - 📱 Native mobile apps
 
 See [ROADMAP.md](docs/project/ROADMAP.md) for detailed plans.
+
+## ✅ Recent Fixes
+
+- Rectangle area calculations now work for both default and newly drawn shapes
+- Enhanced polyline drawing with imaginary line following cursor
+- Added crosshair cursor for drawing modes with special closing indicator
+- Improved dimension text scaling that responds properly to camera zoom
+- Moved coordinate display to bottom-left corner for better UX
+- Added Properties panel with tool-specific instructions and grid controls
+- Removed polygon tool as requested by users
+- Fixed circle dimensions to show radius only instead of segment dimensions
+- **NEW**: Added expandable/collapsible left and right sidebar panels
+- **NEW**: Implemented professional ribbon toolbar with clean SVG icons
+- **NEW**: Integrated Land-Visualizer512.png logo replacing emoji
+- **NEW**: Removed terrain elevation section for cleaner interface
 
 ## 🐛 Known Issues
 

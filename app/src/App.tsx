@@ -1,14 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import SceneManager from './components/Scene/SceneManager';
 import { useAppStore } from './store/useAppStore';
-import type { Point3D, Point2D } from './types';
+import ExportSettingsDialog, { type ExportSettings } from './components/ExportSettingsDialog';
+import LayerPanel from './components/LayerPanel';
+import PropertiesPanel from './components/PropertiesPanel';
+import type { Point2D } from './types';
 
 function App(): React.JSX.Element {
   // Local UI state for performance (reduces re-renders)
   const [activeTool, setActiveTool] = useState('select');
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
+  const [exportSettingsFormat, setExportSettingsFormat] = useState<ExportSettings['format']>('excel');
+  const [isProfessionalMode, setIsProfessionalMode] = useState(false);
+  const [layerPanelOpen, setLayerPanelOpen] = useState(false);
+  const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
+  const [mousePosition, setMousePosition] = useState<Point2D>({ x: 0, y: 0 });
+  const [isMouseOver3D, setIsMouseOver3D] = useState(false);
+  const [currentDimensions, setCurrentDimensions] = useState<{
+    width?: number;
+    height?: number;
+    area?: number;
+    radius?: number;
+    length?: number;
+  } | null>(null);
+  const [isNearPolylineStart, setIsNearPolylineStart] = useState(false);
+  const [leftPanelExpanded, setLeftPanelExpanded] = useState(false);
+  const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
   
   // Connect to the 3D scene store
-  const { drawing, shapes, setActiveTool: setStoreActiveTool, clearAll } = useAppStore();
+  const { 
+    drawing, 
+    setActiveTool: setStoreActiveTool, 
+    toggleShowDimensions,
+    clearAll,
+    getTotalArea,
+    getShapeCount,
+    getAverageArea,
+    exportToExcel,
+    exportToDXF,
+    exportToGeoJSON,
+    exportToPDF,
+    downloadExport,
+    selectedShapeId,
+    enterEditMode,
+    exitEditMode,
+    addShapeCorner,
+    deleteShapeCorner,
+    convertRectangleToPolygon
+  } = useAppStore();
 
   // Sync local state with store state when store changes
   useEffect(() => {
@@ -17,64 +57,362 @@ function App(): React.JSX.Element {
     }
   }, [drawing.activeTool, activeTool]);
 
+  // Auto-open Properties panel when drawing tools are selected
+  useEffect(() => {
+    if (activeTool !== 'select') {
+      setPropertiesPanelOpen(true);
+    }
+  }, [activeTool]);
+
   // 3D Scene event handlers
   const handleCoordinateChange = (worldPos: Point2D, screenPos: Point2D) => {
-    // Handle coordinate changes for measurements display
-    // This could be used to show real-time coordinates in the UI
+    setMousePosition(worldPos);
+    setIsMouseOver3D(true);
   };
 
-  const handleCameraChange = (position: Point3D, target: Point3D) => {
+  const handleDimensionChange = (dimensions: {
+    width?: number;
+    height?: number;
+    area?: number;
+    radius?: number;
+    length?: number;
+  } | null) => {
+    setCurrentDimensions(dimensions);
+  };
+
+  const handlePolylineStartProximity = (isNear: boolean) => {
+    setIsNearPolylineStart(isNear);
+  };
+
+  const handleCameraChange = () => {
     // Handle camera changes if needed for UI updates
     // Could be used for camera presets or view saving
   };
 
-  return (
-    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', backgroundColor: '#fcfcfd' }}>
+  // Export handlers
+  const handleQuickExport = async (format: 'excel' | 'dxf' | 'geojson' | 'pdf') => {
+    try {
+      let result;
+      switch (format) {
+        case 'excel':
+          result = await exportToExcel();
+          break;
+        case 'dxf':
+          result = await exportToDXF();
+          break;
+        case 'geojson':
+          result = await exportToGeoJSON();
+          break;
+        case 'pdf':
+          result = await exportToPDF();
+          break;
+        default:
+          throw new Error(`Unknown export format: ${format}`);
+      }
       
-      {/* Header */}
-      <div style={{ background: 'white', borderBottom: '1px solid #e5e5e5', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '32px', height: '32px', background: '#3b82f6', borderRadius: '8px' }}></div>
+      if (result.success) {
+        downloadExport(result);
+        setExportDropdownOpen(false);
+      } else {
+        alert(`${format.toUpperCase()} export failed. Please try again.`);
+      }
+    } catch (error) {
+      console.error(`${format} export error:`, error);
+      alert(`${format.toUpperCase()} export failed. Please try again.`);
+    }
+  };
+
+  const handleExportWithSettings = (settings: ExportSettings) => {
+    const { format, ...exportOptions } = settings;
+    
+    const exportWithCustomSettings = async () => {
+      try {
+        let result;
+        switch (format) {
+          case 'excel':
+            result = await exportToExcel(exportOptions);
+            break;
+          case 'dxf':
+            result = await exportToDXF(exportOptions);
+            break;
+          case 'geojson':
+            result = await exportToGeoJSON(exportOptions);
+            break;
+          case 'pdf':
+            result = await exportToPDF(exportOptions);
+            break;
+          default:
+            throw new Error(`Unknown export format: ${format}`);
+        }
+        
+        if (result.success) {
+          downloadExport(result);
+        } else {
+          alert(`${format.toUpperCase()} export failed. Please try again.`);
+        }
+      } catch (error) {
+        console.error(`${format} export error:`, error);
+        alert(`${format.toUpperCase()} export failed. Please try again.`);
+      }
+    };
+
+    exportWithCustomSettings();
+  };
+
+  const openExportSettings = (format: ExportSettings['format']) => {
+    setExportSettingsFormat(format);
+    setExportSettingsOpen(true);
+    setExportDropdownOpen(false);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setExportDropdownOpen(false);
+    };
+
+    if (exportDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [exportDropdownOpen]);
+
+  // Remove scroll bars and ensure proper viewport handling
+  React.useEffect(() => {
+    // Remove scroll bars from body and html
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
+    // Ensure no margin/padding on body
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.documentElement.style.margin = '0';
+    document.documentElement.style.padding = '0';
+    
+    return () => {
+      // Restore default overflow on cleanup
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
+  return (
+    <div style={{ 
+      height: '100vh', 
+      width: '100vw', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      backgroundColor: '#fcfcfd',
+      overflow: 'hidden',
+      position: 'fixed',
+      top: 0,
+      left: 0
+    }}>
+      
+      {/* Enhanced Header */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', 
+        borderBottom: '1px solid #e2e8f0', 
+        padding: '20px 24px', 
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center' 
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <img 
+            src="/Land-Visualizer512.png" 
+            alt="Land Visualizer Logo"
+            style={{
+              width: '40px', 
+              height: '40px', 
+              borderRadius: '8px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+            }}
+          />
           <div>
-            <h1 style={{ fontSize: '18px', fontWeight: '600', margin: 0, color: '#111827' }}>Land Visualizer</h1>
-            <span style={{ fontSize: '12px', color: '#6b7280' }}>Advanced 3D land measurement and analysis tool</span>
+            <h1 style={{ 
+              fontSize: '24px', 
+              fontWeight: '700', 
+              margin: 0, 
+              color: '#000000'
+            }}>
+              Land Visualizer
+            </h1>
+            <span style={{ fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
+              {isProfessionalMode ? 'Create Professional Land Visualizations' : 'Create Beautiful Land Visualizations'}
+            </span>
           </div>
         </div>
-        <div style={{ fontSize: '12px', color: '#6b7280' }}>
-          <span>FPS: 60</span> | <span>Quality: 100%</span> | <strong>5,000 SQUARE METERS</strong>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* Professional Mode Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ 
+              fontSize: '12px', 
+              color: isProfessionalMode ? '#1d4ed8' : '#000000',
+              fontWeight: '500'
+            }}>
+              {isProfessionalMode ? '🎯 Professional' : '👤 Standard'}
+            </span>
+            <button
+              onClick={() => setIsProfessionalMode(!isProfessionalMode)}
+              style={{
+                position: 'relative',
+                width: '52px',
+                height: '28px',
+                borderRadius: '14px',
+                border: 'none',
+                cursor: 'pointer',
+                background: isProfessionalMode ? '#3b82f6' : '#d1d5db',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px',
+                boxShadow: isProfessionalMode ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none'
+              }}
+              title={`Switch to ${isProfessionalMode ? 'Standard' : 'Professional'} Mode`}
+            >
+              <div style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '12px',
+                background: 'white',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transform: `translateX(${isProfessionalMode ? '24px' : '0px'})`,
+                transition: 'transform 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px'
+              }}>
+                {isProfessionalMode ? '⚡' : '📊'}
+              </div>
+            </button>
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#000000' }}>
+            <span>FPS: 60</span> | <span>Quality: 100%</span> | <strong>{getTotalArea()} SQUARE METERS</strong>
+          </div>
         </div>
       </div>
 
-      {/* Ribbon Toolbar */}
-      <div style={{ background: 'white', borderBottom: '1px solid #e5e5e5', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: '#fcfcfd' }}>
-          <span style={{ fontSize: '12px', fontWeight: '500', color: '#6b7280' }}>Tools & Functions</span>
+      {/* Enhanced Ribbon Toolbar */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', 
+        borderBottom: '1px solid #e2e8f0', 
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
+      }}>
+        <div style={{ 
+          padding: '12px 20px', 
+          borderBottom: '1px solid #f1f5f9', 
+          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' 
+        }}>
+          <span style={{ fontSize: '12px', fontWeight: '500', color: '#000000' }}>
+            {isProfessionalMode ? 'Professional CAD Tools & Functions' : 'Tools & Functions'}
+          </span>
+          {isProfessionalMode && (
+            <span style={{ 
+              fontSize: '10px', 
+              color: '#059669', 
+              marginLeft: '8px',
+              background: '#dcfce7',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontWeight: '600'
+            }}>
+              ⚡ PRO MODE
+            </span>
+          )}
         </div>
-        <div style={{ padding: '12px 16px' }}>
-          <div style={{ display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
+        <div style={{ padding: '16px 24px' }}>
+          <div style={{ display: 'flex', gap: '40px', alignItems: 'flex-start' }}>
             {/* Area Configuration */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>Area Configuration</div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', borderRadius: '8px', minWidth: '60px', height: '64px', color: '#6b7280', background: 'white', border: '1px solid #e5e5e5', cursor: 'pointer' }}>
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>➕</span>
-                  <span style={{ fontSize: '12px' }}>Insert Area</span>
+              <div style={{ 
+                fontSize: '11px', 
+                fontWeight: '600', 
+                color: '#64748b', 
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Area Configuration</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  padding: '8px 12px', 
+                  borderRadius: '4px', 
+                  minWidth: '70px', 
+                  height: '60px', 
+                  color: '#000000', 
+                  background: 'white', 
+                  border: '1px solid #e5e7eb', 
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '500'
+                }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Insert Area</span>
                 </button>
-                <button style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', borderRadius: '8px', minWidth: '60px', height: '64px', color: '#6b7280', background: 'white', border: '1px solid #e5e5e5', cursor: 'pointer' }}>
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>➕</span>
-                  <span style={{ fontSize: '12px' }}>Add Area</span>
+                <button style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  padding: '8px 12px', 
+                  borderRadius: '4px', 
+                  minWidth: '70px', 
+                  height: '60px', 
+                  color: '#000000', 
+                  background: 'white', 
+                  border: '1px solid #e5e7eb', 
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '500'
+                }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Add Area</span>
                 </button>
-                <button style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', borderRadius: '8px', minWidth: '60px', height: '64px', color: '#6b7280', background: 'white', border: '1px solid #e5e5e5', cursor: 'pointer' }}>
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>⚏</span>
-                  <span style={{ fontSize: '12px' }}>Presets</span>
+                <button style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  padding: '8px 12px', 
+                  borderRadius: '4px', 
+                  minWidth: '70px', 
+                  height: '60px', 
+                  color: '#000000', 
+                  background: 'white', 
+                  border: '1px solid #e5e7eb', 
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '500'
+                }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <rect x="9" y="9" width="6" height="6"></rect>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Presets</span>
                 </button>
               </div>
             </div>
 
             {/* Drawing Tools */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>Drawing Tools</div>
-              <div style={{ display: 'flex', gap: '4px' }}>
+              <div style={{ 
+                fontSize: '11px', 
+                fontWeight: '600', 
+                color: '#64748b', 
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Drawing Tools</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
                 <button 
                   onClick={() => {
                     setActiveTool('select');
@@ -84,18 +422,41 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px', 
-                    borderRadius: '8px', 
-                    minWidth: '60px', 
-                    height: '64px', 
-                    border: '1px solid #e5e5e5',
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '70px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    background: activeTool === 'select' ? '#dbeafe' : 'white',
-                    color: activeTool === 'select' ? '#1d4ed8' : '#6b7280'
+                    background: activeTool === 'select' 
+                      ? '#dbeafe' 
+                      : '#ffffff',
+                    color: activeTool === 'select' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'select' 
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'select') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'select') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
                   }}
                 >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>↖</span>
-                  <span style={{ fontSize: '12px' }}>Select</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path>
+                    <path d="m13 13 6 6"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Select</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -106,18 +467,40 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px', 
-                    borderRadius: '8px', 
-                    minWidth: '60px', 
-                    height: '64px', 
-                    border: '1px solid #e5e5e5',
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '70px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    background: activeTool === 'rectangle' ? '#dbeafe' : 'white',
-                    color: activeTool === 'rectangle' ? '#1d4ed8' : '#6b7280'
+                    background: activeTool === 'rectangle' 
+                      ? '#dbeafe' 
+                      : '#ffffff',
+                    color: activeTool === 'rectangle' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'rectangle' 
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'rectangle') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'rectangle') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
                   }}
                 >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>⬜</span>
-                  <span style={{ fontSize: '12px' }}>Rectangle</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Rectangle</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -128,18 +511,40 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px', 
-                    borderRadius: '8px', 
-                    minWidth: '60px', 
-                    height: '64px', 
-                    border: '1px solid #e5e5e5',
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '70px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    background: activeTool === 'polyline' ? '#dbeafe' : 'white',
-                    color: activeTool === 'polyline' ? '#1d4ed8' : '#6b7280'
+                    background: activeTool === 'polyline' 
+                      ? '#dbeafe' 
+                      : '#ffffff',
+                    color: activeTool === 'polyline' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'polyline' 
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'polyline') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'polyline') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
                   }}
                 >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>📐</span>
-                  <span style={{ fontSize: '12px' }}>Polyline</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="4,17 10,11 14,15 20,9"></polyline>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Polyline</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -150,23 +555,307 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px', 
-                    borderRadius: '8px', 
-                    minWidth: '60px', 
-                    height: '64px', 
-                    border: '1px solid #e5e5e5',
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '70px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    background: activeTool === 'circle' ? '#dbeafe' : 'white',
-                    color: activeTool === 'circle' ? '#1d4ed8' : '#6b7280'
+                    background: activeTool === 'circle' 
+                      ? '#dbeafe' 
+                      : '#ffffff',
+                    color: activeTool === 'circle' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'circle' 
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'circle') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'circle') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
                   }}
                 >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>⭕</span>
-                  <span style={{ fontSize: '12px' }}>Circle</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="9"></circle>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Circle</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Vertical Separator */}
+            <div style={{ 
+              width: '1px', 
+              height: '70px', 
+              background: '#e5e7eb', 
+              margin: '0 8px' 
+            }}></div>
+
+            {/* Tools */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ 
+                fontSize: '11px', 
+                fontWeight: '600', 
+                color: '#64748b', 
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Tools</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button 
+                  onClick={toggleShowDimensions}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '80px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: drawing.showDimensions ? '#a5b4fc' : '#ffffff',
+                    color: drawing.showDimensions ? '#312e81' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 14H3l1.5-2h15z"></path>
+                    <path d="M21 19H3l1.5-2h15z"></path>
+                    <path d="M21 9H3l1.5-2h15z"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Dimensions</span>
+                </button>
+                <button 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '80px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14,2 14,8 20,8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10,9 9,9 8,9"></polyline>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Enter Dimensions</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Vertical Separator */}
+            <div style={{ 
+              width: '1px', 
+              height: '70px', 
+              background: '#e5e7eb', 
+              margin: '0 8px' 
+            }}></div>
+
+            {/* Corner Controls */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ 
+                fontSize: '11px', 
+                fontWeight: '600', 
+                color: '#64748b', 
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Corner Controls</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9,14 2,14 2,21 9,21"></polyline>
+                    <path d="m21,7-9,9-5-5"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Undo</span>
+                </button>
+                <button 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15,14 22,14 22,21 15,21"></polyline>
+                    <path d="m3,7 9,9 5-5"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Redo</span>
                 </button>
                 <button 
                   onClick={() => {
-                    setActiveTool('polygon');
-                    setStoreActiveTool('polygon');
+                    if (drawing.isEditMode && selectedShapeId && drawing.selectedCornerIndex !== null) {
+                      // Add corner logic
+                      const state = useAppStore.getState();
+                      const selectedShape = state.shapes.find(s => s.id === selectedShapeId);
+                      
+                      if (selectedShape && selectedShape.points) {
+                        if (selectedShape.type === 'rectangle' && selectedShape.points.length === 2) {
+                          const [topLeft, bottomRight] = selectedShape.points;
+                          const rectangleCorners = [
+                            { x: topLeft.x, y: topLeft.y },
+                            { x: bottomRight.x, y: topLeft.y },
+                            { x: bottomRight.x, y: bottomRight.y },
+                            { x: topLeft.x, y: bottomRight.y }
+                          ];
+                          
+                          convertRectangleToPolygon(selectedShapeId, rectangleCorners);
+                          
+                          const cornerIndex = drawing.selectedCornerIndex;
+                          const currentCorner = rectangleCorners[cornerIndex];
+                          const nextIndex = (cornerIndex + 1) % rectangleCorners.length;
+                          const nextCorner = rectangleCorners[nextIndex];
+                          
+                          const midpoint = {
+                            x: (currentCorner.x + nextCorner.x) / 2,
+                            y: (currentCorner.y + nextCorner.y) / 2
+                          };
+                          
+                          addShapeCorner(selectedShapeId, cornerIndex, midpoint);
+                        } else {
+                          const cornerIndex = drawing.selectedCornerIndex;
+                          const currentCorner = selectedShape.points[cornerIndex];
+                          const nextIndex = (cornerIndex + 1) % selectedShape.points.length;
+                          const nextCorner = selectedShape.points[nextIndex];
+                          
+                          const midpoint = {
+                            x: (currentCorner.x + nextCorner.x) / 2,
+                            y: (currentCorner.y + nextCorner.y) / 2
+                          };
+                          
+                          addShapeCorner(selectedShapeId, cornerIndex, midpoint);
+                        }
+                      }
+                    }
+                  }}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
+                    background: '#ffffff',
+                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#000000' : '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
+                  }}
+                  title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Add Corner between selected and next corner' : 'Select a corner first') : 'Enter Edit Mode first'}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <line x1="12" y1="1" x2="12" y2="9"></line>
+                    <line x1="23" y1="12" x2="15" y2="12"></line>
+                    <line x1="12" y1="23" x2="12" y2="15"></line>
+                    <line x1="1" y1="12" x2="9" y2="12"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Add Corner</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    if (drawing.isEditMode && selectedShapeId && drawing.selectedCornerIndex !== null) {
+                      // Get fresh state directly from store
+                      const state = useAppStore.getState();
+                      const selectedShape = state.shapes.find(s => s.id === selectedShapeId);
+                      
+                      if (selectedShape && selectedShape.points) {
+                        if (selectedShape.type === 'rectangle' && selectedShape.points.length === 2) {
+                          // Convert rectangle to polygon first, then add corner
+                          const [topLeft, bottomRight] = selectedShape.points;
+                          const rectangleCorners = [
+                            { x: topLeft.x, y: topLeft.y },      // Top left
+                            { x: bottomRight.x, y: topLeft.y },  // Top right
+                            { x: bottomRight.x, y: bottomRight.y }, // Bottom right
+                            { x: topLeft.x, y: bottomRight.y }   // Bottom left
+                          ];
+                          
+                          // Convert to polygon with current corners
+                          convertRectangleToPolygon(selectedShapeId, rectangleCorners);
+                          
+                          // Add corner immediately after conversion
+                          const cornerIndex = drawing.selectedCornerIndex;
+                          const currentCorner = rectangleCorners[cornerIndex];
+                          const nextIndex = (cornerIndex + 1) % rectangleCorners.length;
+                          const nextCorner = rectangleCorners[nextIndex];
+                          
+                          const midpoint = {
+                            x: (currentCorner.x + nextCorner.x) / 2,
+                            y: (currentCorner.y + nextCorner.y) / 2
+                          };
+                          
+                          addShapeCorner(selectedShapeId, cornerIndex, midpoint);
+                        } else {
+                          // Direct add for polygons
+                          const cornerIndex = drawing.selectedCornerIndex;
+                          const currentCorner = selectedShape.points[cornerIndex];
+                          const nextIndex = (cornerIndex + 1) % selectedShape.points.length;
+                          const nextCorner = selectedShape.points[nextIndex];
+                          
+                          const midpoint = {
+                            x: (currentCorner.x + nextCorner.x) / 2,
+                            y: (currentCorner.y + nextCorner.y) / 2
+                          };
+                          
+                          addShapeCorner(selectedShapeId, cornerIndex, midpoint);
+                        }
+                      }
+                    }
                   }}
                   style={{ 
                     display: 'flex', 
@@ -177,70 +866,380 @@ function App(): React.JSX.Element {
                     minWidth: '60px', 
                     height: '64px', 
                     border: '1px solid #e5e5e5',
-                    cursor: 'pointer',
-                    background: activeTool === 'polygon' ? '#dbeafe' : 'white',
-                    color: activeTool === 'polygon' ? '#1d4ed8' : '#6b7280'
+                    cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
+                    background: 'white',
+                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#000000' : '#d1d5db',
+                    opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
                   }}
+                  title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Add Corner between selected and next corner' : 'Select a corner first') : 'Enter Edit Mode first'}
                 >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>🔷</span>
-                  <span style={{ fontSize: '12px' }}>Polygon</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Corner Controls */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>Corner Controls</div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', borderRadius: '8px', minWidth: '60px', height: '64px', color: '#6b7280', background: 'white', border: '1px solid #e5e5e5', cursor: 'pointer' }}>
                   <span style={{ fontSize: '20px', marginBottom: '4px' }}>📍</span>
                   <span style={{ fontSize: '12px' }}>Add Corner</span>
                 </button>
                 <button 
                   onClick={() => {
-                    if (window.confirm('Clear all shapes? This cannot be undone.')) {
-                      clearAll();
+                    if (drawing.isEditMode && selectedShapeId && drawing.selectedCornerIndex !== null) {
+                      deleteShapeCorner(selectedShapeId, drawing.selectedCornerIndex);
                     }
                   }}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', borderRadius: '8px', minWidth: '60px', height: '64px', color: '#6b7280', background: 'white', border: '1px solid #e5e5e5', cursor: 'pointer' }}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
+                    background: '#ffffff',
+                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#ef4444' : '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
+                  }}
+                  title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Delete Selected Corner' : 'Select a corner to delete') : 'Enter Edit Mode first'}
                 >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>🗑</span>
-                  <span style={{ fontSize: '12px' }}>Clear All</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Delete Corner</span>
                 </button>
               </div>
             </div>
 
+            {/* Vertical Separator */}
+            <div style={{ 
+              width: '1px', 
+              height: '70px', 
+              background: '#e5e7eb', 
+              margin: '0 8px' 
+            }}></div>
+
+
             {/* Export */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>Export</div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px', borderRadius: '8px', minWidth: '60px', height: '64px', color: '#6b7280', background: 'white', border: '1px solid #e5e5e5', cursor: 'pointer' }}>
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>💾</span>
-                  <span style={{ fontSize: '12px' }}>Excel Export</span>
-                </button>
+              <div style={{ 
+                fontSize: '11px', 
+                fontWeight: '600', 
+                color: '#64748b', 
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Export</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                    style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      padding: '8px 12px', 
+                      borderRadius: '4px', 
+                      minWidth: '80px', 
+                      height: '60px', 
+                      border: '1px solid #e5e7eb',
+                      cursor: 'pointer',
+                      background: exportDropdownOpen ? '#dbeafe' : '#ffffff',
+                      color: exportDropdownOpen ? '#1d4ed8' : '#000000',
+                      transition: 'all 0.2s ease',
+                      fontSize: '11px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14,2 14,8 20,8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10,9 9,9 8,9"></polyline>
+                    </svg>
+                    <span style={{ marginTop: '4px' }}>Excel Export</span>
+                  </button>
+
+                  {/* Simplified Export Dropdown */}
+                  {exportDropdownOpen && (
+                    <div 
+                      style={{ 
+                        position: 'absolute', 
+                        top: '65px', 
+                        left: '0', 
+                        background: 'white', 
+                        border: '1px solid #e5e7eb', 
+                        borderRadius: '6px', 
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 1000,
+                        minWidth: '160px'
+                      }}
+                    >
+                      <button
+                        onClick={() => handleQuickExport('excel')}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          color: '#374151',
+                          textAlign: 'left',
+                          borderRadius: '6px 6px 0 0'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        📊 Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => handleQuickExport('dxf')}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: 'none',
+                          borderTop: '1px solid #f3f4f6',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          color: '#374151',
+                          textAlign: 'left'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        📐 DXF (.dxf)
+                      </button>
+                      <button
+                        onClick={() => handleQuickExport('pdf')}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: 'none',
+                          borderTop: '1px solid #f3f4f6',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          color: '#374151',
+                          textAlign: 'left',
+                          borderRadius: '0 0 6px 6px'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        📄 PDF (.pdf)
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+
       {/* Main Content */}
-      <div style={{ display: 'flex', flex: 1 }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar */}
-        <div style={{ width: '64px', background: 'white', borderRight: '1px solid #e5e5e5', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '16px' }}>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Home">🏠</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Visual Comparison">👁</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Unit Converter">🔢</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Quick Tools">⚡</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Layers">📄</button>
+        <div style={{ 
+          width: leftPanelExpanded ? '200px' : '64px', 
+          background: 'white', 
+          borderRight: '1px solid #e5e5e5', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          transition: 'width 0.3s ease',
+          position: 'relative'
+        }}>
+          {/* Expand/Collapse Toggle */}
+          <button
+            onClick={() => setLeftPanelExpanded(!leftPanelExpanded)}
+            style={{
+              position: 'absolute',
+              top: '8px',
+              right: '-12px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: '#ffffff',
+              border: '2px solid #e5e5e5',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              color: '#6b7280',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              zIndex: 10,
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.color = '#374151';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#ffffff';
+              e.currentTarget.style.color = '#6b7280';
+            }}
+            title={leftPanelExpanded ? 'Collapse Panel' : 'Expand Panel'}
+          >
+            {leftPanelExpanded ? '◀' : '▶'}
+          </button>
+
+          <div style={{ 
+            padding: '16px 0', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: leftPanelExpanded ? 'stretch' : 'center', 
+            gap: '8px',
+            paddingLeft: leftPanelExpanded ? '16px' : '0',
+            paddingRight: leftPanelExpanded ? '16px' : '0'
+          }}>
+            <button style={{ 
+              padding: leftPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: leftPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: leftPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Home"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>🏠</span>
+              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Home</span>}
+            </button>
+            
+            <button style={{ 
+              padding: leftPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: leftPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: leftPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Visual Comparison"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>👁</span>
+              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Visual Comparison</span>}
+            </button>
+            
+            <button style={{ 
+              padding: leftPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: leftPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: leftPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Unit Converter"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>🔢</span>
+              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Unit Converter</span>}
+            </button>
+            
+            <button style={{ 
+              padding: leftPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: leftPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: leftPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Quick Tools"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>⚡</span>
+              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Quick Tools</span>}
+            </button>
+            
+            <button 
+              onClick={() => setLayerPanelOpen(!layerPanelOpen)}
+              style={{ 
+                padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                borderRadius: '4px', 
+                background: layerPanelOpen ? '#dbeafe' : 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                fontSize: leftPanelExpanded ? '14px' : '18px',
+                color: layerPanelOpen ? '#1d4ed8' : '#000000',
+                display: 'flex',
+                alignItems: 'center',
+                gap: leftPanelExpanded ? '12px' : '0',
+                width: '100%',
+                textAlign: 'left',
+                justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
+                transition: 'all 0.2s ease'
+              }} 
+              title="Layers"
+              onMouseEnter={(e) => {
+                if (!layerPanelOpen) e.currentTarget.style.background = '#f3f4f6';
+              }}
+              onMouseLeave={(e) => {
+                if (!layerPanelOpen) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <span>📄</span>
+              {leftPanelExpanded && <span style={{ fontWeight: '500', color: layerPanelOpen ? '#1d4ed8' : '#374151' }}>Layers</span>}
+            </button>
+          </div>
         </div>
 
         {/* Central 3D Canvas */}
-        <main style={{ flex: 1, position: 'relative', background: '#3b82f6', overflow: 'hidden' }}>
-          <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
+        <main style={{ 
+          flex: 1, 
+          position: 'relative', 
+          background: '#3b82f6', 
+          overflow: 'hidden',
+          cursor: activeTool !== 'select' ? (isNearPolylineStart && activeTool === 'polyline' ? 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair' : 'crosshair') : 'default'
+        }}>
+          <div style={{ 
+            width: '100%', 
+            height: '100%', 
+            position: 'absolute', 
+            top: 0, 
+            left: 0,
+            cursor: activeTool !== 'select' ? (isNearPolylineStart && activeTool === 'polyline' ? 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair' : 'crosshair') : 'default'
+          }}>
             <SceneManager 
               onCoordinateChange={handleCoordinateChange}
               onCameraChange={handleCameraChange}
+              onDimensionChange={handleDimensionChange}
+              onPolylineStartProximity={handlePolylineStartProximity}
               settings={{
                 gridSize: 100,
                 gridDivisions: 50,
@@ -250,8 +1249,8 @@ function App(): React.JSX.Element {
                 cameraTarget: { x: 0, y: 0, z: 0 },
                 enableOrbitControls: true,
                 maxPolarAngle: Math.PI / 2.1,
-                minDistance: 5,
-                maxDistance: 200
+                minDistance: 0.1,
+                maxDistance: Infinity
               }}
             />
           </div>
@@ -261,30 +1260,325 @@ function App(): React.JSX.Element {
             position: 'absolute', 
             bottom: '16px', 
             left: '16px', 
-            background: 'rgba(255,255,255,0.95)', 
+            background: isProfessionalMode ? 'rgba(59, 130, 246, 0.95)' : 'rgba(255,255,255,0.95)', 
             padding: '12px 16px', 
             borderRadius: '8px', 
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             fontSize: '14px',
-            color: '#374151',
+            color: isProfessionalMode ? 'white' : '#374151',
             display: 'flex',
             alignItems: 'center',
-            gap: '12px'
+            gap: '12px',
+            border: isProfessionalMode ? '2px solid #3b82f6' : 'none'
           }}>
+            {isProfessionalMode && (
+              <>
+                <span style={{ fontSize: '16px' }}>⚡</span>
+                <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.3)' }}></div>
+              </>
+            )}
             <span><strong>Tool:</strong> {activeTool}</span>
-            <div style={{ width: '1px', height: '16px', background: '#d1d5db' }}></div>
-            <span><strong>Shapes:</strong> {drawing.isDrawing ? 'Drawing...' : `${shapes.length} total`}</span>
+            <div style={{ width: '1px', height: '16px', background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : '#d1d5db' }}></div>
+            <span><strong>Shapes:</strong> {drawing.isDrawing ? 'Drawing...' : `${getShapeCount()} total`}</span>
+            <div style={{ width: '1px', height: '16px', background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : '#d1d5db' }}></div>
+            <span>
+              <strong>Total Area:</strong> {isProfessionalMode ? parseFloat(getTotalArea()).toFixed(4) : getTotalArea()} m²
+              {isProfessionalMode && (
+                <span style={{ fontSize: '11px', marginLeft: '4px', opacity: 0.8 }}>
+                  (Survey Grade ±0.01%)
+                </span>
+              )}
+            </span>
+            {getShapeCount() > 1 && (
+              <>
+                <div style={{ width: '1px', height: '16px', background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : '#d1d5db' }}></div>
+                <span>
+                  <strong>Avg Area:</strong> {isProfessionalMode ? parseFloat(getAverageArea()).toFixed(4) : getAverageArea()} m²
+                </span>
+              </>
+            )}
+            {isProfessionalMode && (
+              <>
+                <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.3)' }}></div>
+                <span style={{ fontSize: '11px', fontWeight: '600' }}>PRO MODE</span>
+              </>
+            )}
           </div>
+          
+          {/* Coordinate Display */}
+          {activeTool !== 'select' && isMouseOver3D && (
+            <div style={{
+              position: 'absolute',
+              bottom: '80px', // Above the status overlay
+              left: '16px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'flex-start',
+              zIndex: 100
+            }}>
+              {/* Mouse Position Display */}
+              <div style={{
+                background: 'rgba(30, 30, 30, 0.95)',
+                color: 'white',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: '500',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                backdropFilter: 'blur(10px)',
+                minWidth: '140px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '14px' }}>📍</span>
+                  <span style={{ fontWeight: '600' }}>Mouse Position</span>
+                </div>
+                <div style={{ fontSize: '11px', opacity: 0.9 }}>
+                  <div>X: {mousePosition.x.toFixed(1)}m, Z: {mousePosition.y.toFixed(1)}m</div>
+                  <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px' }}>
+                    Grid: {drawing.snapToGrid ? `${drawing.gridSize}m snap` : 'Free move'} 
+                    {drawing.snapToGrid && <span style={{ color: '#22c55e', marginLeft: '4px' }}>📍</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Dimensions Display - Show when drawing tools are active */}
+              {(currentDimensions || (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'polyline')) && (
+                <div style={{
+                  background: 'rgba(30, 30, 30, 0.95)',
+                  color: 'white',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  backdropFilter: 'blur(10px)',
+                  minWidth: '140px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '14px' }}>📐</span>
+                    <span style={{ fontWeight: '600' }}>Dimensions</span>
+                  </div>
+                  
+                  {currentDimensions ? (
+                    <div style={{ fontSize: '11px', opacity: 0.9 }}>
+                      {/* Rectangle dimensions */}
+                      {currentDimensions.width !== undefined && currentDimensions.height !== undefined && currentDimensions.radius === undefined && (
+                        <div>
+                          <div style={{ fontWeight: '600', marginBottom: '2px' }}>
+                            {currentDimensions.width.toFixed(1)}m × {currentDimensions.height.toFixed(1)}m
+                          </div>
+                          {currentDimensions.area !== undefined && (
+                            <div style={{ fontSize: '10px', opacity: 0.7 }}>
+                              Area: {currentDimensions.area.toFixed(1)} m²
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Circle dimensions */}
+                      {currentDimensions.radius !== undefined && (
+                        <div>
+                          <div style={{ fontWeight: '600', marginBottom: '2px' }}>
+                            Radius: {currentDimensions.radius.toFixed(1)}m
+                          </div>
+                          {currentDimensions.area !== undefined && (
+                            <div style={{ fontSize: '10px', opacity: 0.7 }}>
+                              Area: {currentDimensions.area.toFixed(1)} m²
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '11px', opacity: 0.7 }}>
+                      {activeTool === 'rectangle' && 'Click to place corners'}
+                      {activeTool === 'circle' && 'Click to place center'}
+                      {(activeTool !== 'rectangle' && activeTool !== 'circle') && 'Select a drawing tool'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </main>
 
         {/* Right Sidebar */}
-        <div style={{ width: '64px', background: 'white', borderLeft: '1px solid #e5e5e5', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: '16px' }}>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Land Metrics">📊</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Terrain">🏔</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Dimensions">📏</button>
-          <button style={{ padding: '8px', borderRadius: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }} title="Properties">⚙️</button>
+        <div style={{ 
+          width: rightPanelExpanded ? '200px' : '64px', 
+          background: 'white', 
+          borderLeft: '1px solid #e5e5e5', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          transition: 'width 0.3s ease',
+          position: 'relative'
+        }}>
+          {/* Expand/Collapse Toggle */}
+          <button
+            onClick={() => setRightPanelExpanded(!rightPanelExpanded)}
+            style={{
+              position: 'absolute',
+              top: '8px',
+              left: '-12px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: '#ffffff',
+              border: '2px solid #e5e5e5',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              color: '#6b7280',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              zIndex: 10,
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.color = '#374151';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#ffffff';
+              e.currentTarget.style.color = '#6b7280';
+            }}
+            title={rightPanelExpanded ? 'Collapse Panel' : 'Expand Panel'}
+          >
+            {rightPanelExpanded ? '▶' : '◀'}
+          </button>
+
+          <div style={{ 
+            padding: '16px 0', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: rightPanelExpanded ? 'stretch' : 'center', 
+            gap: '8px',
+            paddingLeft: rightPanelExpanded ? '16px' : '0',
+            paddingRight: rightPanelExpanded ? '16px' : '0'
+          }}>
+            <button style={{ 
+              padding: rightPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: rightPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: rightPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Land Metrics"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>📊</span>
+              {rightPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Land Metrics</span>}
+            </button>
+            
+            <button style={{ 
+              padding: rightPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: rightPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: rightPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Terrain"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>🏔</span>
+              {rightPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Terrain</span>}
+            </button>
+            
+            <button style={{ 
+              padding: rightPanelExpanded ? '12px 16px' : '8px', 
+              borderRadius: '4px', 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer', 
+              fontSize: rightPanelExpanded ? '14px' : '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: rightPanelExpanded ? '12px' : '0',
+              width: '100%',
+              textAlign: 'left',
+              justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
+              transition: 'all 0.2s ease'
+            }} 
+            title="Dimensions"
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>📏</span>
+              {rightPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Dimensions</span>}
+            </button>
+            
+            <button 
+              onClick={() => setPropertiesPanelOpen(!propertiesPanelOpen)}
+              style={{ 
+                padding: rightPanelExpanded ? '12px 16px' : '8px', 
+                borderRadius: '4px', 
+                background: propertiesPanelOpen ? '#dbeafe' : 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                fontSize: rightPanelExpanded ? '14px' : '18px',
+                color: propertiesPanelOpen ? '#1d4ed8' : '#000000',
+                display: 'flex',
+                alignItems: 'center',
+                gap: rightPanelExpanded ? '12px' : '0',
+                width: '100%',
+                textAlign: 'left',
+                justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
+                transition: 'all 0.2s ease'
+              }} 
+              title="Properties"
+              onMouseEnter={(e) => {
+                if (!propertiesPanelOpen) e.currentTarget.style.background = '#f3f4f6';
+              }}
+              onMouseLeave={(e) => {
+                if (!propertiesPanelOpen) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <span>⚙️</span>
+              {rightPanelExpanded && <span style={{ fontWeight: '500', color: propertiesPanelOpen ? '#1d4ed8' : '#374151' }}>Properties</span>}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Export Settings Dialog */}
+      <ExportSettingsDialog
+        isOpen={exportSettingsOpen}
+        onClose={() => setExportSettingsOpen(false)}
+        onExport={handleExportWithSettings}
+        initialFormat={exportSettingsFormat}
+      />
+
+      {/* Layer Panel */}
+      <LayerPanel
+        isOpen={layerPanelOpen}
+        onClose={() => setLayerPanelOpen(false)}
+      />
+
+      {/* Properties Panel */}
+      <PropertiesPanel
+        isOpen={propertiesPanelOpen}
+        onClose={() => setPropertiesPanelOpen(false)}
+      />
     </div>
   );
 }
