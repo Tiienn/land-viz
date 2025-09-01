@@ -47,7 +47,12 @@ function App(): React.JSX.Element {
     exitEditMode,
     addShapeCorner,
     deleteShapeCorner,
-    convertRectangleToPolygon
+    convertRectangleToPolygon,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    removeLastPoint
   } = useAppStore();
 
   // Sync local state with store state when store changes
@@ -63,6 +68,46 @@ function App(): React.JSX.Element {
       setPropertiesPanelOpen(true);
     }
   }, [activeTool]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check if we're not in an input field
+      const target = event.target as HTMLElement;
+      const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true';
+      
+      if (isInputField) return;
+
+      // Undo: Ctrl+Z (Windows/Linux) or Cmd+Z (Mac)
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        
+        // Priority 1: If actively drawing a polyline with points, do point-level undo
+        if (drawing.isDrawing && drawing.activeTool === 'polyline' && drawing.currentShape?.points && drawing.currentShape.points.length > 0) {
+          removeLastPoint();
+        } 
+        // Priority 2: If not drawing polyline, or polyline has no points, do normal shape undo
+        else if (canUndo()) {
+          undo();
+        }
+        // Priority 3: If no undo available and drawing other tools, ignore silently
+      }
+      
+      // Redo: Ctrl+Y (Windows/Linux) or Cmd+Shift+Z (Mac) or Ctrl+Shift+Z
+      if (
+        ((event.ctrlKey || event.metaKey) && event.key === 'y') ||
+        ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'z')
+      ) {
+        event.preventDefault();
+        if (canRedo()) {
+          redo();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, canUndo, canRedo, removeLastPoint, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
 
   // 3D Scene event handlers
   const handleCoordinateChange = (worldPos: Point2D, screenPos: Point2D) => {
@@ -638,6 +683,187 @@ function App(): React.JSX.Element {
                   <span style={{ marginTop: '4px' }}>Dimensions</span>
                 </button>
                 <button 
+                  onClick={() => {
+                    if (window.confirm('Are you sure you want to clear all shapes? This action cannot be undone.')) {
+                      clearAll();
+                    }
+                  }}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '80px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#dc2626',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#fef2f2';
+                    e.currentTarget.style.borderColor = '#fecaca';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                  title="Clear all shapes from the scene"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Clear All</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    if (selectedShapeId) {
+                      if (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) {
+                        exitEditMode();
+                      } else {
+                        enterEditMode(selectedShapeId);
+                      }
+                    }
+                  }}
+                  disabled={!selectedShapeId}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: selectedShapeId ? 'pointer' : 'not-allowed',
+                    background: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) 
+                      ? '#dbeafe' 
+                      : selectedShapeId ? '#ffffff' : '#f9fafb',
+                    color: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) 
+                      ? '#1d4ed8' 
+                      : selectedShapeId ? '#000000' : '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: selectedShapeId ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedShapeId && !(drawing.isEditMode && drawing.editingShapeId === selectedShapeId)) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedShapeId && !(drawing.isEditMode && drawing.editingShapeId === selectedShapeId)) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title={
+                    !selectedShapeId 
+                      ? 'Select a shape first' 
+                      : (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) 
+                        ? 'Exit Edit Mode' 
+                        : 'Enter Edit Mode to modify shape corners'
+                  }
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="m18.5 2.5-8.5 8.5-2 2v2h2l2-2 8.5-8.5a1.5 1.5 0 0 0 0-2.1v0a1.5 1.5 0 0 0-2.1 0z"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>
+                    {(drawing.isEditMode && drawing.editingShapeId === selectedShapeId) ? 'Exit Edit' : 'Edit'}
+                  </span>
+                </button>
+                <button 
+                  onClick={undo}
+                  disabled={!canUndo()}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: canUndo() ? 'pointer' : 'not-allowed',
+                    background: canUndo() ? '#ffffff' : '#f9fafb',
+                    color: canUndo() ? '#000000' : '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: canUndo() ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => {
+                    if (canUndo()) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (canUndo()) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title={canUndo() ? 'Undo last action (Ctrl+Z)' : 'Nothing to undo'}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 7v6h6"></path>
+                    <path d="m21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Undo</span>
+                </button>
+                <button 
+                  onClick={redo}
+                  disabled={!canRedo()}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: canRedo() ? 'pointer' : 'not-allowed',
+                    background: canRedo() ? '#ffffff' : '#f9fafb',
+                    color: canRedo() ? '#000000' : '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: canRedo() ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => {
+                    if (canRedo()) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (canRedo()) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title={canRedo() ? 'Redo last undone action (Ctrl+Y)' : 'Nothing to redo'}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="m21 7-6 6h6V7z"></path>
+                    <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Redo</span>
+                </button>
+                <button 
                   style={{ 
                     display: 'flex', 
                     flexDirection: 'column', 
@@ -685,54 +911,6 @@ function App(): React.JSX.Element {
                 textAlign: 'center'
               }}>Corner Controls</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                <button 
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '8px 12px', 
-                    borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500'
-                  }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="9,14 2,14 2,21 9,21"></polyline>
-                    <path d="m21,7-9,9-5-5"></path>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Undo</span>
-                </button>
-                <button 
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '8px 12px', 
-                    borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500'
-                  }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="15,14 22,14 22,21 15,21"></polyline>
-                    <path d="m3,7 9,9 5-5"></path>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Redo</span>
-                </button>
                 <button 
                   onClick={() => {
                     if (drawing.isEditMode && selectedShapeId && drawing.selectedCornerIndex !== null) {
@@ -806,75 +984,6 @@ function App(): React.JSX.Element {
                     <line x1="1" y1="12" x2="9" y2="12"></line>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Add Corner</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    if (drawing.isEditMode && selectedShapeId && drawing.selectedCornerIndex !== null) {
-                      // Get fresh state directly from store
-                      const state = useAppStore.getState();
-                      const selectedShape = state.shapes.find(s => s.id === selectedShapeId);
-                      
-                      if (selectedShape && selectedShape.points) {
-                        if (selectedShape.type === 'rectangle' && selectedShape.points.length === 2) {
-                          // Convert rectangle to polygon first, then add corner
-                          const [topLeft, bottomRight] = selectedShape.points;
-                          const rectangleCorners = [
-                            { x: topLeft.x, y: topLeft.y },      // Top left
-                            { x: bottomRight.x, y: topLeft.y },  // Top right
-                            { x: bottomRight.x, y: bottomRight.y }, // Bottom right
-                            { x: topLeft.x, y: bottomRight.y }   // Bottom left
-                          ];
-                          
-                          // Convert to polygon with current corners
-                          convertRectangleToPolygon(selectedShapeId, rectangleCorners);
-                          
-                          // Add corner immediately after conversion
-                          const cornerIndex = drawing.selectedCornerIndex;
-                          const currentCorner = rectangleCorners[cornerIndex];
-                          const nextIndex = (cornerIndex + 1) % rectangleCorners.length;
-                          const nextCorner = rectangleCorners[nextIndex];
-                          
-                          const midpoint = {
-                            x: (currentCorner.x + nextCorner.x) / 2,
-                            y: (currentCorner.y + nextCorner.y) / 2
-                          };
-                          
-                          addShapeCorner(selectedShapeId, cornerIndex, midpoint);
-                        } else {
-                          // Direct add for polygons
-                          const cornerIndex = drawing.selectedCornerIndex;
-                          const currentCorner = selectedShape.points[cornerIndex];
-                          const nextIndex = (cornerIndex + 1) % selectedShape.points.length;
-                          const nextCorner = selectedShape.points[nextIndex];
-                          
-                          const midpoint = {
-                            x: (currentCorner.x + nextCorner.x) / 2,
-                            y: (currentCorner.y + nextCorner.y) / 2
-                          };
-                          
-                          addShapeCorner(selectedShapeId, cornerIndex, midpoint);
-                        }
-                      }
-                    }
-                  }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '8px', 
-                    borderRadius: '8px', 
-                    minWidth: '60px', 
-                    height: '64px', 
-                    border: '1px solid #e5e5e5',
-                    cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
-                    background: 'white',
-                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#000000' : '#d1d5db',
-                    opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
-                  }}
-                  title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Add Corner between selected and next corner' : 'Select a corner first') : 'Enter Edit Mode first'}
-                >
-                  <span style={{ fontSize: '20px', marginBottom: '4px' }}>📍</span>
-                  <span style={{ fontSize: '12px' }}>Add Corner</span>
                 </button>
                 <button 
                   onClick={() => {

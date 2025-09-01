@@ -1,6 +1,6 @@
 # Architecture Overview
 **Land Visualizer Technical Architecture**  
-*Version 1.0 | August 2025*
+*Version 1.1 | September 2025*
 
 ---
 
@@ -24,58 +24,97 @@
 └──────────────┴──────────────────┴──────────────────────┘
 ```
 
-## 📁 Module Structure
+## 📁 Current Implementation Structure
 
 ```
-src/
-├── components/              # React Components
-│   ├── core/               # Core UI components
-│   │   ├── Canvas3D.tsx    # Three.js canvas wrapper
-│   │   ├── Toolbar.tsx     # Main toolbar
-│   │   └── StatusBar.tsx   # Bottom status display
-│   ├── drawing/            # Drawing tools
-│   │   ├── ShapeDrawer.tsx # Shape creation
-│   │   ├── PointEditor.tsx # Vertex manipulation
-│   │   └── GridOverlay.tsx # Grid system
-│   ├── visualization/      # 3D visualization
-│   │   ├── Scene.tsx       # Three.js scene setup
-│   │   ├── Camera.tsx      # Camera controls
-│   │   └── Lighting.tsx    # Scene lighting
-│   └── comparison/         # Comparison features
-│       ├── ObjectLibrary.tsx
-│       └── SizeComparator.tsx
+app/src/
+├── App.tsx                    # Main application with ribbon toolbar
+├── components/               # React Components
+│   ├── Scene/               # 3D Scene Components
+│   │   ├── SceneManager.tsx        # Main 3D canvas wrapper
+│   │   ├── CameraController.tsx    # Professional orbital controls  
+│   │   ├── GridBackground.tsx      # Infinite grass grid texture
+│   │   ├── DrawingCanvas.tsx       # Interactive 3D drawing
+│   │   ├── DrawingFeedback.tsx     # Real-time drawing preview
+│   │   ├── ShapeRenderer.tsx       # Shape visualization & rendering
+│   │   ├── EditableShapeControls.tsx # Sphere corners for editing
+│   │   └── ShapeDimensions.tsx     # Dimension overlays
+│   ├── ExportSettingsDialog.tsx    # Export configuration dialog
+│   ├── LayerPanel.tsx             # Layer management modal
+│   └── PropertiesPanel.tsx        # Tool properties & settings
 │
-├── services/               # Business Logic
-│   ├── core/              # Core services
-│   │   ├── calculations.ts # Area, perimeter
-│   │   ├── validation.ts   # Shape validation
-│   │   └── conversions.ts  # Unit conversions
-│   ├── precision/         # Chili3D integration
-│   │   ├── PrecisionCalculator.ts
-│   │   ├── WasmBridge.ts
-│   │   └── BooleanOperations.ts
-│   └── export/            # Export functionality
-│       ├── ImageExporter.ts
-│       ├── PDFGenerator.ts
-│       └── CADExporter.ts  # STEP/DXF via Chili3D
+├── store/                   # State Management (Zustand)
+│   └── useAppStore.ts      # Complete application state
+│       ├── Drawing state   # Active tool, current shape, edit mode
+│       ├── Shape storage   # All drawn shapes with coordinates
+│       ├── Layer system    # Layer visibility & organization  
+│       ├── Undo/Redo      # History management
+│       └── Export services # Excel, DXF, PDF, GeoJSON
 │
-├── hooks/                  # Custom React Hooks
-│   ├── useDrawing.ts      # Drawing state management
-│   ├── useCalculations.ts # Calculation updates
-│   ├── useThree.ts        # Three.js utilities
-│   └── usePrecision.ts    # Precision mode toggle
+├── types/                   # TypeScript Definitions
+│   └── index.ts            # Shape, Point2D, Layer interfaces
 │
-├── integrations/          # External Integrations
-│   └── chili3d/          # Chili3D modules
-│       ├── geometry/      # Geometry operations
-│       ├── wasm/         # WebAssembly modules
-│       └── io/           # Import/Export
-│
-├── store/                 # State Management
-│   ├── AppContext.tsx     # Global app state
-│   ├── DrawingContext.tsx # Drawing state
-│   └── SettingsContext.tsx # User preferences
-│
+└── services/ (planned)      # Future Business Logic
+    ├── precision/          # Chili3D integration (future)
+    ├── calculations/       # Advanced geometry operations  
+    └── comparison/         # Size comparison objects
+```
+
+## 🔧 Key Architectural Features
+
+### State Management (Zustand)
+- **Single Store Pattern**: useAppStore.ts handles all application state
+- **Reactive Updates**: Automatic UI re-rendering on state changes
+- **Persist Layer**: Local storage for user preferences
+- **Undo/Redo**: Built-in history management with keyboard shortcuts
+
+### 3D Scene Architecture  
+- **React Three Fiber**: Declarative 3D scene management
+- **Component-Based**: Each 3D element is a React component
+- **Real-time Rendering**: 60 FPS performance with Three.js
+- **Interactive Controls**: Professional camera controls (right-orbit, middle-pan)
+
+### Shape Management System
+- **Edit Mode**: Toggle between view and edit modes
+- **Corner Controls**: Draggable sphere corners for shape modification
+- **Layer Support**: Organize shapes by layers with visibility controls
+- **Type System**: Rectangle, Circle, Polyline with proper typing
+
+### Drawing Tools Architecture
+- **Tool Strategy Pattern**: Pluggable drawing tools (select, rectangle, circle, polyline)  
+- **Real-time Feedback**: Live preview during drawing operations
+- **Grid Snapping**: Optional grid alignment for precision
+- **Visual Feedback**: Crosshair cursors and dimension displays
+
+### Export System
+- **Multi-format Support**: Excel (.xlsx), DXF, PDF, GeoJSON
+- **Configurable Options**: User-defined export settings  
+- **Shape Data**: Coordinates, areas, perimeters included
+- **File Download**: Browser-based file generation
+
+## 🔄 Current Implementation Patterns
+
+```typescript
+// Zustand Store Pattern
+interface AppState {
+  drawing: {
+    activeTool: 'select' | 'rectangle' | 'circle' | 'polyline';
+    isDrawing: boolean;
+    isEditMode: boolean;
+    currentShape: Shape | null;
+  };
+  shapes: Shape[];
+  layers: Layer[];
+  selectedShapeId: string | null;
+}
+
+// Component Pattern
+const EditableShapeControls: React.FC = () => {
+  const { drawing, shapes, selectCorner } = useAppStore();
+  // Render sphere corners only in edit mode
+};
+```
+
 ├── utils/                 # Utility Functions
 │   ├── geometry.ts        # Geometry helpers
 │   ├── math.ts           # Math utilities

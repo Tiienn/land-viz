@@ -11,6 +11,8 @@ A professional 3D land visualization tool with CAD-style interface, successfully
 - ✅ **Professional Ribbon**: Clean SVG icons with tool grouping and visual separators
 - ✅ **3D Scene**: Full Three.js/React Three Fiber implementation  
 - ✅ **Interactive Drawing**: Rectangle, circle, polyline tools (polygon removed)
+- ✅ **Shape Editing**: Complete edit mode system with draggable sphere corners
+- ✅ **Corner Controls**: Add/delete corners with intuitive UI controls
 - ✅ **Professional Controls**: Custom mouse mapping (right-orbit, middle-pan)
 - ✅ **Natural Environment**: Green grass ground, blue sky visualization
 - ✅ **Performance**: 60 FPS with infinite grid coverage
@@ -47,6 +49,7 @@ npm run dev     # Development server (http://localhost:5173)
 - `GridBackground.tsx` - Infinite green grass grid with custom canvas texture
 - `DrawingCanvas.tsx` - Interactive 3D drawing with raycasting
 - `ShapeRenderer.tsx` - Renders drawn shapes in 3D space
+- `EditableShapeControls.tsx` - Interactive sphere corners for shape editing
 
 ### State Management
 - `useAppStore.ts` - Zustand store for drawing state and shapes
@@ -66,6 +69,8 @@ npm run dev     # Development server (http://localhost:5173)
 10. **Logo Integration**: Replaced emoji with professional Land-Visualizer512.png logo
 11. **Removed Terrain Elevation**: Streamlined toolbar by removing unused terrain section
 12. **Layer Panel Enhancement**: Full modal dialogs for color selection and layer ordering
+13. **Edit Mode System**: Added comprehensive shape editing with sphere corner controls and Edit/Exit Edit functionality
+14. **Corner Controls Optimization**: Cleaned up duplicate buttons and streamlined corner manipulation tools
 
 ## Known Issues & Solutions
 - **CSS Compilation**: Use inline styles exclusively to avoid build issues
@@ -77,6 +82,10 @@ npm run dev     # Development server (http://localhost:5173)
 - **Middle-click + Drag**: Pan view
 - **Mouse Wheel**: Zoom in/out (fast zoom speed: 2.0x)
 - **Left-click**: Drawing mode (when tool selected) or selection
+- **Edit Mode**: Click Edit button in Tools section to enter shape editing mode
+- **Corner Editing**: In Edit Mode, drag sphere corners to modify shape boundaries
+- **Add Corner**: Select a corner, then click "Add Corner" to insert a new point
+- **Delete Corner**: Select a corner, then click "Delete Corner" to remove point
 
 ## File Structure
 ```
@@ -87,7 +96,8 @@ app/src/
 │   ├── CameraController.tsx # Camera controls
 │   ├── GridBackground.tsx  # Infinite grass grid
 │   ├── DrawingCanvas.tsx   # Interactive drawing
-│   └── ShapeRenderer.tsx   # Shape visualization
+│   ├── ShapeRenderer.tsx   # Shape visualization
+│   └── EditableShapeControls.tsx # Shape editing with sphere corners
 ├── store/
 │   └── useAppStore.ts     # State management
 └── types/                 # TypeScript definitions
@@ -109,6 +119,9 @@ The foundation is solid! You have a fully functional 3D land visualization tool 
 - Professional ribbon UI that matches the reference design
 - Complete 3D scene with natural grass ground and blue sky
 - All drawing tools working (rectangle, circle, polyline)
+- **Complete shape editing system** with draggable sphere corners
+- **Edit mode toggle** - Enter/Exit Edit mode for selected shapes
+- **Corner manipulation** - Add/delete corners with visual feedback
 - Custom camera controls (right-click orbit, middle-click pan)
 - Real-time shape rendering and area calculations
 - Enhanced polyline drawing with imaginary line and smart closing
@@ -235,3 +248,6 @@ const colors = {
 - ✅ Fixed circle dimensions to show radius only
 - ✅ Removed polygon tool as requested
 - ✅ Smart polyline closing with visual feedback
+- ✅ **Edit Mode Enhancement**: Added Edit button to Tools section for shape corner editing
+- ✅ **Corner Controls Cleanup**: Removed duplicate "Add Corner" button from Corner Controls section
+- ✅ **UI Consistency**: Streamlined Corner Controls to show only Add Corner and Delete Corner buttons

@@ -97,10 +97,11 @@ Land Visualizer transforms confusing property measurements into clear, visual re
 
 **Step 3: Edit Your Shape**
 ```
-1. Click "Edit" tool (cursor icon)
-2. Click and drag any corner to adjust
-3. Right-click a corner to delete it
-4. Click on an edge to add a new corner
+1. Select your shape by clicking on it
+2. Click "Edit" button in the Tools section
+3. Blue sphere corners appear on your shape
+4. Drag any sphere to adjust that corner
+5. Click "Exit Edit" when done
 ```
 
 **Pro Tips:**
@@ -110,7 +111,60 @@ Land Visualizer transforms confusing property measurements into clear, visual re
 
 ---
 
-### Tutorial 3: Using Professional Features
+### Tutorial 3: Advanced Shape Editing
+
+#### Scenario: You need to modify a property boundary after drawing it
+
+**Step 1: Enter Edit Mode**
+```
+1. Draw or select an existing shape
+2. With the shape selected (highlighted in blue)
+3. Click the "Edit" button in the Tools section
+4. Blue sphere corners appear at each vertex
+5. The Edit button changes to "Exit Edit"
+```
+
+**Step 2: Modify Corner Positions**
+```
+1. Click and drag any blue sphere corner
+2. The shape updates in real-time as you drag
+3. Use grid snapping for precise alignment
+4. Release to confirm the new position
+```
+
+**Step 3: Add New Corners**
+```
+1. Click on any blue sphere corner to select it
+2. Click "Add Corner" in the Corner Controls section
+3. A new corner appears between the selected corner and the next
+4. Drag the new corner to position it where needed
+```
+
+**Step 4: Remove Unwanted Corners**
+```
+1. Click on the blue sphere corner you want to remove
+2. Click "Delete Corner" in the Corner Controls section
+3. The corner is removed and the shape adjusts automatically
+4. Note: You need at least 3 corners for a valid shape
+```
+
+**Step 5: Finish Editing**
+```
+1. Click "Exit Edit" in the Tools section
+2. The blue spheres disappear
+3. Your modified shape is now complete
+4. The area calculation updates automatically
+```
+
+**Pro Tips for Editing:**
+- Rectangle shapes automatically convert to polygons when you edit corners
+- Use Ctrl+Z to undo corner modifications
+- Grid snapping helps maintain clean, aligned shapes
+- Edit mode only shows for the currently selected shape
+
+---
+
+### Tutorial 4: Using Professional Features
 
 #### Scenario: You need survey-grade accuracy for legal documents
 
@@ -161,24 +215,45 @@ Land Visualizer transforms confusing property measurements into clear, visual re
 
 ### Main Toolbar
 
-| Tool | Icon | Shortcut | Function |
-|------|------|----------|----------|
-| **Select** | 👆 | V | Select and move objects |
-| **Draw** | ✏️ | D | Draw property boundaries |
-| **Edit** | ✂️ | E | Edit existing shapes |
-| **Compare** | ⚖️ | C | Add comparison objects |
-| **Measure** | 📏 | M | Measure distances |
-| **Export** | 💾 | Ctrl+S | Save/export your work |
-| **Settings** | ⚙️ | , | Configure preferences |
-| **Help** | ❓ | H | Get help and tips |
+#### Drawing Tools
+| Tool | Function | How to Use |
+|------|----------|------------|
+| **Select** | Select and interact with shapes | Click to select shapes, drag to move |
+| **Rectangle** | Draw rectangular areas | Click and drag to create rectangle |
+| **Polyline** | Draw custom boundaries | Click points to create custom shapes |  
+| **Circle** | Draw circular areas | Click center, drag to set radius |
+
+#### Tools Section
+| Tool | Function | Keyboard Shortcut |
+|------|----------|-------------|
+| **Dimensions** | Show/hide measurements | - |
+| **Clear All** | Remove all shapes | - |
+| **Edit** | Enter shape editing mode | - |
+| **Undo** | Undo last action | Ctrl+Z |
+| **Redo** | Redo last undone action | Ctrl+Y |
+
+#### Corner Controls (Edit Mode Only)
+| Tool | Function | When Available |
+|------|----------|-------------|
+| **Add Corner** | Insert new corner between selected corner and next | In Edit Mode with corner selected |
+| **Delete Corner** | Remove selected corner | In Edit Mode with corner selected |
+
+#### Export Options
+| Format | Use Case | File Type |
+|--------|----------|-----------|
+| **Excel** | Spreadsheet with measurements | .xlsx |
+| **DXF** | CAD software import | .dxf |
+| **PDF** | Documentation and sharing | .pdf |
+| **GeoJSON** | GIS and mapping applications | .geojson |
 
 ### View Controls
 
-#### Navigation (Desktop)
-- **Rotate**: Left-click + drag
-- **Pan**: Right-click + drag (or Middle-click + drag)
-- **Zoom**: Scroll wheel (or Ctrl + drag)
-- **Reset View**: Double-click empty space
+#### Navigation (Desktop) 
+- **Orbit Camera**: Right-click + drag (rotate around scene)
+- **Pan View**: Middle-click + drag (move view left/right/up/down)
+- **Zoom**: Mouse wheel (fast zoom speed: 2.0x)
+- **Drawing**: Left-click (when drawing tool is selected)
+- **Selection**: Left-click (when in Select mode)
 
 #### Navigation (Mobile/Tablet)
 - **Rotate**: One finger drag
