@@ -2,7 +2,7 @@
 
 > **Note**: See `docs/project/CLAUDE.md` for comprehensive project documentation, roadmap, and Chili3D integration plans.
 
-## Current Implementation (Phase 1 Complete)
+## Current Implementation (Phase 1 Complete + Professional Rotation System)
 A professional 3D land visualization tool with CAD-style interface, successfully implemented with:
 
 - ✅ **Modern UI**: Canva-inspired visual design with professional functionality
@@ -12,6 +12,8 @@ A professional 3D land visualization tool with CAD-style interface, successfully
 - ✅ **3D Scene**: Full Three.js/React Three Fiber implementation  
 - ✅ **Interactive Drawing**: Rectangle, circle, polyline tools (polygon removed)
 - ✅ **Shape Editing**: Complete edit mode system with draggable sphere corners
+- ✅ **Professional Resize**: Windows-style resize handles with smooth aspect ratio control
+- ✅ **Professional Rotation**: CAD-style rotation system with metadata preservation
 - ✅ **Corner Controls**: Add/delete corners with intuitive UI controls
 - ✅ **Professional Controls**: Custom mouse mapping (right-orbit, middle-pan)
 - ✅ **Natural Environment**: Green grass ground, blue sky visualization
@@ -48,13 +50,16 @@ npm run dev     # Development server (http://localhost:5173)
 - `CameraController.tsx` - Professional orbital controls (left-click disabled, middle pan, right orbit)
 - `GridBackground.tsx` - Infinite green grass grid with custom canvas texture
 - `DrawingCanvas.tsx` - Interactive 3D drawing with raycasting
-- `ShapeRenderer.tsx` - Renders drawn shapes in 3D space
+- `ShapeRenderer.tsx` - Renders drawn shapes in 3D space with rotation transforms
 - `EditableShapeControls.tsx` - Interactive sphere corners for shape editing
+- `ResizableShapeControls.tsx` - Professional resize handles with Windows-style cursors
+- `RotationControls.tsx` - Professional rotation handles with angle snapping and live preview
 
 ### State Management
 - `useAppStore.ts` - Zustand store for drawing state and shapes
-- Drawing tools: select, rectangle, polyline, circle
+- Drawing tools: select, rectangle, polyline, circle, rotate
 - Real-time synchronization between UI and 3D scene
+- Rotation metadata storage with shape preservation
 
 ## Recent Major Changes
 1. **Complete UI Redesign**: Replaced complex component architecture with inline-styled ribbon interface
@@ -71,6 +76,8 @@ npm run dev     # Development server (http://localhost:5173)
 12. **Layer Panel Enhancement**: Full modal dialogs for color selection and layer ordering
 13. **Edit Mode System**: Added comprehensive shape editing with sphere corner controls and Edit/Exit Edit functionality
 14. **Corner Controls Optimization**: Cleaned up duplicate buttons and streamlined corner manipulation tools
+15. **Professional Resize System**: Added Windows-style resize handles with smooth aspect ratio control and proper cursor feedback
+16. **Professional Rotation System**: CAD-style rotation with contextual handles, angle snapping, and metadata preservation
 
 ## Known Issues & Solutions
 - **CSS Compilation**: Use inline styles exclusively to avoid build issues
@@ -86,6 +93,14 @@ npm run dev     # Development server (http://localhost:5173)
 - **Corner Editing**: In Edit Mode, drag sphere corners to modify shape boundaries
 - **Add Corner**: Select a corner, then click "Add Corner" to insert a new point
 - **Delete Corner**: Select a corner, then click "Delete Corner" to remove point
+- **Resize Mode**: Click selected shape to enter resize mode with Windows-style handles
+- **Corner Resize**: Drag corner handles to resize rectangle while maintaining shape
+- **Edge Resize**: Drag edge handles for single-dimension resizing
+- **Aspect Ratio**: Hold Shift + drag corner to maintain original proportions
+- **Rotation Mode**: Click Rotate button or drag rotation handle (↻) below selected shape
+- **Free Rotation**: Drag rotation handle to rotate shape to any angle with live preview
+- **Angle Snapping**: Hold Shift while rotating to snap to 15°, 30°, 45°, 90° increments
+- **ESC Key**: Cancel any active operation (drawing, editing, resizing, rotating)
 
 ## File Structure
 ```
@@ -96,8 +111,10 @@ app/src/
 │   ├── CameraController.tsx # Camera controls
 │   ├── GridBackground.tsx  # Infinite grass grid
 │   ├── DrawingCanvas.tsx   # Interactive drawing
-│   ├── ShapeRenderer.tsx   # Shape visualization
-│   └── EditableShapeControls.tsx # Shape editing with sphere corners
+│   ├── ShapeRenderer.tsx   # Shape visualization with rotation transforms
+│   ├── EditableShapeControls.tsx # Shape editing with sphere corners
+│   ├── ResizableShapeControls.tsx # Professional resize handles
+│   └── RotationControls.tsx # Professional rotation handles with snapping
 ├── store/
 │   └── useAppStore.ts     # State management
 └── types/                 # TypeScript definitions
@@ -120,6 +137,7 @@ The foundation is solid! You have a fully functional 3D land visualization tool 
 - Complete 3D scene with natural grass ground and blue sky
 - All drawing tools working (rectangle, circle, polyline)
 - **Complete shape editing system** with draggable sphere corners
+- **Professional rotation system** with contextual handles and angle snapping
 - **Edit mode toggle** - Enter/Exit Edit mode for selected shapes
 - **Corner manipulation** - Add/delete corners with visual feedback
 - Custom camera controls (right-click orbit, middle-click pan)
@@ -177,8 +195,9 @@ The foundation is solid! You have a fully functional 3D land visualization tool 
 
 ### Files You'll Mainly Work With
 - `app/src/components/Scene/DrawingCanvas.tsx` - Drawing interaction logic
-- `app/src/components/Scene/ShapeRenderer.tsx` - Shape visualization
-- `app/src/store/useAppStore.ts` - State management
+- `app/src/components/Scene/ShapeRenderer.tsx` - Shape visualization with rotation transforms
+- `app/src/components/Scene/RotationControls.tsx` - Rotation handle and interaction logic
+- `app/src/store/useAppStore.ts` - State management with rotation metadata
 - `app/src/App.tsx` - Main UI (only if adding new ribbon buttons)
 
 ### Gotchas to Avoid
@@ -251,3 +270,7 @@ const colors = {
 - ✅ **Edit Mode Enhancement**: Added Edit button to Tools section for shape corner editing
 - ✅ **Corner Controls Cleanup**: Removed duplicate "Add Corner" button from Corner Controls section
 - ✅ **UI Consistency**: Streamlined Corner Controls to show only Add Corner and Delete Corner buttons
+- ✅ **Professional Rotation System**: Added CAD-style rotation with contextual handles, angle snapping, and metadata preservation
+- ✅ **Shift Key Snapping**: Hold Shift during rotation to snap to 15°, 30°, 45°, 90° increments
+- ✅ **Live Angle Display**: Real-time angle feedback during rotation operations
+- ✅ **Universal ESC Cancel**: ESC key now cancels all operations including rotation mode

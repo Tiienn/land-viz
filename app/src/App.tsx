@@ -48,6 +48,8 @@ function App(): React.JSX.Element {
     addShapeCorner,
     deleteShapeCorner,
     convertRectangleToPolygon,
+    cancelAll,
+    enterRotateMode,
     undo,
     redo,
     canUndo,
@@ -103,11 +105,17 @@ function App(): React.JSX.Element {
           redo();
         }
       }
+
+      // ESC key: Cancel all active operations
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelAll();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, removeLastPoint, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
+  }, [undo, redo, canUndo, canRedo, removeLastPoint, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
 
   // 3D Scene event handlers
   const handleCoordinateChange = (worldPos: Point2D, screenPos: Point2D) => {
@@ -681,6 +689,56 @@ function App(): React.JSX.Element {
                     <path d="M21 9H3l1.5-2h15z"></path>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Dimensions</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isResizeMode) {
+                      enterRotateMode(selectedShapeId);
+                    }
+                  }}
+                  disabled={!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px', 
+                    minWidth: '80px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing) 
+                      ? 'not-allowed' 
+                      : 'pointer',
+                    background: drawing.isRotateMode ? '#a5b4fc' : '#ffffff',
+                    color: drawing.isRotateMode ? '#312e81' : 
+                           (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing) 
+                             ? '#9ca3af' 
+                             : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing) 
+                      ? 0.5 
+                      : 1
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isResizeMode && !drawing.isDrawing && !drawing.isRotateMode) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!drawing.isRotateMode) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 12a9 9 0 0 1-9 9c-4.97 0-9-4.03-9-9s4.03-9 9-9"></path>
+                    <path d="M12 3l3 3-3 3"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Rotate</span>
                 </button>
                 <button 
                   onClick={() => {

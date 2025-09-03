@@ -80,7 +80,9 @@ land-visualizer/
 │   ├── components/        # React components
 │   │   ├── core/          # Essential UI components
 │   │   ├── drawing/       # Drawing tools
-│   │   ├── visualization/ # 3D rendering
+│   │   ├── visualization/ # 3D rendering, resize & rotation controls
+│   │   │   ├── RotationControls.tsx  # Professional rotation system
+│   │   │   └── ResizableShapeControls.tsx  # Resize handles
 │   │   └── comparison/    # Comparison features
 │   ├── services/          # Business logic
 │   │   ├── core/          # Core calculations
@@ -292,6 +294,212 @@ export const ExampleComponent: React.FC<ExampleComponentProps> = React.memo(({
 });
 
 ExampleComponent.displayName = 'ExampleComponent';
+```
+
+### Professional Rotation System
+
+The rotation system provides CAD-style rotation functionality with professional controls and metadata preservation.
+
+#### Architecture Overview
+
+```typescript
+// Types for rotation system
+export interface ShapeRotation {
+  angle: number;    // Rotation angle in degrees
+  center: Point2D;  // Rotation pivot point
+}
+
+export interface DrawingState {
+  isRotateMode: boolean;
+  rotatingShapeId: string | null;
+  // ... other state
+}
+```
+
+#### Core Implementation
+
+```typescript
+// store/useAppStore.ts - Rotation state management
+const useAppStore = create<AppState>((set) => ({
+  // ... other state
+
+  // Rotation actions
+  enterRotateMode: (shapeId: string) =>
+    set((state) => ({
+      drawing: {
+        ...state.drawing,
+        isRotateMode: true,
+        rotatingShapeId: shapeId,
+        isEditMode: false,    // Exit other modes
+        isResizeMode: false,
+      },
+    })),
+
+  rotateShape: (shapeId: string, angle: number, center: Point2D) =>
+    set((state) => ({
+      shapes: state.shapes.map((shape) => {
+        if (shape.id === shapeId) {
+          return {
+            ...shape,
+            rotation: { angle, center },
+            modified: new Date(),
+          };
+        }
+        return shape;
+      }),
+    })),
+
+  cancelAll: () =>
+    set((state) => ({
+      drawing: {
+        ...state.drawing,
+        isRotateMode: false,
+        rotatingShapeId: null,
+        // ... reset other modes
+      },
+    })),
+}));
+```
+
+#### Rotation Controls Component
+
+```typescript
+// components/Scene/RotationControls.tsx
+export const RotationControls: React.FC = () => {
+  const [isRotating, setIsRotating] = useState(false);
+  const [currentAngle, setCurrentAngle] = useState(0);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
+
+  // Angle calculation utilities
+  const calculateAngle = useCallback((center: Point2D, point: Point2D): number => {
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  }, []);
+
+  const snapAngleToIncrement = useCallback((angle: number, increment: number = 15): number => {
+    return Math.round(angle / increment) * increment;
+  }, []);
+
+  // Keyboard event handling for Shift snapping
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') setIsShiftPressed(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') setIsShiftPressed(false);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Render rotation handle with live angle feedback
+  return (
+    <group>
+      <Html position={[handlePos.x, elevation, handlePos.y]} center>
+        <div
+          onPointerDown={handleRotationStart}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            backgroundColor: isRotateMode ? '#1d4ed8' : '#22c55e',
+            cursor: 'grab',
+            // ... styling
+          }}
+        >
+          ↻
+        </div>
+      </Html>
+      
+      {isRotating && (
+        <Html position={[center.x, elevation + 0.8, center.y]} center>
+          <div style={{ 
+            background: '#1d4ed8',
+            color: 'white',
+            padding: '6px 12px',
+            borderRadius: '8px',
+          }}>
+            {Math.round(currentAngle)}°
+            {isShiftPressed && <span>⇧ SNAP</span>}
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+};
+```
+
+#### Rotation Transform Application
+
+```typescript
+// components/Scene/ShapeRenderer.tsx
+const applyRotationTransform = (points: Point2D[], rotation?: ShapeRotation): Point2D[] => {
+  if (!rotation || rotation.angle === 0) return points;
+  
+  const { angle, center } = rotation;
+  const angleRadians = (angle * Math.PI) / 180;
+  const cos = Math.cos(angleRadians);
+  const sin = Math.sin(angleRadians);
+  
+  return points.map(point => {
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    
+    return {
+      x: center.x + (dx * cos - dy * sin),
+      y: center.y + (dx * sin + dy * cos)
+    };
+  });
+};
+
+// Usage in rendering
+const transformedPoints = applyRotationTransform(shape.points, shape.rotation);
+```
+
+#### Key Features Implemented
+
+1. **Contextual UI**: Rotation handle appears only when shape is selected
+2. **Angle Snapping**: Hold Shift for 15°, 30°, 45°, 90° increments
+3. **Live Preview**: Real-time angle display during rotation
+4. **Metadata Storage**: Preserves original shape geometry
+5. **Universal ESC**: Cancel rotation with ESC key
+6. **Mode Integration**: Exits other modes when entering rotation
+
+#### Testing Strategy
+
+```typescript
+// Comprehensive test coverage
+describe('Rotation System', () => {
+  test('complete rotation workflow', () => {
+    // Enter rotation mode
+    store.enterRotateMode(shapeId);
+    expect(store.getState().drawing.isRotateMode).toBe(true);
+    
+    // Apply rotation
+    store.rotateShape(shapeId, 45, center);
+    const rotatedShape = store.getState().shapes.find(s => s.id === shapeId);
+    expect(rotatedShape.rotation.angle).toBe(45);
+    
+    // Cancel with ESC
+    store.cancelAll();
+    expect(store.getState().drawing.isRotateMode).toBe(false);
+  });
+  
+  test('rotation math accuracy', () => {
+    const points = [{x: 1, y: 0}, {x: 0, y: 1}];
+    const rotated = applyRotationTransform(points, { angle: 90, center: {x: 0, y: 0} });
+    
+    expect(rotated[0].x).toBeCloseTo(0, 5);
+    expect(rotated[0].y).toBeCloseTo(1, 5);
+  });
+});
 ```
 
 ### State Management with Zustand
@@ -1173,6 +1381,21 @@ export interface IDrawingService {
   addPoint(point: Point, session: DrawingSession): void;
   completeShape(session: DrawingSession): Shape;
   editShape(shape: Shape, changes: ShapeChanges): Shape;
+}
+
+export interface IResizeService {
+  enterResizeMode(shapeId: string): void;
+  exitResizeMode(): void;
+  resizeShape(shapeId: string, newPoints: Point[]): void;
+  setMaintainAspectRatio(maintain: boolean): void;
+}
+
+export interface IRotationService {
+  enterRotateMode(shapeId: string): void;
+  exitRotateMode(): void;
+  rotateShape(shapeId: string, angle: number, center: Point2D): void;
+  snapToAngle(angle: number, increment?: number): number;
+  calculateRotationCenter(shape: Shape): Point2D;
 }
 
 export interface IExportService {

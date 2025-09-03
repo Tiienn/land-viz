@@ -10,6 +10,24 @@ export interface Point3D {
   z: number;
 }
 
+// Layer types
+export interface Layer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  color: string;
+  opacity: number;
+  created: Date;
+  modified: Date;
+}
+
+// Rotation metadata for shapes
+export interface ShapeRotation {
+  angle: number;    // degrees
+  center: Point2D;  // rotation pivot point
+}
+
 // Shape types
 export interface Shape {
   id: string;
@@ -18,14 +36,16 @@ export interface Shape {
   type: ShapeType;
   color: string;
   visible: boolean;
+  layerId: string;
   created: Date;
   modified: Date;
+  rotation?: ShapeRotation;
 }
 
 export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'line';
 
 // Drawing tool types
-export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline';
+export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate';
 
 export interface DrawingState {
   activeTool: DrawingTool;
@@ -33,6 +53,21 @@ export interface DrawingState {
   currentShape: Partial<Shape> | null;
   snapToGrid: boolean;
   gridSize: number;
+  showDimensions: boolean;
+  isEditMode: boolean;
+  editingShapeId: string | null;
+  selectedCornerIndex: number | null;
+  // Resize mode state (only available in 'select' mode)
+  isResizeMode: boolean;
+  resizingShapeId: string | null;
+  resizeHandleType: 'corner' | 'edge' | null;
+  resizeHandleIndex: number | null;
+  maintainAspectRatio: boolean;
+  // Rotation mode state (only available in 'select' mode)
+  isRotateMode: boolean;
+  rotatingShapeId: string | null;
+  rotationStartAngle: number;
+  rotationCenter: Point2D | null;
 }
 
 // Measurement types
@@ -45,10 +80,22 @@ export interface Measurements {
 // Application state
 export interface AppState {
   shapes: Shape[];
+  layers: Layer[];
   selectedShapeId: string | null;
+  hoveredShapeId: string | null;
+  dragState: DragState;
+  activeLayerId: string;
   drawing: DrawingState;
   measurements: Record<string, Measurements>;
   history: HistoryState;
+}
+
+export interface DragState {
+  isDragging: boolean;
+  draggedShapeId: string | null;
+  startPosition: Point2D | null;
+  currentPosition: Point2D | null;
+  originalShapePoints: Point2D[] | null;
 }
 
 export interface HistoryState {
