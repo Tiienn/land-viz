@@ -2,7 +2,8 @@ import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Line } from '@react-three/drei';
 import { Vector3, Color, BufferGeometry, BufferAttribute, Vector2, Plane } from 'three';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
+import { GeometryCache } from '../../utils/GeometryCache';
 import ShapeDimensions from './ShapeDimensions';
 import EditableShapeControls from './EditableShapeControls';
 import ResizableShapeControls from './ResizableShapeControls';
@@ -69,16 +70,41 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     upHandler: (() => void) | null;
   }>({ moveHandler: null, upHandler: null });
 
+  // Performance monitoring
+  let frameCount = 0;
+  let lastPerfCheck = 0;
+  
+  useFrame(() => {
+    frameCount++;
+    const now = performance.now();
+    
+    if (now - lastPerfCheck >= 2000) { // Check every 2 seconds
+      const fps = (frameCount / 2);
+      frameCount = 0;
+      lastPerfCheck = now;
+      
+      // Adjust geometry cache size based on performance
+      if (fps < 30) {
+        GeometryCache.setMaxCacheSize(50); // Reduce cache size for low performance
+      } else if (fps > 55) {
+        GeometryCache.setMaxCacheSize(150); // Increase cache size for high performance
+      }
+    }
+  });
+
   // Cleanup any lingering event listeners on unmount
   useEffect(() => {
     return () => {
-      // Emergency cleanup on unmount - try to remove any potentially lingering handlers
+      // Emergency cleanup on unmount
       if (currentDragHandlers.current.moveHandler) {
         document.removeEventListener('pointermove', currentDragHandlers.current.moveHandler);
       }
       if (currentDragHandlers.current.upHandler) {
         document.removeEventListener('pointerup', currentDragHandlers.current.upHandler);
       }
+      
+      // Cleanup geometry cache
+      GeometryCache.dispose();
     };
   }, []);
 
@@ -102,35 +128,150 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     return null;
   }, [camera, raycaster, gl.domElement]);
 
-  // Filter shapes by layer visibility and sort by layer order
-  const visibleShapes = useMemo(() => {
-    const filteredShapes = shapes.filter(shape => {
-      const layer = layers.find(l => l.id === shape.layerId);
-      return layer?.visible !== false; // Show shape if layer is visible or not found
+  // Optimized shape filtering with layer visibility cache
+  const layerVisibilityMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    layers.forEach(layer => {
+      map.set(layer.id, layer.visible !== false);
     });
+    return map;
+  }, [layers]);
 
-    // Sort shapes by their layer order (layers array index determines render order)
+  // Filter shapes by layer visibility with cached lookups
+  const visibleShapes = useMemo(() => {
+    const filteredShapes = shapes.filter(shape => 
+      layerVisibilityMap.get(shape.layerId) !== false
+    );
+    
+
+    // Sort shapes by their layer order
     return filteredShapes.sort((shapeA, shapeB) => {
       const layerAIndex = layers.findIndex(l => l.id === shapeA.layerId);
       const layerBIndex = layers.findIndex(l => l.id === shapeB.layerId);
-      
-      // CORRECTED: Higher index in layer panel = rendered last (appears on top)
-      // But we want top of panel = on top in scene, so we reverse the sort
       return layerBIndex - layerAIndex;
     });
-  }, [shapes, layers]);
+  }, [shapes, layerVisibilityMap, layers]);
 
-  // Convert 2D points to 3D vectors for Three.js with layer-based elevation
-  const convertPointsWithElevation = useMemo(() => (points: Point2D[], layerId: string): Vector3[] => {
-    // Calculate elevation offset based on layer order
-    const layerIndex = layers.findIndex(l => l.id === layerId);
-    // CORRECTED: Layer at top of panel (index 0) should have highest elevation (on top)
-    // Layer at bottom of panel (highest index) should have lowest elevation (behind)
-    const elevationOffset = layerIndex >= 0 ? (layers.length - 1 - layerIndex) * 0.001 : 0;
-    const shapeElevation = elevation + elevationOffset;
+  // Separate transform calculations
+  const shapeTransforms = useMemo(() => {
+    return visibleShapes.map(shape => {
+      const isDragging = dragState.isDragging && dragState.draggedShapeId === shape.id;
+      let transformedPoints = shape.points || [];
+      
+      // Handle dragging transform
+      if (isDragging && dragState.startPosition && dragState.currentPosition) {
+        const offsetX = dragState.currentPosition.x - dragState.startPosition.x;
+        const offsetY = dragState.currentPosition.y - dragState.startPosition.y;
+        
+        const rotatedPoints = applyRotationTransform(transformedPoints, shape.rotation);
+        transformedPoints = rotatedPoints.map(point => ({
+          x: point.x + offsetX,
+          y: point.y + offsetY
+        }));
+      } else {
+        transformedPoints = applyRotationTransform(transformedPoints, shape.rotation);
+      }
+      
+      return {
+        id: shape.id,
+        points: transformedPoints,
+        isDragging
+      };
+    });
+  }, [
+    visibleShapes.map(s => s.id).join('|'),
+    dragState.isDragging,
+    dragState.draggedShapeId,
+    dragState.startPosition?.x,
+    dragState.startPosition?.y, 
+    dragState.currentPosition?.x,
+    dragState.currentPosition?.y,
+    visibleShapes.map(s => s.rotation?.angle || 0).join('|')
+  ]);
+
+  // Separate shape data calculations
+  // Add a force refresh trigger for geometry cache
+  const forceRefresh = useAppStore(state => state.shapes.reduce((acc, s) => acc + s.modified?.getTime(), 0));
+  
+  const shapeGeometries = useMemo(() => {
+    console.log('🔄 ShapeRenderer: Regenerating geometries');
+    console.log('🔍 Visible shapes:', visibleShapes.length);
+    console.log('🔍 Shape transforms:', shapeTransforms.length);
     
-    return points.map(point => new Vector3(point.x, shapeElevation, point.y));
+    return visibleShapes.map((shape, index) => {
+      // Get the transformed points for this shape (includes rotation and dragging)
+      const transform = shapeTransforms.find(t => t.id === shape.id);
+      const pointsForGeometry = transform ? transform.points : shape.points;
+      
+      console.log(`📐 Shape ${shape.id}:`, {
+        originalPoints: shape.points,
+        transformedPoints: pointsForGeometry,
+        hasTransform: !!transform,
+        modified: shape.modified
+      });
+      
+      // Force fresh geometry generation instead of using cache for rectangles during resize
+      const useCache = true; // We'll still use cache but invalidate properly
+      const geometry = pointsForGeometry && pointsForGeometry.length >= 2 ? 
+        GeometryCache.getGeometry({...shape, points: pointsForGeometry}, elevation) : null;
+        
+      console.log(`🎨 Generated geometry for ${shape.id}:`, geometry ? 'success' : 'null');
+      
+      return {
+        id: shape.id,
+        geometry
+      };
+    });
+  }, [
+    visibleShapes.map(s => `${s.id}_${s.type}_${JSON.stringify(s.points)}_${s.rotation?.angle || 0}_${s.modified?.getTime()}`).join('|'), 
+    shapeTransforms.map(t => `${t.id}_${JSON.stringify(t.points)}`).join('|'),
+    elevation,
+    forceRefresh
+  ]);
+
+  // Separate material calculations
+  const shapeMaterials = useMemo(() => {
+    return visibleShapes.map((shape, index) => {
+      const isSelected = shape.id === selectedShapeId;
+      const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
+      const isDragging = shapeTransforms[index]?.isDragging;
+      const layer = layers.find(l => l.id === shape.layerId);
+      const layerOpacity = layer?.opacity ?? 1;
+      
+      return {
+        id: shape.id,
+        color: new Color(shape.color || '#3B82F6'),
+        fillColor: isDragging ? "#22C55E" : isSelected ? "#3B82F6" : isHovered ? "#60A5FA" : shape.color,
+        lineColor: isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color,
+        opacity: isDragging ? 0.8 * layerOpacity : isSelected ? 0.7 * layerOpacity : isHovered ? 0.6 * layerOpacity : 0.4 * layerOpacity,
+        lineOpacity: shape.visible ? (isDragging ? 1 : isSelected ? 1 : isHovered ? 0.9 : 0.8) * layerOpacity : 0.3 * layerOpacity,
+        lineWidth: isDragging ? 5 : isSelected ? 4 : isHovered ? 3 : 2
+      };
+    });
+  }, [
+    visibleShapes.map(s => `${s.id}_${s.color}_${s.visible}`).join('|'),
+    selectedShapeId,
+    hoveredShapeId,
+    activeTool,
+    layers.map(l => `${l.id}_${l.opacity}`).join('|'),
+    shapeTransforms.map(t => t.isDragging).join('|')
+  ]);
+
+  // Pre-calculate layer elevations for performance
+  const layerElevations = useMemo(() => {
+    const elevations = new Map<string, number>();
+    layers.forEach((layer, index) => {
+      const elevationOffset = (layers.length - 1 - index) * 0.001;
+      elevations.set(layer.id, elevation + elevationOffset);
+    });
+    return elevations;
   }, [elevation, layers]);
+
+  // Optimized 3D point conversion
+  const convertPointsWithElevation = useCallback((points: Point2D[], layerId: string): Vector3[] => {
+    const shapeElevation = layerElevations.get(layerId) || elevation;
+    return points.map(point => new Vector3(point.x, shapeElevation, point.y));
+  }, [layerElevations, elevation]);
 
   // Event handlers for shape interaction - Use useCallback to prevent recreation
   const handleShapeClick = useCallback((shapeId: string) => (event: any) => {
@@ -243,162 +384,101 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
 
 
 
-  // Render completed shapes
+  // Optimized render of completed shapes using pre-calculated data
   const completedShapes = useMemo(() => {
-    return visibleShapes.map((shape: Shape) => {
+    return visibleShapes.map((shape: Shape, index) => {
       if (!shape.points || shape.points.length < 2) return null;
+
+      const geometry = shapeGeometries[index]?.geometry;
+      const transform = shapeTransforms[index];
+      const material = shapeMaterials[index];
+      
+      if (!geometry || !transform || !material) return null;
+      
+      // Ensure we have a valid geometry - create a simple one if cache failed
+      if (!geometry || geometry.attributes.position?.count === 0) {
+        console.warn(`Invalid geometry for shape ${shape.id}, type: ${shape.type}`);
+        return null;
+      }
 
       // Ensure rectangle points are in the correct format for rendering
       let renderPoints = shape.points;
-      if (shape.type === 'rectangle') {
-        if (shape.points.length === 2) {
-          // Convert 2-point format to 4-point format for rendering
-          const [topLeft, bottomRight] = shape.points;
-          renderPoints = [
-            { x: topLeft.x, y: topLeft.y },      // Top left
-            { x: bottomRight.x, y: topLeft.y },  // Top right
-            { x: bottomRight.x, y: bottomRight.y }, // Bottom right
-            { x: topLeft.x, y: bottomRight.y }   // Bottom left
-          ];
-        } else if (shape.points.length >= 4) {
-          // Use the first 4 points for rectangles with 4+ points
-          renderPoints = shape.points.slice(0, 4);
-        }
+      if (shape.type === 'rectangle' && shape.points.length === 2) {
+        const [topLeft, bottomRight] = shape.points;
+        renderPoints = [
+          { x: topLeft.x, y: topLeft.y },
+          { x: bottomRight.x, y: topLeft.y },
+          { x: bottomRight.x, y: bottomRight.y },
+          { x: topLeft.x, y: bottomRight.y }
+        ];
       }
 
-      // Get layer info for elevation and opacity
-      const layer = layers.find(l => l.id === shape.layerId);
-      const layerOpacity = layer?.opacity ?? 1;
-      const layerIndex = layers.findIndex(l => l.id === shape.layerId);
-      // CORRECTED: Layer at top of panel (index 0) should have highest elevation (on top)
-      const elevationOffset = layerIndex >= 0 ? (layers.length - 1 - layerIndex) * 0.001 : 0;
-      const shapeElevation = elevation + elevationOffset;
-
-      // Handle transform order correctly for dragged shapes
-      let transformedPoints = renderPoints;
-      
-      // Check if shape is being dragged
-      const isDragging = dragState.isDragging && dragState.draggedShapeId === shape.id;
-      
-      // SIMPLIFIED: Apply transforms in correct order: rotate first, then drag
-      if (isDragging && dragState.startPosition && dragState.currentPosition) {
-        // Calculate drag offset in world coordinates
-        const offsetX = dragState.currentPosition.x - dragState.startPosition.x;
-        const offsetY = dragState.currentPosition.y - dragState.startPosition.y;
-        
-        // First apply rotation to original points (if any)
-        const rotatedPoints = applyRotationTransform(renderPoints, shape.rotation);
-        
-        // Then apply drag offset to rotated points
-        transformedPoints = rotatedPoints.map(point => ({
-          x: point.x + offsetX,
-          y: point.y + offsetY
-        }));
-      } else {
-        // Normal case: just apply rotation to original points
-        transformedPoints = applyRotationTransform(renderPoints, shape.rotation);
-      }
-      
+      const transformedPoints = transform.points;
       let points3D = convertPointsWithElevation(transformedPoints, shape.layerId);
-      const color = new Color(shape.color || '#3B82F6');
 
-      // Close the shape for rectangles, polygons, circles, and polylines (lines with multiple points)
+      // Close the shape for certain types
       const shouldCloseShape = 
         shape.type === 'rectangle' || 
         shape.type === 'polygon' || 
         shape.type === 'circle' ||
-        (shape.type === 'line' && renderPoints.length > 2); // Only close multi-point lines (polylines)
+        (shape.type === 'line' && renderPoints.length > 2);
         
       if (shouldCloseShape && points3D.length > 2) {
-        // Only close if the shape isn't already closed
         const firstPoint = points3D[0];
         const lastPoint = points3D[points3D.length - 1];
         
-        const distance = firstPoint.distanceTo(lastPoint);
-        if (distance > 0.001) { // Only add closing point if not already closed
-          // Create a new array instead of mutating the existing one
+        if (firstPoint.distanceTo(lastPoint) > 0.001) {
           points3D = [...points3D, points3D[0]]; 
         }
       }
 
       const isSelected = shape.id === selectedShapeId;
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
+      const shapeElevation = layerElevations.get(shape.layerId) || elevation;
+
 
       return (
-        <group key={shape.id}>
-          {/* Shape fill - for all completed shapes */}
-          {transformedPoints.length >= 3 && (() => {
-            // Create a single mesh with proper triangulation
-            const vertices: number[] = [];
-            const indices: number[] = [];
-            
-            // Add all vertices with proper elevation using transformed points
-            transformedPoints.forEach(point => {
-              vertices.push(point.x, shapeElevation + 0.002, point.y);
-            });
-            
-            // Only create fill for closed shapes (not simple 2-point lines)
-            if (shape.type === 'line' && transformedPoints.length === 2) {
-              // Don't create fill for simple 2-point lines
-              return null;
-            }
-            
-            // Simple ear clipping for quadrilaterals (works for both convex and concave)
-            if (transformedPoints.length === 4) {
-              // For a quadrilateral, create two triangles
-              // Triangle 1: vertices 0, 1, 2
-              indices.push(0, 1, 2);
-              // Triangle 2: vertices 0, 2, 3  
-              indices.push(0, 2, 3);
-            } else {
-              // For other polygons, use fan triangulation from first vertex
-              for (let i = 1; i < transformedPoints.length - 1; i++) {
-                indices.push(0, i, i + 1);
-              }
-            }
-            
-            const geometry = new BufferGeometry();
-            geometry.setAttribute('position', new BufferAttribute(new Float32Array(vertices), 3));
-            geometry.setIndex(indices);
-            geometry.computeVertexNormals();
-            
-            return (
-              <mesh 
-                geometry={geometry}
-                onClick={activeTool === 'select' ? handleShapeClick(shape.id) : undefined}
-                onDoubleClick={activeTool === 'select' ? handleShapeDoubleClick(shape.id) : undefined}
-                onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
-                onPointerEnter={activeTool === 'select' ? handleShapeHover(shape.id) : undefined}
-                onPointerLeave={activeTool === 'select' ? handleShapeLeave : undefined}
-                cursor={activeTool === 'select' && isSelected ? 'move' : activeTool === 'select' ? 'pointer' : 'default'}
-              >
-                <meshBasicMaterial
-                  color={isDragging ? "#22C55E" : isSelected ? "#3B82F6" : isHovered ? "#60A5FA" : color}
-                  transparent
-                  opacity={isDragging ? 0.7 * layerOpacity : isSelected ? 0.5 * layerOpacity : isHovered ? 0.4 * layerOpacity : 0.3 * layerOpacity}
-                  depthWrite={false}
-                  side={2}
-                />
-              </mesh>
-            );
-          })()}
+        <group key={`${shape.id}_${shape.modified?.getTime()}`}>
+          {/* Optimized Shape fill using cached geometry - allow polylines with 3+ points to have fill */}
+          {transformedPoints.length >= 3 && !(shape.type === 'line' && shape.points.length <= 2) && geometry && (
+            <mesh
+              key={`fill_${shape.id}_${shape.modified?.getTime()}`} 
+              geometry={geometry}
+              position={[0, shapeElevation + 0.001, 0]} // Use shape elevation with slight offset
+              onClick={activeTool === 'select' ? handleShapeClick(shape.id) : undefined}
+              onDoubleClick={activeTool === 'select' ? handleShapeDoubleClick(shape.id) : undefined}
+              onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
+              onPointerEnter={activeTool === 'select' ? handleShapeHover(shape.id) : undefined}
+              onPointerLeave={activeTool === 'select' ? handleShapeLeave : undefined}
+              cursor={activeTool === 'select' && isSelected ? 'move' : activeTool === 'select' ? 'pointer' : 'default'}
+            >
+              <meshBasicMaterial
+                color={material.fillColor}
+                transparent
+                opacity={Math.max(material.opacity, 0.1)} // Ensure minimum visibility
+                depthWrite={false}
+                side={2}
+              />
+            </mesh>
+          )}
           
-          {/* Shape outline - no event handlers to avoid conflicts with mesh */}
+          {/* Shape outline */}
           <Line
+            key={`outline_${shape.id}_${shape.modified?.getTime()}`}
             points={points3D}
-            color={isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : color}
-            lineWidth={isDragging ? 5 : isSelected ? 4 : isHovered ? 3 : 2}
+            color={material.lineColor}
+            lineWidth={material.lineWidth}
             transparent
-            opacity={shape.visible ? (isDragging ? 1 : isSelected ? 1 : isHovered ? 0.9 : 0.8) * layerOpacity : 0.3 * layerOpacity}
+            opacity={material.lineOpacity}
           />
 
-          {/* Invisible interaction line for shapes without fill (like 2-point lines) */}
+          {/* Invisible interaction line for 2-point lines */}
           {shape.type === 'line' && transformedPoints.length === 2 && (
             <Line
               points={points3D}
-              lineWidth={6} // Slightly wider hit area, not too wide to block other layers
+              lineWidth={6}
               transparent
-              opacity={0} // Completely invisible
+              opacity={0}
               onClick={activeTool === 'select' ? handleShapeClick(shape.id) : undefined}
               onDoubleClick={activeTool === 'select' ? handleShapeDoubleClick(shape.id) : undefined}
               onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
@@ -407,7 +487,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
             />
           )}
           
-          {/* Dimensions - only show when enabled */}
+          {/* Dimensions */}
           {shape.visible && showDimensions && (
             <ShapeDimensions
               shape={{...shape, points: transformedPoints}}
@@ -421,38 +501,31 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     }).filter(Boolean);
   }, [
     visibleShapes,
-    elevation, 
-    selectedShapeId, 
-    convertPointsWithElevation,
-    showDimensions, 
-    layers, 
-    activeTool, 
+    shapeGeometries,
+    shapeTransforms, 
+    shapeMaterials,
+    selectedShapeId,
     hoveredShapeId,
-    // Only include specific dragState properties to avoid re-renders on every change
-    dragState.isDragging,
-    dragState.draggedShapeId, 
-    dragState.startPosition?.x,
-    dragState.startPosition?.y,
-    dragState.currentPosition?.x,
-    dragState.currentPosition?.y,
-    // Only include specific drawing properties we actually use
+    activeTool,
+    showDimensions,
+    layerElevations,
+    elevation,
     drawing.isResizeMode,
     drawing.resizingShapeId,
-    // Include the stable handlers
+    convertPointsWithElevation,
     handleShapeClick,
-    handleShapeDoubleClick, 
-    handlePointerDown, 
-    handleShapeHover, 
+    handleShapeDoubleClick,
+    handlePointerDown,
+    handleShapeHover,
     handleShapeLeave
   ]);
 
-  // Render current shape being drawn
+  // Optimized current shape rendering 
   const currentShapeRender = useMemo(() => {
     if (!isDrawing || !currentShape?.points || currentShape.points.length < 2) {
       return null;
     }
 
-    // Use standard elevation for shapes being drawn (they're temporary)
     const points3D = currentShape.points.map(point => new Vector3(point.x, elevation, point.y));
     const color = new Color(currentShape.color || '#3B82F6');
 
@@ -468,17 +541,14 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         gapSize={0.3}
       />
     );
-  }, [isDrawing, currentShape, elevation]);
+  }, [isDrawing, currentShape?.points, currentShape?.color, elevation]);
 
   return (
     <group>
       {completedShapes}
       {currentShapeRender}
-      {/* Edit controls overlay - shown when in edit mode */}
       <EditableShapeControls elevation={elevation} />
-      {/* Resize controls overlay - shown when in resize mode */}
       <ResizableShapeControls elevation={elevation} />
-      {/* Rotation controls overlay - shown for selected shapes */}
       <RotationControls elevation={elevation} />
     </group>
   );
