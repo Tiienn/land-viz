@@ -18,12 +18,16 @@ When someone tells you a property is 2000m², what does that actually mean? Most
 - **Smart Area Input**: Enter land size in any unit (m², acres, hectares, ft²)
 - **Custom Shape Drawing**: Sketch property boundaries with intuitive tools
 - **Professional Resize**: Windows-style handles with smooth aspect ratio control
-- **Professional Rotation**: CAD-style rotation with angle snapping and live preview
+- **Professional Rotation**: CAD-style rotation with dynamic angle snapping (0°, ±45°, ±90°, ±135°, 180°)
+- **Dynamic Shift Snapping**: Hold Shift key during rotation for instant 45° increment snapping
+- **Fixed Drag-Rotation Behavior**: Shapes follow cursor accurately after rotation operations
 - **Visual Comparisons**: Compare to soccer fields, houses, parking spaces
 - **Real-time Updates**: Instant visualization as you modify shapes
 - **Unit Conversion**: One-click switching between metric and imperial
 - **Zero Learning Curve**: No CAD knowledge required
 - **Cross-Platform**: Works on desktop, tablet, and mobile
+- **Horizontal Panel System**: Layers expand right, Properties expand left with smart collapse
+- **Professional UI**: Black SVG icons with text labels underneath for clarity
 
 ### Professional Features (Chili3D Integration)
 - **Precision Mode**: Survey-grade accuracy (±0.01%)
@@ -112,6 +116,8 @@ User Input → Validation → Precision Mode Check
 | Task | Owner | Status | Due |
 |------|-------|--------|-----|
 | Complete professional rotation system | Frontend | ✅ Completed | Aug 27 |
+| Fix drag-rotation cursor following bug | Frontend | ✅ Completed | Sep 5 |
+| Implement dynamic shift snapping | Frontend | ✅ Completed | Sep 5 |
 | Setup Chili3D dependencies | Backend | 🔴 Not Started | Aug 28 |
 | Configure WASM build pipeline | DevOps | 🔴 Not Started | Aug 29 |
 | Complete shape drawing UX | Design | 🟡 In Progress | Aug 29 |

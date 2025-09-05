@@ -21,7 +21,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
 
   const [editingLayer, setEditingLayer] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [orderMenuOpen, setOrderMenuOpen] = useState<string | null>(null);
+  const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [colorPaletteOpen, setColorPaletteOpen] = useState<string | null>(null);
   const [draggedLayer, setDraggedLayer] = useState<string | null>(null);
   const [dragOverLayer, setDragOverLayer] = useState<string | null>(null);
@@ -39,14 +39,13 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
   // Close menus when clicking outside
   React.useEffect(() => {
     const handleClickOutside = () => {
-      setOrderMenuOpen(null);
       setColorPaletteOpen(null);
     };
-    if (orderMenuOpen || colorPaletteOpen) {
+    if (colorPaletteOpen) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [orderMenuOpen, colorPaletteOpen]);
+  }, [colorPaletteOpen]);
 
   if (!isOpen) return null;
 
@@ -67,30 +66,74 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
     
     if (!shape || !layer) return { type: 'Empty', dimensions: 'm × m', area: '0 m²' };
     
-    // Extract dimensions from layer name
-    const layerNameMatch = layer.name.match(/\((.*?)\)/);
-    if (layerNameMatch) {
-      const dimensionPart = layerNameMatch[1];
-      const areaMatch = dimensionPart.match(/([\d.]+)m²/);
-      const area = areaMatch ? `${areaMatch[1]} m²` : '0 m²';
+    // Calculate dimensions directly from shape points
+    const calculateDimensions = (shape: any) => {
+      if (!shape.points || shape.points.length === 0) {
+        return { dimensions: 'm × m', area: '0 m²' };
+      }
       
       if (shape.type === 'rectangle') {
-        const sizeMatch = dimensionPart.match(/([\d.]+)×([\d.]+)m/);
-        const dimensions = sizeMatch ? `${sizeMatch[1]} × ${sizeMatch[2]} m` : 'm × m';
-        return { type: 'Rectangle Tool', dimensions, area };
+        if (shape.points.length >= 2) {
+          // For 2-point rectangles (diagonal corners)
+          if (shape.points.length === 2) {
+            const width = Math.abs(shape.points[1].x - shape.points[0].x);
+            const height = Math.abs(shape.points[1].y - shape.points[0].y);
+            const area = width * height;
+            return {
+              dimensions: `${width.toFixed(1)} × ${height.toFixed(1)} m`,
+              area: `${area.toFixed(1)} m²`
+            };
+          }
+          // For 4-point rectangles, calculate width and height
+          else if (shape.points.length >= 4) {
+            const width = Math.abs(shape.points[1].x - shape.points[0].x);
+            const height = Math.abs(shape.points[3].y - shape.points[0].y);
+            const area = width * height;
+            return {
+              dimensions: `${width.toFixed(1)} × ${height.toFixed(1)} m`,
+              area: `${area.toFixed(1)} m²`
+            };
+          }
+        }
       } else if (shape.type === 'circle') {
-        const radiusMatch = dimensionPart.match(/r=([\d.]+)m/);
-        const dimensions = radiusMatch ? `r=${radiusMatch[1]} m` : 'r=0 m';
-        return { type: 'Circle Tool', dimensions, area };
+        if (shape.points.length >= 2) {
+          // Calculate radius from center to edge point
+          const center = shape.points[0];
+          const edge = shape.points[1] || shape.points[shape.points.length - 1];
+          const radius = Math.sqrt(Math.pow(edge.x - center.x, 2) + Math.pow(edge.y - center.y, 2));
+          const area = Math.PI * radius * radius;
+          return {
+            dimensions: `r=${radius.toFixed(1)} m`,
+            area: `${area.toFixed(1)} m²`
+          };
+        }
       } else {
-        return { type: 'Polyline Tool', dimensions: 'path', area };
+        // For polylines and other shapes, calculate area using shoelace formula
+        const points = shape.points;
+        if (points.length >= 3) {
+          let area = 0;
+          for (let i = 0; i < points.length; i++) {
+            const j = (i + 1) % points.length;
+            area += points[i].x * points[j].y;
+            area -= points[j].x * points[i].y;
+          }
+          area = Math.abs(area) / 2;
+          return {
+            dimensions: 'path',
+            area: `${area.toFixed(1)} m²`
+          };
+        }
       }
-    }
+      
+      return { dimensions: 'm × m', area: '0 m²' };
+    };
+    
+    const measurements = calculateDimensions(shape);
     
     return { 
       type: `${shape.type.charAt(0).toUpperCase() + shape.type.slice(1)} Tool`, 
-      dimensions: 'm × m', 
-      area: '0 m²' 
+      dimensions: measurements.dimensions, 
+      area: measurements.area 
     };
   };
 
@@ -145,7 +188,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
         moveLayerToBack(layerId);
         break;
     }
-    setOrderMenuOpen(null);
   };
 
   // Drag and drop handlers
@@ -413,9 +455,76 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                     title="Change layer color"
                   />
                   
+                  {/* Inline Color Palette Window */}
+                  {colorPaletteOpen === layer.id && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'absolute',
+                        left: '20px', // Position to the right of the color button
+                        top: '0px',
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        padding: '8px',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                        zIndex: 1000,
+                        width: '120px'
+                      }}
+                    >
+                      {/* Color Grid */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(5, 1fr)',
+                        gap: '4px',
+                        marginBottom: '4px'
+                      }}>
+                        {colorPalette.slice(0, 10).map((color, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleColorChange(layer.id, color)}
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              background: color,
+                              border: layer.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                            title={`Change to ${color}`}
+                          />
+                        ))}
+                      </div>
+                      
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(5, 1fr)',
+                        gap: '4px'
+                      }}>
+                        {colorPalette.slice(10, 20).map((color, index) => (
+                          <button
+                            key={index + 10}
+                            onClick={() => handleColorChange(layer.id, color)}
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              background: color,
+                              border: layer.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                            title={`Change to ${color}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                 </div>
 
-                {/* Layer Name */}
+                {/* Layer Name - Directly clickable to edit */}
                 {isEditing ? (
                   <input
                     type="text"
@@ -448,6 +557,10 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                   />
                 ) : (
                   <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingLayer(layer.id);
+                    }}
                     style={{
                       flex: 1,
                       fontSize: '14px',
@@ -455,9 +568,15 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                       color: '#374151',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      cursor: 'text',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      transition: 'background-color 0.2s'
                     }}
-                    title={layer.name}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    title={`Click to edit: ${layer.name}`}
                   >
                     {layer.name.length > 15 ? layer.name.substring(0, 15) + '...' : layer.name}
                   </span>
@@ -493,7 +612,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setOrderMenuOpen(orderMenuOpen === layer.id ? null : layer.id);
+                          setExpandedLayer(expandedLayer === layer.id ? null : layer.id);
                         }}
                         style={{
                           background: 'transparent',
@@ -600,6 +719,148 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                   {Math.round(layer.opacity * 100)}%
                 </span>
               </div>
+
+              {/* Inline Layer Order Controls - Shows when expanded */}
+              {expandedLayer === layer.id && (
+                <div style={{
+                  marginTop: '16px',
+                  paddingTop: '16px',
+                  borderTop: '1px solid #f3f4f6',
+                  paddingLeft: '28px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '12px',
+                    color: '#374151',
+                    fontSize: '13px',
+                    fontWeight: '500'
+                  }}>
+                    <span style={{ fontSize: '14px' }}>📚</span>
+                    Layer Order
+                  </div>
+                  
+                  {/* Order Buttons - 2x2 Grid */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px'
+                  }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLayerOrder(layer.id, 'front');
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        color: '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#e2e8f0';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                      }}
+                    >
+                      ⏭ To Front
+                    </button>
+                    
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLayerOrder(layer.id, 'forward');
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        color: '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#e2e8f0';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                      }}
+                    >
+                      ↑ Forward
+                    </button>
+                    
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLayerOrder(layer.id, 'backward');
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        color: '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#e2e8f0';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                      }}
+                    >
+                      ↓ Backward
+                    </button>
+                    
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLayerOrder(layer.id, 'back');
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        color: '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#e2e8f0';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                      }}
+                    >
+                      ⏮ To Back
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -645,347 +906,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
       </div>
     </div>
 
-    {/* Color Palette Modal */}
-    {colorPaletteOpen && (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 2000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-        onClick={() => setColorPaletteOpen(null)}
-      >
-        <div
-          style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '24px',
-            maxWidth: '320px',
-            width: '90%',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            border: '1px solid #e5e7eb'
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '20px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ color: '#9ca3af', fontSize: '14px' }}>⋮⋮</div>
-              <div
-                style={{
-                  width: '16px',
-                  height: '16px',
-                  background: layers.find(l => l.id === colorPaletteOpen)?.color || '#3B82F6',
-                  borderRadius: '4px',
-                  border: '1px solid #e5e7eb'
-                }}
-              />
-              <span style={{ 
-                fontSize: '16px', 
-                fontWeight: '500', 
-                color: '#111827'
-              }}>
-                {layers.find(l => l.id === colorPaletteOpen)?.name?.split(' (')[0] || 'Layer'}
-              </span>
-            </div>
-            <button
-              onClick={() => setColorPaletteOpen(null)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                fontSize: '18px',
-                color: '#9ca3af',
-                cursor: 'pointer',
-                padding: '4px',
-                borderRadius: '4px'
-              }}
-            >
-              ✕
-            </button>
-          </div>
 
-          {/* Dimensions */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '12px',
-            color: '#6b7280',
-            marginBottom: '20px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid #f3f4f6'
-          }}>
-            <span>m × m</span>
-            <span style={{ fontWeight: '600' }}>158 m²</span>
-          </div>
-
-          {/* Choose Color */}
-          <div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '16px',
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
-              <span style={{ fontSize: '16px' }}>🎨</span>
-              Choose Color
-            </div>
-
-            {/* Color Grid - First Row */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(10, 1fr)',
-              gap: '6px',
-              marginBottom: '8px'
-            }}>
-              {colorPalette.slice(0, 10).map(color => (
-                <button
-                  key={color}
-                  onClick={() => handleColorChange(colorPaletteOpen, color)}
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    background: color,
-                    border: layers.find(l => l.id === colorPaletteOpen)?.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    padding: 0
-                  }}
-                />
-              ))}
-            </div>
-            
-            {/* Color Grid - Second Row */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(10, 1fr)',
-              gap: '6px',
-              marginBottom: '12px'
-            }}>
-              {colorPalette.slice(10, 20).map(color => (
-                <button
-                  key={color}
-                  onClick={() => handleColorChange(colorPaletteOpen, color)}
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    background: color,
-                    border: layers.find(l => l.id === colorPaletteOpen)?.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    padding: 0
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Black Bar */}
-            <button
-              onClick={() => handleColorChange(colorPaletteOpen, '#000000')}
-              style={{
-                width: '100%',
-                height: '32px',
-                background: '#000000',
-                border: layers.find(l => l.id === colorPaletteOpen)?.color === '#000000' ? '2px solid #1f2937' : '1px solid #e5e7eb',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    )}
-
-    {/* Layer Order Modal */}
-    {orderMenuOpen && (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 2000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-        onClick={() => setOrderMenuOpen(null)}
-      >
-        <div
-          style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '24px',
-            maxWidth: '320px',
-            width: '90%',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            border: '1px solid #e5e7eb'
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '20px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ color: '#9ca3af', fontSize: '14px' }}>⋮⋮</div>
-              <div
-                style={{
-                  width: '16px',
-                  height: '16px',
-                  background: layers.find(l => l.id === orderMenuOpen)?.color || '#3B82F6',
-                  borderRadius: '4px',
-                  border: '1px solid #e5e7eb'
-                }}
-              />
-              <span style={{ 
-                fontSize: '16px', 
-                fontWeight: '500', 
-                color: '#111827'
-              }}>
-                {layers.find(l => l.id === orderMenuOpen)?.name?.split(' (')[0] || 'Layer'}
-              </span>
-            </div>
-            <button
-              onClick={() => setOrderMenuOpen(null)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                fontSize: '18px',
-                color: '#9ca3af',
-                cursor: 'pointer',
-                padding: '4px',
-                borderRadius: '4px'
-              }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Dimensions */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '12px',
-            color: '#6b7280',
-            marginBottom: '20px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid #f3f4f6'
-          }}>
-            <span>m × m</span>
-            <span style={{ fontWeight: '600' }}>158 m²</span>
-          </div>
-
-          {/* Layer Order */}
-          <div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '16px',
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
-              <span style={{ fontSize: '16px' }}>📚</span>
-              Layer Order
-            </div>
-
-            {/* Order Buttons Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '12px'
-            }}>
-              <button
-                onClick={() => handleLayerOrder(orderMenuOpen, 'front')}
-                style={{
-                  padding: '12px 16px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                ⏭ To Front
-              </button>
-              
-              <button
-                onClick={() => handleLayerOrder(orderMenuOpen, 'forward')}
-                style={{
-                  padding: '12px 16px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                ↑ Forward
-              </button>
-              
-              <button
-                onClick={() => handleLayerOrder(orderMenuOpen, 'backward')}
-                style={{
-                  padding: '12px 16px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                ↓ Backward
-              </button>
-              
-              <button
-                onClick={() => handleLayerOrder(orderMenuOpen, 'back')}
-                style={{
-                  padding: '12px 16px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                ⏮ To Back
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
     </>
   );
 };

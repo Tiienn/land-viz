@@ -1,4 +1,4 @@
-import { useRef, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useImperativeHandle, forwardRef, useCallback, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { OrbitControls } from '@react-three/drei';
@@ -28,8 +28,8 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
   (
     {
       enableControls = true,
-      maxDistance = 200,
-      minDistance = 5,
+      maxDistance = Infinity,
+      minDistance = 0.1,
       maxPolarAngle = Math.PI / 2.1,
       dampingFactor = 0.05,
       onCameraChange,
@@ -37,7 +37,7 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
     ref
   ) => {
     const controlsRef = useRef<OrbitControlsImpl>(null);
-    const { camera } = useThree();
+    const { camera, gl } = useThree();
     const animationRef = useRef<{
       isAnimating: boolean;
       startTime: number;
@@ -151,7 +151,8 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
       },
     }));
 
-    const handleChange = () => {
+
+    const handleChange = useCallback(() => {
       if (onCameraChange && controlsRef.current) {
         const position = {
           x: camera.position.x,
@@ -165,7 +166,42 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
         };
         onCameraChange(position, target);
       }
-    };
+    }, [camera.position.x, camera.position.y, camera.position.z, onCameraChange]);
+
+    // Set up custom event listeners for middle mouse and context menu handling
+    useEffect(() => {
+      const canvas = gl.domElement;
+
+      const handleMouseDown = (event: MouseEvent) => {
+        // Prevent default behavior for middle mouse button (button 1)
+        if (event.button === 1) {
+          event.preventDefault();
+        }
+      };
+
+      const handleMouseUp = (event: MouseEvent) => {
+        // Prevent default behavior for middle mouse button (button 1)
+        if (event.button === 1) {
+          event.preventDefault();
+        }
+      };
+
+      const handleContextMenu = (event: MouseEvent) => {
+        // Prevent context menu on right-click to avoid interference with orbit controls
+        event.preventDefault();
+      };
+
+      // Add event listeners
+      canvas.addEventListener('mousedown', handleMouseDown);
+      canvas.addEventListener('mouseup', handleMouseUp);
+      canvas.addEventListener('contextmenu', handleContextMenu);
+      
+      return () => {
+        canvas.removeEventListener('mousedown', handleMouseDown);
+        canvas.removeEventListener('mouseup', handleMouseUp);
+        canvas.removeEventListener('contextmenu', handleContextMenu);
+      };
+    }, [gl.domElement]);
 
     if (!enableControls) {
       return null;
@@ -180,13 +216,13 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
         dampingFactor={dampingFactor}
         enableDamping
         enablePan
-        enableZoom
+        enableZoom={true}
         enableRotate
         zoomSpeed={2.0}
         panSpeed={1.5}
         rotateSpeed={1.0}
         mouseButtons={{
-          LEFT: null, // Left-click does nothing
+          LEFT: undefined, // Left-click does nothing
           MIDDLE: 2,  // Middle-click for PAN (THREE.MOUSE.PAN = 2)
           RIGHT: 0    // Right-click for ROTATE/orbit (THREE.MOUSE.ROTATE = 0)
         }}

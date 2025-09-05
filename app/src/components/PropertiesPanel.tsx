@@ -68,13 +68,16 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
               ? 'Click to add more points to your line'
               : 'Click on the 3D scene to start drawing your line',
             'Continue clicking to add additional points',
-            'Double-click to finish the line',
-            'Right-click to cancel drawing at any time'
-          ],
+            'Click near the start point to close the shape',
+            isDrawing && currentShape?.points && currentShape.points.length > 0
+              ? `⚡ Press Ctrl+Z to undo the last point (${currentShape.points.length} points)`
+              : 'Right-click to cancel drawing at any time'
+          ].filter(Boolean), // Remove any false values
           tips: [
-            'Useful for property boundaries or paths',
-            'Creates open lines (not closed shapes)',
-            'Length is calculated as you draw'
+            'Useful for property boundaries or irregular shapes',
+            'Creates closed polygons when completed',
+            'Area is calculated automatically',
+            isDrawing ? 'Use Ctrl+Z to remove individual points while drawing' : 'Precise point-by-point control'
           ]
         };
 

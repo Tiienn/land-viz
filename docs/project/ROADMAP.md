@@ -20,6 +20,10 @@ Transform Land Visualizer from a simple visualization tool into the global stand
 - **Advanced shape editing system** with draggable sphere corners
 - **Edit Mode functionality** - Enter/Exit Edit mode for selected shapes  
 - **Corner manipulation** - Add/delete corners with visual feedback
+- **Professional rotation system** - CAD-style rotation with contextual handles
+- **Dynamic shift snapping** - Hold Shift for 45° increments during rotation
+- **Fixed drag-rotation behavior** - Shapes follow cursor accurately after rotation
+- **Professional resize system** - Windows-style handles with aspect ratio control
 - **Professional UI design** - Canva-inspired modern interface
 - **Expandable sidebar panels** - Left and right collapsible panels
 - **Real-time area calculations** and measurements

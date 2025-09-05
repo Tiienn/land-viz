@@ -222,6 +222,7 @@ Land Visualizer transforms confusing property measurements into clear, visual re
 | **Rectangle** | Draw rectangular areas | Click and drag to create rectangle |
 | **Polyline** | Draw custom boundaries | Click points to create custom shapes |  
 | **Circle** | Draw circular areas | Click center, drag to set radius |
+| **Rotate** | Rotate selected shapes | Click rotation handle (↻) below shape, drag to rotate |
 
 #### Tools Section
 | Tool | Function | Keyboard Shortcut |
@@ -326,7 +327,8 @@ Land Visualizer automatically converts between all common units:
 
 #### Snap Options
 - **Grid Snap**: Snaps to nearest grid point (Toggle: G)
-- **Angle Snap**: Locks to 15° increments (Hold: Shift)
+- **Angle Snap**: Locks to 45° increments during rotation (Hold: Shift)
+- **Rotation Snap**: Dynamic snapping to 0°, ±45°, ±90°, ±135°, 180° (Hold: Shift while rotating)
 - **Point Snap**: Snaps to existing points (Toggle: P)
 - **Edge Snap**: Snaps to shape edges (Toggle: E)
 

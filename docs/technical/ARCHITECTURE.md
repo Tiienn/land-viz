@@ -36,8 +36,10 @@ app/src/
 │   │   ├── GridBackground.tsx      # Infinite grass grid texture
 │   │   ├── DrawingCanvas.tsx       # Interactive 3D drawing
 │   │   ├── DrawingFeedback.tsx     # Real-time drawing preview
-│   │   ├── ShapeRenderer.tsx       # Shape visualization & rendering
+│   │   ├── ShapeRenderer.tsx       # Shape visualization & rendering with rotation transforms
 │   │   ├── EditableShapeControls.tsx # Sphere corners for editing
+│   │   ├── ResizableShapeControls.tsx # Professional resize handles
+│   │   ├── RotationControls.tsx    # Professional rotation with dynamic snapping
 │   │   └── ShapeDimensions.tsx     # Dimension overlays
 │   ├── ExportSettingsDialog.tsx    # Export configuration dialog
 │   ├── LayerPanel.tsx             # Layer management modal
@@ -77,8 +79,11 @@ app/src/
 ### Shape Management System
 - **Edit Mode**: Toggle between view and edit modes
 - **Corner Controls**: Draggable sphere corners for shape modification
+- **Professional Rotation**: CAD-style rotation with contextual handles and dynamic snapping
+- **Professional Resize**: Windows-style resize handles with aspect ratio control
 - **Layer Support**: Organize shapes by layers with visibility controls
 - **Type System**: Rectangle, Circle, Polyline with proper typing
+- **Transform System**: Rotation metadata storage with separate drag and rotation transforms
 
 ### Drawing Tools Architecture
 - **Tool Strategy Pattern**: Pluggable drawing tools (select, rectangle, circle, polyline)  
@@ -101,11 +106,20 @@ interface AppState {
     activeTool: 'select' | 'rectangle' | 'circle' | 'polyline';
     isDrawing: boolean;
     isEditMode: boolean;
+    isRotateMode: boolean;
+    isResizeMode: boolean;
     currentShape: Shape | null;
+    rotatingShapeId: string | null;
   };
   shapes: Shape[];
   layers: Layer[];
   selectedShapeId: string | null;
+  dragState: {
+    isDragging: boolean;
+    draggedShapeId: string | null;
+    startPosition: Point2D | null;
+    currentPosition: Point2D | null;
+  };
 }
 
 // Component Pattern

@@ -1,5 +1,5 @@
 import React, { useRef, useCallback } from 'react';
-import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { Vector2, Vector3, Plane, type Mesh } from 'three';
 import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
@@ -17,7 +17,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 }) => {
   const { camera, gl, raycaster } = useThree();
   const planeRef = useRef<Mesh>(null);
-  const mouseRef = useRef(new Vector2());
   const worldPlane = useRef(new Plane(new Vector3(0, 1, 0), 0));
   
   const activeTool = useAppStore(state => state.drawing.activeTool);
@@ -29,6 +28,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const addPoint = useAppStore(state => state.addPoint);
   const finishDrawing = useAppStore(state => state.finishDrawing);
   const cancelDrawing = useAppStore(state => state.cancelDrawing);
+  const selectShape = useAppStore(state => state.selectShape);
+  const hoverShape = useAppStore(state => state.hoverShape);
 
   const snapToGridPoint = useCallback((point: Vector3): Vector3 => {
     if (!snapToGrid || !gridSnap) return point;
@@ -43,6 +44,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const rect = gl.domElement.getBoundingClientRect();
     const mouse = new Vector2();
     
+    // Calculate normalized device coordinates
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
@@ -77,8 +79,19 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     }
   }, [getWorldPosition, onCoordinateChange, gl.domElement]);
 
+  const handlePointerLeave = useCallback(() => {
+    // Clear hover state when mouse leaves the drawing area
+    if (activeTool === 'select') {
+      hoverShape(null);
+    }
+  }, [activeTool, hoverShape]);
+
   const handleClick = useCallback((event: ThreeEvent<MouseEvent>) => {
-    if (activeTool === 'select') return;
+    // Handle deselection when select tool is active and clicking empty space
+    if (activeTool === 'select') {
+      selectShape(null);
+      return;
+    }
     
     const worldPos = getWorldPosition(event);
     if (!worldPos) return;
@@ -89,20 +102,20 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     };
 
     switch (activeTool) {
-      case 'polygon':
-      case 'polyline': // Map polyline to polygon for now - both create multi-point shapes
+      case 'polyline': // Multi-point line drawing
         if (!isDrawing) {
           startDrawing();
           addPoint(point2D);
         } else {
-          // Check if clicking close to the first point to close polygon (only for polygon, not polyline)
-          if (activeTool === 'polygon' && currentShape?.points && currentShape.points.length >= 3) {
+          // Check if clicking close to the first point to close polyline (3+ points required)
+          if (currentShape?.points && currentShape.points.length >= 3) {
             const firstPoint = currentShape.points[0];
             const distance = Math.sqrt(
               Math.pow(point2D.x - firstPoint.x, 2) + Math.pow(point2D.y - firstPoint.y, 2)
             );
             
-            if (distance < gridSize * 2) {
+            const closeThreshold = gridSize * 2.0; // Same threshold as cursor change
+            if (distance < closeThreshold) {
               finishDrawing();
               return;
             }
@@ -162,13 +175,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     startDrawing,
     addPoint,
     finishDrawing,
+    selectShape,
   ]);
 
   const handleDoubleClick = useCallback(() => {
-    if ((activeTool === 'polygon' || activeTool === 'polyline') && isDrawing && currentShape?.points && currentShape.points.length >= 2) {
-      finishDrawing();
-    }
-  }, [activeTool, isDrawing, currentShape, finishDrawing]);
+    // Double-click handler removed for polylines - now use single-click near start point
+    // Keep this function in case other tools need double-click in the future
+  }, []);
 
   const handleContextMenu = useCallback((event: ThreeEvent<MouseEvent>) => {
     event.nativeEvent.preventDefault();
@@ -177,13 +190,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     }
   }, [isDrawing, cancelDrawing]);
 
-  // Update mouse position for visual feedback
-  useFrame((state) => {
-    if (isDrawing && currentShape?.points && activeTool === 'polygon') {
-      const mouse = state.pointer;
-      mouseRef.current.set(mouse.x, mouse.y);
-    }
-  });
+  // Mouse position tracking is now handled by DrawingFeedback component
 
   return (
     <mesh
@@ -191,6 +198,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       position={[0, -0.001, 0]}
       rotation={[-Math.PI / 2, 0, 0]}
       onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}

@@ -16,7 +16,7 @@ const calculateAngle = (center: Point2D, point: Point2D): number => {
   return Math.atan2(dy, dx) * (180 / Math.PI);
 };
 
-const snapAngleToIncrement = (angle: number, increment: number = 15): number => {
+const snapAngleToIncrement = (angle: number, increment: number = 45): number => {
   return Math.round(angle / increment) * increment;
 };
 
@@ -64,11 +64,17 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   const enterRotateMode = useAppStore(state => state.enterRotateMode);
   const rotateShape = useAppStore(state => state.rotateShape);
   
+  // Get global drag state to handle shape dragging transforms
+  const globalDragState = useAppStore(state => state.dragState);
+  
   // Local state for rotation interaction
   const [isRotating, setIsRotating] = React.useState(false);
   const [currentAngle, setCurrentAngle] = React.useState(0);
   const [isShiftPressed, setIsShiftPressed] = React.useState(false);
   const [cursorOverride, setCursorOverride] = React.useState<string | null>(null);
+  
+  // Use ref to track shift state immediately (avoids stale closure issues)
+  const shiftPressedRef = useRef(false);
   
   // Dragging state
   const dragState = useRef({
@@ -96,29 +102,97 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       return shapes.find(shape => shape.id === drawing.rotatingShapeId) || null;
     }
     
-    // Show rotation handle for selected shape (when not in other modes)
+    // Show rotation handle for selected shape (when not in edit or drawing modes)
     if (selectedShapeId && activeTool === 'select' && 
-        !drawing.isEditMode && !drawing.isResizeMode && !drawing.isDrawing) {
+        !drawing.isEditMode && !drawing.isDrawing) {
       return shapes.find(shape => shape.id === selectedShapeId) || null;
     }
     
     return null;
-  }, [shapes, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isResizeMode, drawing.isDrawing]);
+  }, [shapes, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing]);
 
-  // Calculate rotation handle position
+  // Calculate rotation handle position with transforms applied
   const rotationHandlePosition = useMemo(() => {
     if (!targetShape) return null;
     
-    const center = calculateShapeCenter(targetShape);
+    // Apply the same transform logic as ShapeRenderer
+    let renderPoints = targetShape.points;
+    if (targetShape.type === 'rectangle' && targetShape.points.length === 2) {
+      // Convert 2-point format to 4-point format for center calculation
+      const [topLeft, bottomRight] = targetShape.points;
+      renderPoints = [
+        { x: topLeft.x, y: topLeft.y },      // Top left
+        { x: bottomRight.x, y: topLeft.y },  // Top right
+        { x: bottomRight.x, y: bottomRight.y }, // Bottom right
+        { x: topLeft.x, y: bottomRight.y }   // Bottom left
+      ];
+    }
     
-    // Position handle below the shape
-    const handleOffset = 2.5; // Distance below shape center
+    // SIMPLIFIED: Apply transforms in correct order: rotate first, then drag
+    let transformedPoints = renderPoints;
+    
+    // Apply drag offset if shape is being dragged
+    const isBeingDragged = globalDragState.isDragging && globalDragState.draggedShapeId === targetShape.id;
+    if (isBeingDragged && globalDragState.startPosition && globalDragState.currentPosition) {
+      const offsetX = globalDragState.currentPosition.x - globalDragState.startPosition.x;
+      const offsetY = globalDragState.currentPosition.y - globalDragState.startPosition.y;
+      
+      // First apply rotation to original points (if any)
+      let rotatedPoints = renderPoints;
+      if (targetShape.rotation && targetShape.rotation.angle !== 0) {
+        const { angle, center } = targetShape.rotation;
+        const angleRadians = (angle * Math.PI) / 180;
+        const cos = Math.cos(angleRadians);
+        const sin = Math.sin(angleRadians);
+        
+        rotatedPoints = renderPoints.map(point => {
+          const dx = point.x - center.x;
+          const dy = point.y - center.y;
+          
+          return {
+            x: center.x + (dx * cos - dy * sin),
+            y: center.y + (dx * sin + dy * cos)
+          };
+        });
+      }
+      
+      // Then apply drag offset to rotated points
+      transformedPoints = rotatedPoints.map(point => ({
+        x: point.x + offsetX,
+        y: point.y + offsetY
+      }));
+    } else {
+      // Normal case: just apply rotation to original points
+      if (targetShape.rotation && targetShape.rotation.angle !== 0) {
+        const { angle, center } = targetShape.rotation;
+        const angleRadians = (angle * Math.PI) / 180;
+        const cos = Math.cos(angleRadians);
+        const sin = Math.sin(angleRadians);
+        
+        transformedPoints = renderPoints.map(point => {
+          const dx = point.x - center.x;
+          const dy = point.y - center.y;
+          
+          return {
+            x: center.x + (dx * cos - dy * sin),
+            y: center.y + (dx * sin + dy * cos)
+          };
+        });
+      } else {
+        transformedPoints = renderPoints;
+      }
+    }
+    
+    const center = calculateShapeCenter({...targetShape, points: transformedPoints});
+    
+    // Position handle below the shape and area text
+    const handleOffset = 4.0; // Distance below shape center (increased to clear area text)
     return {
       x: center.x,
       y: center.y + handleOffset,
       center: center
     };
-  }, [targetShape]);
+  }, [targetShape, globalDragState]);
 
   // Handle pointer events
   const handlePointerMove = useCallback((event: PointerEvent) => {
@@ -146,16 +220,24 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       let rotationAngle = currentMouseAngle - dragState.current.startMouseAngle;
       rotationAngle = normalizeAngle(rotationAngle);
       
-      // Apply snapping if Shift is pressed
-      if (isShiftPressed) {
-        rotationAngle = snapAngleToIncrement(rotationAngle, 15);
+      // Apply snapping if Shift is pressed - snap to nearest 45-degree increment
+      const finalAngle = dragState.current.originalRotation + rotationAngle;
+      let angleToUse = finalAngle;
+      
+      // Use ref for immediate shift state (not stale closure)
+      const currentlyShiftPressed = shiftPressedRef.current;
+      
+      if (currentlyShiftPressed) {
+        // Snap to nearest 45-degree increment: 0°, ±45°, ±90°, ±135°, 180°
+        angleToUse = snapAngleToIncrement(finalAngle, 45);
+        
+        // Normalize the snapped angle to ensure it's in the correct range
+        angleToUse = normalizeAngle(angleToUse);
       }
       
-      const finalAngle = dragState.current.originalRotation + rotationAngle;
-      setCurrentAngle(finalAngle);
-      
-      // Apply rotation to shape
-      rotateShape(targetShape.id, finalAngle, rotationHandlePosition.center);
+      // Update the display angle and apply to shape
+      setCurrentAngle(angleToUse);
+      rotateShape(targetShape.id, angleToUse, rotationHandlePosition.center);
     }
   }, [targetShape, rotationHandlePosition, gl.domElement, camera, raycaster, groundPlane, isShiftPressed, rotateShape]);
 
@@ -180,13 +262,15 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   // Keyboard event handlers for Shift key
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Shift' && !isShiftPressed) {
+      if (event.key === 'Shift' && !shiftPressedRef.current) {
+        shiftPressedRef.current = true;
         setIsShiftPressed(true);
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'Shift' && isShiftPressed) {
+      if (event.key === 'Shift' && shiftPressedRef.current) {
+        shiftPressedRef.current = false;
         setIsShiftPressed(false);
       }
     };
@@ -320,7 +404,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
             border: '2px solid rgba(255,255,255,0.9)',
           }}>
             {Math.round(currentAngle)}°
-            {isShiftPressed && <span style={{ marginLeft: '8px', fontSize: '12px' }}>⇧ SNAP</span>}
+            {isShiftPressed && <span style={{ marginLeft: '8px', fontSize: '12px' }}>⇧ 45°</span>}
           </div>
         </Html>
       )}

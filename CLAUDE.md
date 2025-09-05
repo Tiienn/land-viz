@@ -8,7 +8,9 @@ A professional 3D land visualization tool with CAD-style interface, successfully
 - ✅ **Modern UI**: Canva-inspired visual design with professional functionality
 - ✅ **Visual Design System**: Clean, modern interface with vibrant colors and smooth interactions
 - ✅ **Expandable Panels**: Left and right sidebars with collapsible/expandable functionality
+- ✅ **Horizontal Panel Expansion**: Layers expand right, Properties expand left with consistent UI
 - ✅ **Professional Ribbon**: Clean SVG icons with tool grouping and visual separators
+- ✅ **Text-Under-Icon Design**: All panel buttons show text labels underneath icons (even when collapsed)
 - ✅ **3D Scene**: Full Three.js/React Three Fiber implementation  
 - ✅ **Interactive Drawing**: Rectangle, circle, polyline tools (polygon removed)
 - ✅ **Shape Editing**: Complete edit mode system with draggable sphere corners
@@ -78,6 +80,10 @@ npm run dev     # Development server (http://localhost:5173)
 14. **Corner Controls Optimization**: Cleaned up duplicate buttons and streamlined corner manipulation tools
 15. **Professional Resize System**: Added Windows-style resize handles with smooth aspect ratio control and proper cursor feedback
 16. **Professional Rotation System**: CAD-style rotation with contextual handles, angle snapping, and metadata preservation
+17. **Panel UI Modernization**: Upgraded all panel buttons to show text underneath icons consistently
+18. **Horizontal Panel Expansions**: Layers expand horizontally to the right, Properties expand horizontally to the left
+19. **Smart Collapse Behavior**: Both triangle buttons and main buttons intelligently return to thin default menu
+20. **SVG Icon System**: Replaced emoji icons with professional black SVG icons following Canva design principles
 
 ## Known Issues & Solutions
 - **CSS Compilation**: Use inline styles exclusively to avoid build issues
@@ -99,8 +105,12 @@ npm run dev     # Development server (http://localhost:5173)
 - **Aspect Ratio**: Hold Shift + drag corner to maintain original proportions
 - **Rotation Mode**: Click Rotate button or drag rotation handle (↻) below selected shape
 - **Free Rotation**: Drag rotation handle to rotate shape to any angle with live preview
-- **Angle Snapping**: Hold Shift while rotating to snap to 15°, 30°, 45°, 90° increments
+- **Dynamic Angle Snapping**: Hold/release Shift during rotation to snap to 45-degree increments (0°, ±45°, ±90°, ±135°, 180°)
 - **ESC Key**: Cancel any active operation (drawing, editing, resizing, rotating)
+- **Panel Controls**: Click any panel button to expand that section horizontally
+- **Layers Expansion**: Click Layers button to expand layer management to the right
+- **Properties Expansion**: Click Properties button to expand settings panel to the left
+- **Smart Collapse**: Click triangle buttons or expanded panel buttons to return to thin default menu
 
 ## File Structure
 ```
@@ -271,6 +281,9 @@ const colors = {
 - ✅ **Corner Controls Cleanup**: Removed duplicate "Add Corner" button from Corner Controls section
 - ✅ **UI Consistency**: Streamlined Corner Controls to show only Add Corner and Delete Corner buttons
 - ✅ **Professional Rotation System**: Added CAD-style rotation with contextual handles, angle snapping, and metadata preservation
-- ✅ **Shift Key Snapping**: Hold Shift during rotation to snap to 15°, 30°, 45°, 90° increments
+- ✅ **Shift Key Snapping**: Hold Shift during rotation to snap to 45-degree increments (0°, ±45°, ±90°, ±135°, 180°)
 - ✅ **Live Angle Display**: Real-time angle feedback during rotation operations
 - ✅ **Universal ESC Cancel**: ESC key now cancels all operations including rotation mode
+- ✅ **Drag-Rotation Fix**: Fixed cursor following issue for rotated shapes - drag now follows cursor exactly
+- ✅ **Dynamic Shift Snapping**: Press/release Shift during rotation for instant snapping to 45° increments
+- ✅ **Improved Transform System**: Solved coordinate system conflicts with proper transform ordering

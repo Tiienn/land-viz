@@ -9,7 +9,7 @@ The Professional Rotation System provides intuitive, CAD-style rotation function
 
 ### Key Features
 - **Contextual UI**: Rotation handle appears below selected shapes
-- **Angle Snapping**: Hold Shift for 15°, 30°, 45°, 90° increments
+- **Dynamic Angle Snapping**: Press/release Shift during rotation for 45° increments (0°, ±45°, ±90°, ±135°, 180°)
 - **Live Preview**: Real-time angle display during rotation
 - **Metadata Storage**: Preserves original shape geometry
 - **Professional Integration**: Seamlessly integrates with existing CAD tools

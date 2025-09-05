@@ -218,11 +218,15 @@ See [ROADMAP.md](docs/project/ROADMAP.md) for detailed plans.
 - **NEW**: Implemented professional ribbon toolbar with clean SVG icons
 - **NEW**: Integrated Land-Visualizer512.png logo replacing emoji
 - **NEW**: Removed terrain elevation section for cleaner interface
+- **CRITICAL**: Fixed rotation-drag cursor following issue - shapes now follow cursor exactly after rotation
+- **ENHANCED**: Dynamic Shift key snapping during rotation - press/release for instant 45° snapping
+- **FIXED**: Solved coordinate system conflicts preventing accurate drag behavior
 
 ## 🐛 Known Issues
 
-- Mobile rotation causes crash (#001) - Fix in progress
 - Firefox shape drawing lag (#003) - Investigating
+- ~~Mobile rotation causes crash (#001)~~ - ✅ FIXED
+- ~~Rotation-drag cursor mismatch (#002)~~ - ✅ FIXED
 - See [Issues](https://github.com/yourusername/land-visualizer/issues) for more
 
 ## 📝 Documentation

@@ -8,12 +8,14 @@ interface ShapeDimensionsProps {
   shape: Shape;
   elevation?: number;
   isSelected?: boolean;
+  isResizeMode?: boolean;
 }
 
 const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({ 
   shape, 
   elevation = 0.01, 
-  isSelected = false 
+  isSelected = false,
+  isResizeMode = false
 }) => {
   const { camera } = useThree();
   
@@ -50,8 +52,21 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         const radius = precisionCalculator.calculateDistance(center, radiusPoint);
         
         // Show radius line midpoint
-        const midX = (center.x + radiusPoint.x) / 2;
-        const midZ = (center.y + radiusPoint.y) / 2;
+        let midX = (center.x + radiusPoint.x) / 2;
+        let midZ = (center.y + radiusPoint.y) / 2;
+        
+        // In resize mode, move radius text outward to avoid handles
+        if (isResizeMode) {
+          const dx = radiusPoint.x - center.x;
+          const dz = radiusPoint.y - center.y;
+          const length = Math.sqrt(dx * dx + dz * dz);
+          
+          if (length > 0) {
+            const pushDistance = 2; // Units to push outward from radius line
+            midX += (dx / length) * pushDistance;
+            midZ += (dz / length) * pushDistance;
+          }
+        }
         
         return (
           <group>
@@ -115,8 +130,39 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
       const distance = precisionCalculator.calculateDistance(currentPoint, nextPoint);
       
       // Calculate midpoint for label placement
-      const midX = (currentPoint.x + nextPoint.x) / 2;
-      const midZ = (currentPoint.y + nextPoint.y) / 2;
+      let midX = (currentPoint.x + nextPoint.x) / 2;
+      let midZ = (currentPoint.y + nextPoint.y) / 2;
+      
+      // In resize mode, move dimension text outward to avoid handles
+      if (isResizeMode) {
+        // Calculate the vector from shape center to midpoint
+        let shapeCenter = { x: 0, y: 0 };
+        if (shape.type === 'circle') {
+          // For circles, calculate center from all points
+          shapeCenter = {
+            x: shape.points.reduce((sum, p) => sum + p.x, 0) / shape.points.length,
+            y: shape.points.reduce((sum, p) => sum + p.y, 0) / shape.points.length
+          };
+        } else {
+          // For other shapes, use all points
+          shapeCenter = {
+            x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+            y: points.reduce((sum, p) => sum + p.y, 0) / points.length
+          };
+        }
+        
+        // Vector from center to midpoint
+        const dx = midX - shapeCenter.x;
+        const dz = midZ - shapeCenter.y;
+        const length = Math.sqrt(dx * dx + dz * dz);
+        
+        // Move dimension text outward by a fixed distance
+        if (length > 0) {
+          const pushDistance = 3; // Units to push outward
+          midX += (dx / length) * pushDistance;
+          midZ += (dz / length) * pushDistance;
+        }
+      }
       
       labels.push(
         <Html
@@ -150,7 +196,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
     }
     
     return <group>{labels}</group>;
-  }, [shape, elevation, isSelected, scaleInfo]);
+  }, [shape, elevation, isSelected, isResizeMode, scaleInfo]);
 
   // Add area label for closed shapes
   const areaLabel = useMemo(() => {
@@ -184,9 +230,15 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
     centroid.x /= points.length;
     centroid.y /= points.length;
     
+    // In resize mode, move area label higher to avoid handles
+    let areaElevation = elevation + 0.25;
+    if (isResizeMode) {
+      areaElevation = elevation + 0.8; // Move area label higher when resizing
+    }
+    
     return (
       <Html
-        position={[centroid.x, elevation + 0.25, centroid.y]}
+        position={[centroid.x, areaElevation, centroid.y]}
         center
         sprite
         occlude={false}
@@ -213,7 +265,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         </div>
       </Html>
     );
-  }, [shape, elevation, isSelected, scaleInfo]);
+  }, [shape, elevation, isSelected, isResizeMode, scaleInfo]);
 
   return (
     <group>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { useAppStore } from '@/store/useAppStore';
 import { Line, Html } from '@react-three/drei';
 import { Vector3, Color, Plane } from 'three';
@@ -18,11 +18,11 @@ interface DrawingFeedbackProps {
 }
 
 const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onDimensionChange, onPolylineStartProximity }) => {
-  const { camera, raycaster } = useThree();
+  const { camera, raycaster, gl } = useThree();
   const [mousePosition, setMousePosition] = useState<Point2D>({ x: 0, y: 0 });
   const [isMouseOver3D, setIsMouseOver3D] = useState(false);
-  const frameCount = useRef(0);
   const lastNearState = useRef<boolean>(false);
+  const currentMousePosition = useRef<Point2D>({ x: 0, y: 0 });
   
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const isDrawing = useAppStore(state => state.drawing.isDrawing);
@@ -31,53 +31,77 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
   const gridSize = useAppStore(state => state.drawing.gridSize);
 
 
-  // Update mouse position for real-time feedback
-  useFrame((state) => {
-    frameCount.current++;
-    // Update every frame when drawing for live dimensions, every 2 frames otherwise
-    const frameSkip = isDrawing ? 1 : 2;
-    if (frameCount.current % frameSkip !== 0) return;
-    
-    if (activeTool !== 'select') {
+  // Stable event-based mouse tracking
+  React.useEffect(() => {
+    if (activeTool === 'select') {
+      setIsMouseOver3D(false);
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
       try {
-        // Use raycaster directly with the pointer from state
+        const rect = gl.domElement.getBoundingClientRect();
+        
+        // Calculate normalized device coordinates (-1 to 1)
+        const ndc = {
+          x: ((event.clientX - rect.left) / rect.width) * 2 - 1,
+          y: -((event.clientY - rect.top) / rect.height) * 2 + 1
+        };
+        
+        // Validate NDC coordinates are within valid range
+        if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) {
+          return; // Skip if cursor is outside canvas
+        }
+        
+        // Raycasting to ground plane
         const intersection = new Vector3();
         const plane = new Plane(new Vector3(0, 1, 0), 0);
         
-        // Get the normalized device coordinates from the state
-        const pointer = state.pointer;
-        raycaster.setFromCamera(pointer, camera);
+        raycaster.setFromCamera(ndc, camera);
         const hasIntersection = raycaster.ray.intersectPlane(plane, intersection);
         
         if (hasIntersection) {
-          // Apply grid snapping with correct grid size
+          // Apply grid snapping
+          let worldX = intersection.x;
+          let worldZ = intersection.z;
+          
           if (snapToGrid && gridSize > 0) {
-            intersection.x = Math.round(intersection.x / gridSize) * gridSize;
-            intersection.z = Math.round(intersection.z / gridSize) * gridSize;
+            worldX = Math.round(worldX / gridSize) * gridSize;
+            worldZ = Math.round(worldZ / gridSize) * gridSize;
           }
           
-          // Only update if position changed significantly (prevent micro-movements)
-          // But update more frequently when actively drawing to show live dimensions
-          const newPos = { x: intersection.x, y: intersection.z };
-          const oldPos = mousePosition;
-          const distance = Math.sqrt((newPos.x - oldPos.x) ** 2 + (newPos.y - oldPos.y) ** 2);
+          const newPos = { x: worldX, y: worldZ };
           
-          const updateThreshold = isDrawing ? 0.01 : 0.1; // More sensitive when drawing
-          if (distance > updateThreshold) {
+          // Validate coordinates are reasonable
+          if (Math.abs(newPos.x) < 10000 && Math.abs(newPos.y) < 10000) {
+            currentMousePosition.current = newPos;
             setMousePosition(newPos);
             setIsMouseOver3D(true);
           }
         } else {
-          setIsMouseOver3D(false);
+          // Keep using last known good position instead of hiding
+          if (currentMousePosition.current) {
+            setMousePosition(currentMousePosition.current);
+            setIsMouseOver3D(true);
+          }
         }
       } catch (error) {
-        console.warn('Mouse position update error:', error);
-        setIsMouseOver3D(false);
+        console.warn('Mouse tracking error:', error);
+        // Keep using last known good position
+        if (currentMousePosition.current) {
+          setMousePosition(currentMousePosition.current);
+          setIsMouseOver3D(true);
+        }
       }
-    } else {
-      setIsMouseOver3D(false);
-    }
-  });
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('mousemove', handleMouseMove, { passive: true });
+    
+    return () => {
+      canvas.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [activeTool, camera, raycaster, gl, snapToGrid, gridSize]);
 
   // Create snap indicator at mouse position
   const snapIndicator = useMemo(() => {
@@ -126,7 +150,7 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
         {/* Coordinate display removed - now in UI overlay */}
       </group>
     );
-  }, [activeTool, isMouseOver3D, mousePosition.x, mousePosition.y, snapToGrid, elevation, gridSize]);
+  }, [activeTool, isMouseOver3D, mousePosition.x, mousePosition.y, snapToGrid, elevation]);
 
   // Create preview lines for current drawing
   const drawingPreview = useMemo(() => {
@@ -164,7 +188,6 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
         // Show line from last point to mouse cursor
         const lastPoint = points3D[points3D.length - 1];
         const mousePoint = new Vector3(mousePosition.x, elevation, mousePosition.y);
-        
         
         // Check proximity to first point for cursor change (only if we have 3+ points)
         if (currentShape.points.length >= 3 && onPolylineStartProximity) {
@@ -348,9 +371,9 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
     }
 
     return null;
-  }, [isDrawing, currentShape?.points, currentShape?.color, currentShape?.type, activeTool, mousePosition.x, mousePosition.y, isMouseOver3D, elevation, gridSize, onDimensionChange]);
+  }, [isDrawing, currentShape?.points, currentShape?.color, currentShape?.type, activeTool, mousePosition.x, mousePosition.y, isMouseOver3D, elevation, gridSize, onDimensionChange, onPolylineStartProximity]);
 
-  // Clear dimensions when tool changes to select
+  // Clear dimensions when tool changes
   React.useEffect(() => {
     if (activeTool === 'select') {
       if (onDimensionChange) {
@@ -360,6 +383,8 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
         onPolylineStartProximity(false);
         lastNearState.current = false;
       }
+      // Reset mouse position when switching to select
+      currentMousePosition.current = { x: 0, y: 0 };
     }
   }, [activeTool, onDimensionChange, onPolylineStartProximity]);
 

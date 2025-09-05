@@ -172,7 +172,7 @@ const createInitialState = (): AppState => {
   const baseState = {
     shapes: [defaultShape],
     layers: [defaultLayer],
-    selectedShapeId: defaultShape.id,
+    selectedShapeId: null, // Don't auto-select default shape on page load
     hoveredShapeId: null,
     dragState: {
       isDragging: false,
@@ -564,11 +564,12 @@ export const useAppStore = create<AppStore>()(
               activeLayerId: newLayer.id, // Set the new layer as active
               drawing: {
                 ...prevState.drawing,
+                activeTool: 'select', // Switch back to select tool after drawing
                 isDrawing: false,
                 currentShape: null,
               },
-              // Preserve existing selection - don't auto-select new shapes, but keep current selection
-              selectedShapeId: prevState.selectedShapeId
+              // Auto-select the newly created shape so user can immediately rotate/edit it
+              selectedShapeId: newShape.id
             }),
             false,
             'finishDrawing',
@@ -712,13 +713,16 @@ export const useAppStore = create<AppStore>()(
         const state = get();
         const shape = state.shapes.find(s => s.id === shapeId);
         
+        // Store the current shape points as they are (may include rotation already applied)
+        const currentPoints = shape?.points ? [...shape.points] : null;
+        
         set({
           dragState: {
             isDragging: true,
             draggedShapeId: shapeId,
             startPosition,
             currentPosition: startPosition,
-            originalShapePoints: shape?.points ? [...shape.points] : null,
+            originalShapePoints: currentPoints,
           }
         }, false, 'startDragging');
       },
@@ -732,48 +736,73 @@ export const useAppStore = create<AppStore>()(
           return;
         }
 
-        // Calculate total offset from original start position
-        const offsetX = currentPosition.x - state.dragState.startPosition.x;
-        const offsetY = currentPosition.y - state.dragState.startPosition.y;
-
-        // Update the dragged shape's position using original points + total offset
-        const updatedShapes = state.shapes.map(shape => {
-          if (shape.id === state.dragState.draggedShapeId) {
-            const newPoints = state.dragState.originalShapePoints!.map(point => ({
-              x: point.x + offsetX,
-              y: point.y + offsetY,
-            }));
-            return { ...shape, points: newPoints, modified: new Date() };
-          }
-          return shape;
-        });
-
+        // FIXED: Only update drag state, don't modify shape points during drag
+        // The rendering components will apply the transform live during rendering
         set({
-          shapes: updatedShapes,
           dragState: {
             ...state.dragState,
             currentPosition,
-            // Keep original startPosition - don't update it
+            // Keep original startPosition and originalShapePoints unchanged
           }
         }, false, 'updateDragPosition');
       },
 
       finishDragging: () => {
         const state = get();
-        if (state.dragState.isDragging) {
+        if (state.dragState.isDragging && state.dragState.currentPosition && state.dragState.startPosition) {
+          // Apply final transformation to shape points
+          const offsetX = state.dragState.currentPosition.x - state.dragState.startPosition.x;
+          const offsetY = state.dragState.currentPosition.y - state.dragState.startPosition.y;
+
+          const updatedShapes = state.shapes.map(shape => {
+            if (shape.id === state.dragState.draggedShapeId && state.dragState.originalShapePoints) {
+              const newPoints = state.dragState.originalShapePoints.map(point => ({
+                x: point.x + offsetX,
+                y: point.y + offsetY,
+              }));
+              
+              // Also update rotation center if shape is rotated
+              let newRotation = shape.rotation;
+              if (newRotation) {
+                newRotation = {
+                  ...newRotation,
+                  center: {
+                    x: newRotation.center.x + offsetX,
+                    y: newRotation.center.y + offsetY
+                  }
+                };
+              }
+              
+              return { ...shape, points: newPoints, rotation: newRotation, modified: new Date() };
+            }
+            return shape;
+          });
+
+          set({
+            shapes: updatedShapes,
+            dragState: {
+              isDragging: false,
+              draggedShapeId: null,
+              startPosition: null,
+              currentPosition: null,
+              originalShapePoints: null,
+            }
+          }, false, 'finishDragging');
+          
           // Save to history after drag is complete
           get().saveToHistory();
+        } else {
+          // Just clear drag state if no valid drag occurred
+          set({
+            dragState: {
+              isDragging: false,
+              draggedShapeId: null,
+              startPosition: null,
+              currentPosition: null,
+              originalShapePoints: null,
+            }
+          }, false, 'finishDragging');
         }
-        
-        set({
-          dragState: {
-            isDragging: false,
-            draggedShapeId: null,
-            startPosition: null,
-            currentPosition: null,
-            originalShapePoints: null,
-          }
-        }, false, 'finishDragging');
       },
 
       cancelDragging: () => {

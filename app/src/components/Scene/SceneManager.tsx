@@ -4,8 +4,9 @@ import { Environment } from '@react-three/drei';
 // Removed Vector3 import to avoid type conflicts
 import CameraController, { type CameraControllerRef } from './CameraController';
 import DrawingCanvas from './DrawingCanvas';
+import DrawingFeedback from './DrawingFeedback';
 import ShapeRenderer from './ShapeRenderer';
-import GridBackground from './GridBackground';
+import InfiniteGrid from './GridBackground';
 import type { SceneSettings, Point3D, Point2D } from '@/types';
 
 export interface SceneManagerRef {
@@ -19,6 +20,14 @@ interface SceneManagerProps {
   onClick?: (x: number, y: number, z: number) => void;
   onCameraChange?: (position: Point3D, target: Point3D) => void;
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
+  onDimensionChange?: (dimensions: {
+    width?: number;
+    height?: number;
+    area?: number;
+    radius?: number;
+    length?: number;
+  } | null) => void;
+  onPolylineStartProximity?: (isNear: boolean) => void;
 }
 
 const defaultSettings: SceneSettings = {
@@ -30,8 +39,8 @@ const defaultSettings: SceneSettings = {
   cameraTarget: { x: 0, y: 0, z: 0 },
   enableOrbitControls: true,
   maxPolarAngle: Math.PI / 2.05,
-  minDistance: 20,
-  maxDistance: 500,
+  minDistance: 0.1,
+  maxDistance: Infinity,
 };
 
 interface SceneContentProps extends SceneManagerProps {
@@ -43,6 +52,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
   settings, 
   onCameraChange,
   onCoordinateChange,
+  onDimensionChange,
+  onPolylineStartProximity,
   cameraControllerRef
 }) => {
   const finalSettings = { ...defaultSettings, ...settings };
@@ -66,7 +77,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         shadow-camera-bottom={-50}
       />
       <hemisphereLight
-        skyColor="#3b82f6"
+        color="#3b82f6"
         groundColor="#16a34a" 
         intensity={0.4}
       />
@@ -82,19 +93,22 @@ const SceneContent: React.FC<SceneContentProps> = ({
       />
 
       {finalSettings.showGrid && (
-        <GridBackground
-          cellSize={5}
-          gridColor="#a3a3a3"
-          sectionColor="#525252"
-          backgroundColor="#16a34a"
+        <InfiniteGrid
+          size={10}
+          divisions={10}
+          colorGrid="#cccccc"
+          colorCenterLine="#999999"
+          distance={5000}
         />
       )}
 
       <DrawingCanvas
         onCoordinateChange={onCoordinateChange}
         gridSnap={finalSettings.showGrid}
-        gridSize={finalSettings.gridSize / finalSettings.gridDivisions}
+        gridSize={1} // Use 1 meter grid for drawing, independent of visual grid
       />
+
+      <DrawingFeedback elevation={0.05} onDimensionChange={onDimensionChange} onPolylineStartProximity={onPolylineStartProximity} />
 
       <ShapeRenderer elevation={0.01} />
 
@@ -135,7 +149,6 @@ export const SceneManager = React.forwardRef<SceneManagerRef, SceneManagerProps>
           premultipliedAlpha: false,
         }}
         dpr={[1, 2]}
-        style={{ background: '#3b82f6' }}
       >
         <Suspense fallback={null}>
           <SceneContent {...props} cameraControllerRef={cameraControllerRef} />

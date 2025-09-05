@@ -754,6 +754,7 @@ interface Polyline {
 
 interface Shape {
   id: string;
+  type: 'rectangle' | 'circle' | 'polyline';
   points: Point[];
   closed: boolean;
   area?: number;
@@ -761,6 +762,7 @@ interface Shape {
   centroid?: Point;
   boundingBox?: BoundingBox;
   metadata?: ShapeMetadata;
+  rotation?: ShapeRotation;
 }
 
 interface BoundingBox {
@@ -777,6 +779,29 @@ interface ShapeMetadata {
   modifiedAt: Date;
   author?: string;
   notes?: string;
+}
+
+// Rotation and transform types
+interface ShapeRotation {
+  angle: number;      // Rotation angle in degrees
+  center: Point;      // Rotation pivot point
+}
+
+interface DragState {
+  isDragging: boolean;
+  draggedShapeId: string | null;
+  startPosition: Point | null;
+  currentPosition: Point | null;
+}
+
+interface DrawingState {
+  activeTool: 'select' | 'rectangle' | 'circle' | 'polyline';
+  isDrawing: boolean;
+  isEditMode: boolean;
+  isRotateMode: boolean;
+  isResizeMode: boolean;
+  currentShape: Shape | null;
+  rotatingShapeId: string | null;
 }
 
 // Calculation types

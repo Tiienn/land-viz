@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Line } from '@react-three/drei';
 import { Vector3, Color, BufferGeometry, BufferAttribute, Vector2, Plane } from 'three';
@@ -56,6 +56,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
   // Resize mode actions
   const enterResizeMode = useAppStore(state => state.enterResizeMode);
   const exitResizeMode = useAppStore(state => state.exitResizeMode);
+  
+  // Rotation mode actions
+  const enterRotateMode = useAppStore(state => state.enterRotateMode);
+  const exitRotateMode = useAppStore(state => state.exitRotateMode);
+  
   const drawing = useAppStore(state => state.drawing);
 
   // Store current drag handlers for cleanup on unmount
@@ -127,8 +132,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     return points.map(point => new Vector3(point.x, shapeElevation, point.y));
   }, [elevation, layers]);
 
-  // Event handlers for shape interaction
-  const handleShapeClick = useMemo(() => (shapeId: string) => (event: any) => {
+  // Event handlers for shape interaction - Use useCallback to prevent recreation
+  const handleShapeClick = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
     if (event.button !== 0) {
       return; // Allow right-click and middle-click to pass through for camera controls
@@ -137,25 +142,27 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     event.stopPropagation();
     
     if (activeTool === 'select') {
-      // If shape is already selected, toggle resize mode
+      // Single click enables ALL functionality: select + rotate + resize + drag
       if (selectedShapeId === shapeId) {
-        if (drawing.isResizeMode && drawing.resizingShapeId === shapeId) {
-          exitResizeMode();
-        } else {
+        // Shape already selected - ensure all modes are active
+        if (!drawing.isRotateMode || !drawing.isResizeMode) {
+          enterRotateMode(shapeId);
           enterResizeMode(shapeId);
         }
+        // If already in all modes, do nothing (keep all functionality active)
       } else {
-        // Select the shape and immediately enter resize mode
+        // Select the shape and immediately enter both rotate and resize modes
         selectShape(shapeId);
-        // Use setTimeout to ensure the selection state is updated before entering resize mode
+        // Use setTimeout to ensure the selection state is updated before entering modes
         setTimeout(() => {
+          enterRotateMode(shapeId);
           enterResizeMode(shapeId);
         }, 0);
       }
     }
-  }, [activeTool, selectShape, selectedShapeId, drawing.isResizeMode, drawing.resizingShapeId, enterResizeMode, exitResizeMode]);
+  }, [activeTool, selectShape, selectedShapeId, drawing.isRotateMode, drawing.isResizeMode, enterRotateMode, enterResizeMode]);
 
-  const handleShapeDoubleClick = useMemo(() => (shapeId: string) => (event: any) => {
+  const handleShapeDoubleClick = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
     if (event.button !== 0) {
       return; // Allow right-click and middle-click to pass through for camera controls
@@ -163,18 +170,22 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
 
     event.stopPropagation();
     if (activeTool === 'select') {
-      selectShape(selectedShapeId === shapeId ? null : shapeId);
+      // Double click enters resize mode
+      selectShape(shapeId);
+      setTimeout(() => {
+        enterResizeMode(shapeId);
+      }, 0);
     }
-  }, [activeTool, selectShape, selectedShapeId]);
+  }, [activeTool, selectShape, enterResizeMode]);
 
-  const handleShapeHover = useMemo(() => (shapeId: string) => (event: any) => {
+  const handleShapeHover = useCallback((shapeId: string) => (event: any) => {
     event.stopPropagation();
     if (activeTool === 'select') {
       hoverShape(shapeId);
     }
   }, [activeTool, hoverShape]);
 
-  const handleShapeLeave = useMemo(() => (event: any) => {
+  const handleShapeLeave = useCallback((event: any) => {
     event.stopPropagation();
     if (activeTool === 'select') {
       hoverShape(null);
@@ -182,7 +193,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
   }, [activeTool, hoverShape]);
 
   // Drag handlers
-  const handlePointerDown = useMemo(() => (shapeId: string) => (event: any) => {
+  const handlePointerDown = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
     if (event.button !== 0) {
       return; // Allow right-click and middle-click to pass through for camera controls
@@ -192,10 +203,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       return; // Only allow dragging selected shapes in select mode
     }
     
-    // Don't start shape dragging if we're in resize mode - resize handles should take priority
-    if (drawing.isResizeMode && drawing.resizingShapeId === shapeId) {
-      return;
-    }
+    // Allow shape dragging even in resize mode - resize handles will handle their own events
+    // The shape mesh itself should be draggable while resize handles take priority when clicked directly
     
     event.stopPropagation();
     
@@ -230,7 +239,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       document.addEventListener('pointermove', handleGlobalPointerMove);
       document.addEventListener('pointerup', handleGlobalPointerUp);
     }
-  }, [activeTool, selectedShapeId, getWorldPosition, startDragging, updateDragPosition, finishDragging]);
+  }, [activeTool, selectedShapeId, getWorldPosition, startDragging, updateDragPosition, finishDragging, drawing.isResizeMode, drawing.resizingShapeId]);
 
 
 
@@ -265,9 +274,32 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       const elevationOffset = layerIndex >= 0 ? (layers.length - 1 - layerIndex) * 0.001 : 0;
       const shapeElevation = elevation + elevationOffset;
 
-      // Apply rotation transform if shape has rotation data
-      const rotatedPoints = applyRotationTransform(renderPoints, shape.rotation);
-      let points3D = convertPointsWithElevation(rotatedPoints, shape.layerId);
+      // Handle transform order correctly for dragged shapes
+      let transformedPoints = renderPoints;
+      
+      // Check if shape is being dragged
+      const isDragging = dragState.isDragging && dragState.draggedShapeId === shape.id;
+      
+      // SIMPLIFIED: Apply transforms in correct order: rotate first, then drag
+      if (isDragging && dragState.startPosition && dragState.currentPosition) {
+        // Calculate drag offset in world coordinates
+        const offsetX = dragState.currentPosition.x - dragState.startPosition.x;
+        const offsetY = dragState.currentPosition.y - dragState.startPosition.y;
+        
+        // First apply rotation to original points (if any)
+        const rotatedPoints = applyRotationTransform(renderPoints, shape.rotation);
+        
+        // Then apply drag offset to rotated points
+        transformedPoints = rotatedPoints.map(point => ({
+          x: point.x + offsetX,
+          y: point.y + offsetY
+        }));
+      } else {
+        // Normal case: just apply rotation to original points
+        transformedPoints = applyRotationTransform(renderPoints, shape.rotation);
+      }
+      
+      let points3D = convertPointsWithElevation(transformedPoints, shape.layerId);
       const color = new Color(shape.color || '#3B82F6');
 
       // Close the shape for rectangles, polygons, circles, and polylines (lines with multiple points)
@@ -291,29 +323,28 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
 
       const isSelected = shape.id === selectedShapeId;
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
-      const isDragging = dragState.isDragging && dragState.draggedShapeId === shape.id;
 
       return (
         <group key={shape.id}>
           {/* Shape fill - for all completed shapes */}
-          {renderPoints.length >= 3 && (() => {
+          {transformedPoints.length >= 3 && (() => {
             // Create a single mesh with proper triangulation
             const vertices: number[] = [];
             const indices: number[] = [];
             
-            // Add all vertices with proper elevation
-            renderPoints.forEach(point => {
+            // Add all vertices with proper elevation using transformed points
+            transformedPoints.forEach(point => {
               vertices.push(point.x, shapeElevation + 0.002, point.y);
             });
             
             // Only create fill for closed shapes (not simple 2-point lines)
-            if (shape.type === 'line' && renderPoints.length === 2) {
+            if (shape.type === 'line' && transformedPoints.length === 2) {
               // Don't create fill for simple 2-point lines
               return null;
             }
             
             // Simple ear clipping for quadrilaterals (works for both convex and concave)
-            if (renderPoints.length === 4) {
+            if (transformedPoints.length === 4) {
               // For a quadrilateral, create two triangles
               // Triangle 1: vertices 0, 1, 2
               indices.push(0, 1, 2);
@@ -321,7 +352,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
               indices.push(0, 2, 3);
             } else {
               // For other polygons, use fan triangulation from first vertex
-              for (let i = 1; i < renderPoints.length - 1; i++) {
+              for (let i = 1; i < transformedPoints.length - 1; i++) {
                 indices.push(0, i, i + 1);
               }
             }
@@ -336,10 +367,10 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
                 geometry={geometry}
                 onClick={activeTool === 'select' ? handleShapeClick(shape.id) : undefined}
                 onDoubleClick={activeTool === 'select' ? handleShapeDoubleClick(shape.id) : undefined}
-                onPointerDown={activeTool === 'select' && isSelected && !(drawing.isResizeMode && drawing.resizingShapeId === shape.id) ? handlePointerDown(shape.id) : undefined}
+                onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
                 onPointerEnter={activeTool === 'select' ? handleShapeHover(shape.id) : undefined}
                 onPointerLeave={activeTool === 'select' ? handleShapeLeave : undefined}
-                cursor={activeTool === 'select' && isSelected && !(drawing.isResizeMode && drawing.resizingShapeId === shape.id) ? 'move' : activeTool === 'select' ? 'pointer' : 'default'}
+                cursor={activeTool === 'select' && isSelected ? 'move' : activeTool === 'select' ? 'pointer' : 'default'}
               >
                 <meshBasicMaterial
                   color={isDragging ? "#22C55E" : isSelected ? "#3B82F6" : isHovered ? "#60A5FA" : color}
@@ -362,7 +393,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
           />
 
           {/* Invisible interaction line for shapes without fill (like 2-point lines) */}
-          {shape.type === 'line' && renderPoints.length === 2 && (
+          {shape.type === 'line' && transformedPoints.length === 2 && (
             <Line
               points={points3D}
               lineWidth={6} // Slightly wider hit area, not too wide to block other layers
@@ -379,7 +410,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
           {/* Dimensions - only show when enabled */}
           {shape.visible && showDimensions && (
             <ShapeDimensions
-              shape={shape}
+              shape={{...shape, points: transformedPoints}}
               elevation={elevation}
               isSelected={isSelected}
               isResizeMode={drawing.isResizeMode && drawing.resizingShapeId === shape.id}
@@ -388,7 +419,32 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         </group>
       );
     }).filter(Boolean);
-  }, [visibleShapes, elevation, selectedShapeId, convertPointsWithElevation, showDimensions, layers, activeTool, hoveredShapeId, dragState, drawing, handleShapeClick, handleShapeDoubleClick, handlePointerDown, handleShapeHover, handleShapeLeave]);
+  }, [
+    visibleShapes,
+    elevation, 
+    selectedShapeId, 
+    convertPointsWithElevation,
+    showDimensions, 
+    layers, 
+    activeTool, 
+    hoveredShapeId,
+    // Only include specific dragState properties to avoid re-renders on every change
+    dragState.isDragging,
+    dragState.draggedShapeId, 
+    dragState.startPosition?.x,
+    dragState.startPosition?.y,
+    dragState.currentPosition?.x,
+    dragState.currentPosition?.y,
+    // Only include specific drawing properties we actually use
+    drawing.isResizeMode,
+    drawing.resizingShapeId,
+    // Include the stable handlers
+    handleShapeClick,
+    handleShapeDoubleClick, 
+    handlePointerDown, 
+    handleShapeHover, 
+    handleShapeLeave
+  ]);
 
   // Render current shape being drawn
   const currentShapeRender = useMemo(() => {

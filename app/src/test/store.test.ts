@@ -57,6 +57,7 @@ describe('App Store', () => {
         type: 'polygon',
         color: '#3B82F6',
         visible: true,
+        layerId: 'default-layer',
       };
 
       store.addShape(shape);
@@ -73,6 +74,7 @@ describe('App Store', () => {
         type: 'polygon',
         color: '#3B82F6',
         visible: true,
+        layerId: 'default-layer',
       };
 
       store.addShape(shape);
@@ -90,6 +92,7 @@ describe('App Store', () => {
         type: 'polygon',
         color: '#3B82F6',
         visible: true,
+        layerId: 'default-layer',
       };
 
       store.addShape(shape);

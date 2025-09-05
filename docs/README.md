@@ -12,6 +12,10 @@ Core project information and management documents:
 - **[CLAUDE.md](./project/CLAUDE.md)** - Project guidelines and standards
 - **[design-principles.md](./project/design-principles.md)** - Design philosophy and principles
 
+### ✨ [Features](./features/)
+Detailed feature documentation:
+- **[rotation-system.md](./features/rotation-system.md)** - Professional rotation system with dynamic snapping
+
 ### 🔧 [Technical Documentation](./technical/)
 System architecture and technical specifications:
 - **[ARCHITECTURE.md](./technical/ARCHITECTURE.md)** - System design and patterns

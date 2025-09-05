@@ -37,6 +37,9 @@ tests/
 ├── integration/            # Module interaction tests
 │   ├── drawing-flow.test.ts
 │   ├── calculation-pipeline.test.ts
+│   ├── rotation-system.test.ts
+│   ├── resize-system.test.ts
+│   ├── drag-transform.test.ts
 │   └── chili3d-integration.test.ts
 │
 ├── e2e/                    # End-to-end user journeys
@@ -244,9 +247,72 @@ describe('Drawing to Calculation Integration', () => {
     // Add comparison
     const compareButton = getByText('Compare');
     fireEvent.click(compareButton);
+  });
+});
+```
+
+### Rotation System Integration
+
+```typescript
+// tests/integration/rotation-system.test.ts
+import { render, fireEvent, waitFor } from '@testing-library/react';
+import { App } from '@/App';
+
+describe('Rotation System Integration', () => {
+  it('completes full rotation workflow with snapping', async () => {
+    const { getByTestId, getByTitle } = render(<App />);
     
-    const soccerField = getByText('Soccer Field');
-    fireEvent.click(soccerField);
+    // Draw a rectangle first
+    const canvas = getByTestId('main-canvas');
+    await drawRectangle(canvas, { x: 0, y: 0 }, { x: 100, y: 100 });
+    
+    // Enter rotation mode
+    const rotateHandle = await waitFor(() => getByTitle('Drag to rotate shape'));
+    expect(rotateHandle).toBeInTheDocument();
+    
+    // Start rotation
+    fireEvent.pointerDown(rotateHandle);
+    fireEvent.pointerMove(rotateHandle, { clientX: 150, clientY: 50 });
+    
+    // Test dynamic shift snapping
+    fireEvent.keyDown(document, { key: 'Shift' });
+    fireEvent.pointerMove(rotateHandle, { clientX: 160, clientY: 60 });
+    
+    // Should snap to 45° increment
+    const angleDisplay = getByText(/45°.*⇧.*45°/);
+    expect(angleDisplay).toBeInTheDocument();
+    
+    // Complete rotation
+    fireEvent.pointerUp(rotateHandle);
+    fireEvent.keyUp(document, { key: 'Shift' });
+    
+    // Verify rotation metadata is stored
+    const rotatedShape = store.getState().shapes.find(s => s.rotation?.angle === 45);
+    expect(rotatedShape).toBeDefined();
+  });
+
+  it('handles drag after rotation correctly', async () => {
+    const { getByTestId } = render(<App />);
+    
+    // Create and rotate a shape
+    const canvas = getByTestId('main-canvas');
+    const shape = await drawAndRotateShape(canvas, 45);
+    
+    // Now drag the rotated shape
+    fireEvent.pointerDown(canvas, { clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
+    
+    // Shape should follow cursor exactly (no offset due to rotation)
+    const dragState = store.getState().dragState;
+    expect(dragState.currentPosition).toEqual({ x: 100, y: 100 });
+    
+    fireEvent.pointerUp(canvas);
+    
+    // Verify final position is correct
+    const finalShape = store.getState().shapes.find(s => s.id === shape.id);
+    expect(finalShape?.points[0].x).toBeCloseTo(50, 1); // Moved by 50 units
+  });
+});
     
     // Verify comparison
     expect(getByText(/1.4 soccer fields/)).toBeInTheDocument();

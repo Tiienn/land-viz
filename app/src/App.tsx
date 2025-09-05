@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import SceneManager from './components/Scene/SceneManager';
 import { useAppStore } from './store/useAppStore';
 import ExportSettingsDialog, { type ExportSettings } from './components/ExportSettingsDialog';
-import LayerPanel from './components/LayerPanel';
 import PropertiesPanel from './components/PropertiesPanel';
+import Icon from './components/Icon';
 import type { Point2D } from './types';
 
 function App(): React.JSX.Element {
@@ -13,8 +13,6 @@ function App(): React.JSX.Element {
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
   const [exportSettingsFormat, setExportSettingsFormat] = useState<ExportSettings['format']>('excel');
   const [isProfessionalMode, setIsProfessionalMode] = useState(false);
-  const [layerPanelOpen, setLayerPanelOpen] = useState(false);
-  const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
   const [mousePosition, setMousePosition] = useState<Point2D>({ x: 0, y: 0 });
   const [isMouseOver3D, setIsMouseOver3D] = useState(false);
   const [currentDimensions, setCurrentDimensions] = useState<{
@@ -27,6 +25,8 @@ function App(): React.JSX.Element {
   const [isNearPolylineStart, setIsNearPolylineStart] = useState(false);
   const [leftPanelExpanded, setLeftPanelExpanded] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
+  const [propertiesExpanded, setPropertiesExpanded] = useState(false);
+  const [layersExpanded, setLayersExpanded] = useState(false);
   
   // Connect to the 3D scene store
   const { 
@@ -54,7 +54,11 @@ function App(): React.JSX.Element {
     redo,
     canUndo,
     canRedo,
-    removeLastPoint
+    removeLastPoint,
+    layers,
+    shapes,
+    activeLayerId,
+    updateLayer
   } = useAppStore();
 
   // Sync local state with store state when store changes
@@ -64,12 +68,6 @@ function App(): React.JSX.Element {
     }
   }, [drawing.activeTool, activeTool]);
 
-  // Auto-open Properties panel when drawing tools are selected
-  useEffect(() => {
-    if (activeTool !== 'select') {
-      setPropertiesPanelOpen(true);
-    }
-  }, [activeTool]);
 
   // Keyboard shortcuts for undo/redo
   useEffect(() => {
@@ -1210,20 +1208,29 @@ function App(): React.JSX.Element {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar */}
         <div style={{ 
-          width: leftPanelExpanded ? '200px' : '64px', 
+          width: layersExpanded ? '400px' : (leftPanelExpanded ? '160px' : '50px'), 
           background: 'white', 
           borderRight: '1px solid #e5e5e5', 
           display: 'flex', 
-          flexDirection: 'column', 
+          flexDirection: 'row', 
           transition: 'width 0.3s ease',
           position: 'relative'
         }}>
           {/* Expand/Collapse Toggle */}
           <button
-            onClick={() => setLeftPanelExpanded(!leftPanelExpanded)}
+            onClick={() => {
+              if (layersExpanded) {
+                // If layers are expanded, collapse them and return to thin default menu
+                setLayersExpanded(false);
+                setLeftPanelExpanded(false);
+              } else {
+                // Normal toggle behavior for left panel
+                setLeftPanelExpanded(!leftPanelExpanded);
+              }
+            }}
             style={{
               position: 'absolute',
-              top: '8px',
+              top: '50%',
               right: '-12px',
               width: '24px',
               height: '24px',
@@ -1238,7 +1245,8 @@ function App(): React.JSX.Element {
               color: '#6b7280',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
               zIndex: 10,
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
+              transform: 'translateY(-50%)'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#f3f4f6';
@@ -1253,137 +1261,318 @@ function App(): React.JSX.Element {
             {leftPanelExpanded ? '◀' : '▶'}
           </button>
 
-          <div style={{ 
-            padding: '16px 0', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: leftPanelExpanded ? 'stretch' : 'center', 
-            gap: '8px',
-            paddingLeft: leftPanelExpanded ? '16px' : '0',
-            paddingRight: leftPanelExpanded ? '16px' : '0'
+          {/* Main Navigation Section */}
+          <div style={{
+            width: leftPanelExpanded ? '160px' : '50px',
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1
           }}>
-            <button style={{ 
-              padding: leftPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
-              fontSize: leftPanelExpanded ? '14px' : '18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: leftPanelExpanded ? '12px' : '0',
-              width: '100%',
-              textAlign: 'left',
-              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
-            }} 
-            title="Home"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span>🏠</span>
-              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Home</span>}
-            </button>
-            
-            <button style={{ 
-              padding: leftPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
-              fontSize: leftPanelExpanded ? '14px' : '18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: leftPanelExpanded ? '12px' : '0',
-              width: '100%',
-              textAlign: 'left',
-              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
-            }} 
-            title="Visual Comparison"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span>👁</span>
-              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Visual Comparison</span>}
-            </button>
-            
-            <button style={{ 
-              padding: leftPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
-              fontSize: leftPanelExpanded ? '14px' : '18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: leftPanelExpanded ? '12px' : '0',
-              width: '100%',
-              textAlign: 'left',
-              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
-            }} 
-            title="Unit Converter"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span>🔢</span>
-              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Unit Converter</span>}
-            </button>
-            
-            <button style={{ 
-              padding: leftPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
-              fontSize: leftPanelExpanded ? '14px' : '18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: leftPanelExpanded ? '12px' : '0',
-              width: '100%',
-              textAlign: 'left',
-              justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
-            }} 
-            title="Quick Tools"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span>⚡</span>
-              {leftPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Quick Tools</span>}
-            </button>
-            
-            <button 
-              onClick={() => setLayerPanelOpen(!layerPanelOpen)}
-              style={{ 
+            <div style={{ 
+              padding: '16px 0', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: leftPanelExpanded ? 'stretch' : 'center', 
+              gap: '8px',
+              paddingLeft: leftPanelExpanded ? '16px' : '0',
+              paddingRight: leftPanelExpanded ? '16px' : '0'
+            }}>
+              <button style={{ 
                 padding: leftPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '4px', 
-                background: layerPanelOpen ? '#dbeafe' : 'transparent', 
+                borderRadius: '8px', 
+                background: 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
-                fontSize: leftPanelExpanded ? '14px' : '18px',
-                color: layerPanelOpen ? '#1d4ed8' : '#000000',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: leftPanelExpanded ? '12px' : '0',
+                gap: '4px',
                 width: '100%',
-                textAlign: 'left',
-                justifyContent: leftPanelExpanded ? 'flex-start' : 'center',
-                transition: 'all 0.2s ease'
+                textAlign: 'center',
+                transition: 'all 0.2s ease',
+                color: '#374151'
+              }} 
+              title="Home"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0px)';
+              }}
+              >
+                <Icon name="home" size={20} color="#000000" />
+                <span style={{ 
+                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontWeight: '500', 
+                  color: '#374151',
+                  lineHeight: '1'
+                }}>
+                  Home
+                </span>
+              </button>
+            
+              <button style={{ 
+                padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                borderRadius: '8px', 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                width: '100%',
+                textAlign: 'center',
+                transition: 'all 0.2s ease',
+                color: '#374151'
+              }} 
+              title="Visual Comparison"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0px)';
+              }}
+              >
+                <Icon name="visualComparison" size={20} color="#000000" />
+                <span style={{ 
+                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontWeight: '500', 
+                  color: '#374151',
+                  lineHeight: '1'
+                }}>
+                  Visual
+                </span>
+              </button>
+            
+              <button style={{ 
+                padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                borderRadius: '8px', 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                width: '100%',
+                textAlign: 'center',
+                transition: 'all 0.2s ease',
+                color: '#374151'
+              }} 
+              title="Unit Converter"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0px)';
+              }}
+              >
+                <Icon name="unitConverter" size={20} color="#000000" />
+                <span style={{ 
+                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontWeight: '500', 
+                  color: '#374151',
+                  lineHeight: '1'
+                }}>
+                  Convert
+                </span>
+              </button>
+            
+              <button style={{ 
+                padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                borderRadius: '8px', 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                width: '100%',
+                textAlign: 'center',
+                transition: 'all 0.2s ease',
+                color: '#374151'
+              }} 
+              title="Quick Tools"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0px)';
+              }}
+              >
+                <Icon name="quickTools" size={20} color="#000000" />
+                <span style={{ 
+                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontWeight: '500', 
+                  color: '#374151',
+                  lineHeight: '1'
+                }}>
+                  Tools
+                </span>
+              </button>
+            
+            <button 
+              onClick={() => {
+                if (layersExpanded) {
+                  // If layers are expanded, collapse them and return to thin default menu
+                  setLayersExpanded(false);
+                  setLeftPanelExpanded(false);
+                } else {
+                  // If layers are not expanded, expand the panel if needed and show layers
+                  if (!leftPanelExpanded) {
+                    setLeftPanelExpanded(true);
+                  }
+                  setLayersExpanded(true);
+                }
+              }}
+              style={{ 
+                padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                borderRadius: '8px', 
+                background: layersExpanded ? '#dbeafe' : 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                width: '100%',
+                textAlign: 'center',
+                transition: 'all 0.2s ease',
+                color: layersExpanded ? '#1d4ed8' : '#374151'
               }} 
               title="Layers"
               onMouseEnter={(e) => {
-                if (!layerPanelOpen) e.currentTarget.style.background = '#f3f4f6';
+                if (!layersExpanded) {
+                  e.currentTarget.style.background = '#f3f4f6';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }
               }}
               onMouseLeave={(e) => {
-                if (!layerPanelOpen) e.currentTarget.style.background = 'transparent';
+                if (!layersExpanded) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.transform = 'translateY(0px)';
+                }
               }}
             >
-              <span>📄</span>
-              {leftPanelExpanded && <span style={{ fontWeight: '500', color: layerPanelOpen ? '#1d4ed8' : '#374151' }}>Layers</span>}
+              <Icon name="layers" size={20} color="#000000" />
+              <span style={{ 
+                fontSize: leftPanelExpanded ? '12px' : '10px', 
+                fontWeight: '500', 
+                color: layersExpanded ? '#1d4ed8' : '#374151',
+                lineHeight: '1'
+              }}>
+                Layers
+              </span>
             </button>
+            </div>
           </div>
+
+          {/* Layers Expansion Panel */}
+          {layersExpanded && (
+            <div style={{
+              width: '240px',
+              background: '#f8fafc',
+              borderLeft: '1px solid #e2e8f0',
+              padding: '16px',
+              overflowY: 'auto',
+              maxHeight: '100vh'
+            }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '12px',
+                textAlign: 'center'
+              }}>
+                <div>{layers.length} Layer{layers.length !== 1 ? 's' : ''}</div>
+                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                  {shapes.length} Shape{shapes.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+
+                {layers.map(layer => {
+                  const isActive = layer.id === activeLayerId;
+                  const layerShapes = shapes.filter(shape => shape.layerId === layer.id);
+                  
+                  return (
+                  <div
+                    key={layer.id}
+                    style={{
+                      padding: '12px',
+                      marginBottom: '8px',
+                      background: isActive ? '#e0f2fe' : 'white',
+                      borderRadius: '6px',
+                      border: isActive ? '1px solid #0ea5e9' : '1px solid #e5e7eb',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '6px'
+                    }}>
+                      <div
+                        style={{
+                          width: '14px',
+                          height: '14px',
+                          background: layer.color,
+                          borderRadius: '3px',
+                          border: '1px solid #d1d5db'
+                        }}
+                      />
+                      <span style={{
+                        fontWeight: '500',
+                        color: '#374151',
+                        fontSize: '12px',
+                        flex: 1,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {layer.name.length > 20 ? layer.name.substring(0, 20) + '...' : layer.name}
+                      </span>
+                      <button
+                        onClick={() => updateLayer(layer.id, { visible: !layer.visible })}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          opacity: layer.visible ? 1 : 0.4,
+                          padding: '2px'
+                        }}
+                        title={layer.visible ? 'Hide layer' : 'Show layer'}
+                      >
+                        👁️
+                      </button>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: '11px',
+                      color: '#6b7280'
+                    }}>
+                      <span>{layerShapes.length} shape{layerShapes.length !== 1 ? 's' : ''}</span>
+                      <span>
+                        {Math.round(layer.opacity * 100)}% opacity
+                      </span>
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+            )}
         </div>
 
         {/* Central 3D Canvas */}
@@ -1571,9 +1760,93 @@ function App(): React.JSX.Element {
           )}
         </main>
 
+        {/* Properties Expansion Panel - Positioned before right panel to expand to the left */}
+        {propertiesExpanded && (
+          <div style={{
+            width: '240px',
+            background: '#f8fafc',
+            borderLeft: '1px solid #e5e5e5',
+            borderRight: '1px solid #e5e5e5',
+            padding: '16px',
+            overflowY: 'auto',
+            height: '100%'
+          }}>
+            <h3 style={{
+              margin: '0 0 16px 0',
+              fontSize: '16px',
+              fontWeight: '600',
+              color: '#1f2937'
+            }}>
+              Properties Panel
+            </h3>
+            <div style={{
+              background: '#ffffff',
+              borderRadius: '8px',
+              padding: '16px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <p style={{
+                margin: '0 0 12px 0',
+                fontSize: '14px',
+                color: '#6b7280'
+              }}>
+                Configure drawing properties and settings here.
+              </p>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '4px'
+                  }}>
+                    Stroke Width
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    defaultValue="2"
+                    style={{
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '4px'
+                  }}>
+                    Fill Opacity
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    defaultValue="20"
+                    style={{
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Right Sidebar */}
         <div style={{ 
-          width: rightPanelExpanded ? '200px' : '64px', 
+          width: rightPanelExpanded ? '160px' : '50px', 
           background: 'white', 
           borderLeft: '1px solid #e5e5e5', 
           display: 'flex', 
@@ -1583,10 +1856,19 @@ function App(): React.JSX.Element {
         }}>
           {/* Expand/Collapse Toggle */}
           <button
-            onClick={() => setRightPanelExpanded(!rightPanelExpanded)}
+            onClick={() => {
+              if (propertiesExpanded) {
+                // If properties are expanded, collapse them and return to thin default menu
+                setPropertiesExpanded(false);
+                setRightPanelExpanded(false);
+              } else {
+                // Normal toggle behavior for right panel
+                setRightPanelExpanded(!rightPanelExpanded);
+              }
+            }}
             style={{
               position: 'absolute',
-              top: '8px',
+              top: '50%',
               left: '-12px',
               width: '24px',
               height: '24px',
@@ -1601,7 +1883,8 @@ function App(): React.JSX.Element {
               color: '#6b7280',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
               zIndex: 10,
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
+              transform: 'translateY(-50%)'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#f3f4f6';
@@ -1626,105 +1909,153 @@ function App(): React.JSX.Element {
             paddingRight: rightPanelExpanded ? '16px' : '0'
           }}>
             <button style={{ 
-              padding: rightPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
+              padding: rightPanelExpanded ? '12px 8px' : '8px', 
+              borderRadius: '8px', 
               background: 'transparent', 
               border: 'none', 
               cursor: 'pointer', 
-              fontSize: rightPanelExpanded ? '14px' : '18px',
+              fontSize: '11px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: rightPanelExpanded ? '12px' : '0',
+              gap: '4px',
               width: '100%',
-              textAlign: 'left',
-              justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
+              textAlign: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease',
+              color: '#374151',
+              fontWeight: '500'
             }} 
             title="Land Metrics"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'translateY(0px)';
+            }}
             >
-              <span>📊</span>
-              {rightPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Land Metrics</span>}
+              <Icon name="landMetrics" size={20} color="#000000" />
+              <span style={{ fontWeight: '500', color: '#374151' }}>Land Metrics</span>
             </button>
             
             <button style={{ 
-              padding: rightPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
+              padding: rightPanelExpanded ? '12px 8px' : '8px', 
+              borderRadius: '8px', 
               background: 'transparent', 
               border: 'none', 
               cursor: 'pointer', 
-              fontSize: rightPanelExpanded ? '14px' : '18px',
+              fontSize: '11px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: rightPanelExpanded ? '12px' : '0',
+              gap: '4px',
               width: '100%',
-              textAlign: 'left',
-              justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
+              textAlign: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease',
+              color: '#374151',
+              fontWeight: '500'
             }} 
             title="Terrain"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'translateY(0px)';
+            }}
             >
-              <span>🏔</span>
-              {rightPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Terrain</span>}
+              <Icon name="terrain" size={20} color="#000000" />
+              <span style={{ fontWeight: '500', color: '#374151' }}>Terrain</span>
             </button>
             
             <button style={{ 
-              padding: rightPanelExpanded ? '12px 16px' : '8px', 
-              borderRadius: '4px', 
+              padding: rightPanelExpanded ? '12px 8px' : '8px', 
+              borderRadius: '8px', 
               background: 'transparent', 
               border: 'none', 
               cursor: 'pointer', 
-              fontSize: rightPanelExpanded ? '14px' : '18px',
+              fontSize: '11px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: rightPanelExpanded ? '12px' : '0',
+              gap: '4px',
               width: '100%',
-              textAlign: 'left',
-              justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
-              transition: 'all 0.2s ease'
+              textAlign: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease',
+              color: '#374151',
+              fontWeight: '500'
             }} 
             title="Dimensions"
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'translateY(0px)';
+            }}
             >
-              <span>📏</span>
-              {rightPanelExpanded && <span style={{ fontWeight: '500', color: '#374151' }}>Dimensions</span>}
+              <Icon name="dimensions" size={20} color="#000000" />
+              <span style={{ fontWeight: '500', color: '#374151' }}>Dimensions</span>
             </button>
             
             <button 
-              onClick={() => setPropertiesPanelOpen(!propertiesPanelOpen)}
+              onClick={() => {
+                if (propertiesExpanded) {
+                  // If properties are expanded, collapse them and return to thin default menu
+                  setPropertiesExpanded(false);
+                  setRightPanelExpanded(false);
+                } else {
+                  // If properties are not expanded, expand the panel if needed and show properties
+                  if (!rightPanelExpanded) {
+                    setRightPanelExpanded(true);
+                  }
+                  setPropertiesExpanded(true);
+                }
+              }}
               style={{ 
-                padding: rightPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '4px', 
-                background: propertiesPanelOpen ? '#dbeafe' : 'transparent', 
+                padding: rightPanelExpanded ? '12px 8px' : '8px', 
+                borderRadius: '8px', 
+                background: propertiesExpanded ? '#dbeafe' : 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
-                fontSize: rightPanelExpanded ? '14px' : '18px',
-                color: propertiesPanelOpen ? '#1d4ed8' : '#000000',
+                fontSize: '11px',
+                color: propertiesExpanded ? '#1d4ed8' : '#374151',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: rightPanelExpanded ? '12px' : '0',
+                gap: '4px',
                 width: '100%',
-                textAlign: 'left',
-                justifyContent: rightPanelExpanded ? 'flex-start' : 'center',
-                transition: 'all 0.2s ease'
+                textAlign: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                fontWeight: '500'
               }} 
               title="Properties"
               onMouseEnter={(e) => {
-                if (!propertiesPanelOpen) e.currentTarget.style.background = '#f3f4f6';
+                if (!propertiesExpanded) {
+                  e.currentTarget.style.background = '#f3f4f6';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }
               }}
               onMouseLeave={(e) => {
-                if (!propertiesPanelOpen) e.currentTarget.style.background = 'transparent';
+                if (!propertiesExpanded) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.transform = 'translateY(0px)';
+                }
               }}
             >
-              <span>⚙️</span>
-              {rightPanelExpanded && <span style={{ fontWeight: '500', color: propertiesPanelOpen ? '#1d4ed8' : '#374151' }}>Properties</span>}
+              <Icon name="properties" size={20} color="#000000" />
+              <span style={{ fontWeight: '500', color: propertiesExpanded ? '#1d4ed8' : '#374151' }}>Properties</span>
             </button>
           </div>
         </div>
+
       </div>
 
       {/* Export Settings Dialog */}
@@ -1735,17 +2066,11 @@ function App(): React.JSX.Element {
         initialFormat={exportSettingsFormat}
       />
 
-      {/* Layer Panel */}
-      <LayerPanel
-        isOpen={layerPanelOpen}
-        onClose={() => setLayerPanelOpen(false)}
-      />
-
-      {/* Properties Panel */}
-      <PropertiesPanel
+      {/* Properties Panel - Now using horizontal expansion instead */}
+      {/* <PropertiesPanel
         isOpen={propertiesPanelOpen}
         onClose={() => setPropertiesPanelOpen(false)}
-      />
+      /> */}
     </div>
   );
 }
