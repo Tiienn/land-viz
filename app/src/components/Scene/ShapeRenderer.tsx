@@ -14,6 +14,101 @@ interface ShapeRendererProps {
   elevation?: number;
 }
 
+// Nuclear option: Create fresh rectangle geometry bypassing all caching
+const createFreshRectangleGeometry = (points: Point2D[], elevation: number): BufferGeometry => {
+  document.title = 'FRESH RECT GEOM FUNC ' + points.length;
+  const geometry = new BufferGeometry();
+  
+  let rectPoints: Point2D[];
+  if (points.length === 2) {
+    const [p1, p2] = points;
+    const minX = Math.min(p1.x, p2.x);
+    const maxX = Math.max(p1.x, p2.x);
+    const minY = Math.min(p1.y, p2.y);
+    const maxY = Math.max(p1.y, p2.y);
+    
+    rectPoints = [
+      { x: minX, y: minY },
+      { x: maxX, y: minY }, 
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY }
+    ];
+  } else {
+    rectPoints = points.slice(0, 4);
+  }
+
+  const vertices: number[] = [];
+  rectPoints.forEach(point => {
+    vertices.push(point.x, elevation, point.y);
+  });
+
+  const indices = [0, 1, 2, 0, 2, 3];
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(vertices), 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  
+  return geometry;
+};
+
+// Component to handle dynamic geometry updates properly
+const MeshWithDynamicGeometry: React.FC<{
+  shapeId: string;
+  geometry: BufferGeometry;
+  position: [number, number, number];
+  onClick?: (event: any) => void;
+  onDoubleClick?: (event: any) => void;
+  onPointerDown?: (event: any) => void;
+  onPointerEnter?: (event: any) => void;
+  onPointerLeave?: (event: any) => void;
+  cursor: string;
+  material: any;
+}> = ({ shapeId, geometry, position, onClick, onDoubleClick, onPointerDown, onPointerEnter, onPointerLeave, cursor, material }) => {
+  const meshRef = useRef<any>();
+
+  // Force geometry update when geometry prop changes
+  useEffect(() => {
+    if (meshRef.current && geometry) {
+      console.log(`🔧 MeshWithDynamicGeometry: Updating geometry for shape ${shapeId}`);
+      // Dispose old geometry to prevent memory leaks
+      if (meshRef.current.geometry) {
+        meshRef.current.geometry.dispose();
+      }
+      // Apply new geometry
+      meshRef.current.geometry = geometry;
+      // Force update of geometry attributes
+      if (geometry.attributes.position) {
+        geometry.attributes.position.needsUpdate = true;
+      }
+      if (geometry.index) {
+        geometry.index.needsUpdate = true;
+      }
+      geometry.computeVertexNormals();
+    }
+  }, [geometry, shapeId]);
+
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      position={position}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onPointerDown={onPointerDown}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      cursor={cursor}
+    >
+      <meshBasicMaterial
+        color={material.fillColor}
+        transparent
+        opacity={Math.max(material.opacity, 0.1)} // Ensure minimum visibility
+        depthWrite={false}
+        side={2}
+      />
+    </mesh>
+  );
+};
+
 // Utility function to apply rotation transform to points
 const applyRotationTransform = (points: Point2D[], rotation?: { angle: number; center: Point2D }): Point2D[] => {
   if (!rotation || rotation.angle === 0) return points;
@@ -35,6 +130,9 @@ const applyRotationTransform = (points: Point2D[], rotation?: { angle: number; c
 };
 
 const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
+  document.title = 'SHAPERENDERER ' + Date.now();
+  console.log('🚀🚀🚀 SHAPERENDERER LOADED - TIME:', new Date().toLocaleTimeString());
+  console.log('🚀🚀🚀 CHECKING IF CONSOLE WORKS IN COMPONENTS');
   const { camera, gl, raycaster } = useThree();
   const groundPlane = useRef(new Plane(new Vector3(0, 1, 0), 0));
   
@@ -191,7 +289,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
 
   // Separate shape data calculations
   // Add a force refresh trigger for geometry cache
-  const forceRefresh = useAppStore(state => state.shapes.reduce((acc, s) => acc + s.modified?.getTime(), 0));
+  const forceRefresh = useAppStore(state => state.shapes.reduce((acc, s) => acc + (s.modified?.getTime?.() || 0), 0));
   
   const shapeGeometries = useMemo(() => {
     console.log('🔄 ShapeRenderer: Regenerating geometries');
@@ -210,12 +308,22 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         modified: shape.modified
       });
       
-      // Force fresh geometry generation instead of using cache for rectangles during resize
-      const useCache = true; // We'll still use cache but invalidate properly
-      const geometry = pointsForGeometry && pointsForGeometry.length >= 2 ? 
-        GeometryCache.getGeometry({...shape, points: pointsForGeometry}, elevation) : null;
+      // NUCLEAR OPTION: Never use cache for rectangles - always create fresh geometry
+      let geometry = null;
+      if (pointsForGeometry && pointsForGeometry.length >= 2) {
+        if (shape.type === 'rectangle') {
+          // Always create fresh geometry for rectangles - bypass cache completely
+          document.title = 'CREATING FRESH RECT GEOM ' + new Date().getSeconds();
+          geometry = createFreshRectangleGeometry(pointsForGeometry, elevation);
+        } else {
+          // Use cache for other shapes
+          geometry = GeometryCache.getGeometry({...shape, points: pointsForGeometry}, elevation);
+        }
+      }
         
       console.log(`🎨 Generated geometry for ${shape.id}:`, geometry ? 'success' : 'null');
+      console.log(`🔍 Points for ${shape.id}:`, JSON.stringify(pointsForGeometry));
+      console.log(`🎯 Shape type: ${shape.type}, Modified: ${shape.modified}`);
       
       return {
         id: shape.id,
@@ -223,7 +331,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       };
     });
   }, [
-    visibleShapes.map(s => `${s.id}_${s.type}_${JSON.stringify(s.points)}_${s.rotation?.angle || 0}_${s.modified?.getTime()}`).join('|'), 
+    visibleShapes.map(s => `${s.id}_${s.type}_${JSON.stringify(s.points)}_${s.rotation?.angle || 0}_${s.modified?.getTime?.() || 0}`).join('|'), 
     shapeTransforms.map(t => `${t.id}_${JSON.stringify(t.points)}`).join('|'),
     elevation,
     forceRefresh
@@ -287,8 +395,10 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       if (selectedShapeId === shapeId) {
         // Shape already selected - ensure all modes are active
         if (!drawing.isRotateMode || !drawing.isResizeMode) {
-          enterRotateMode(shapeId);
-          enterResizeMode(shapeId);
+          if (!drawing.isEditMode) {
+            enterRotateMode(shapeId);
+            enterResizeMode(shapeId);
+          }
         }
         // If already in all modes, do nothing (keep all functionality active)
       } else {
@@ -296,8 +406,10 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         selectShape(shapeId);
         // Use setTimeout to ensure the selection state is updated before entering modes
         setTimeout(() => {
-          enterRotateMode(shapeId);
-          enterResizeMode(shapeId);
+          if (!drawing.isEditMode) {
+            enterRotateMode(shapeId);
+            enterResizeMode(shapeId);
+          }
         }, 0);
       }
     }
@@ -438,33 +550,30 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
 
 
       return (
-        <group key={`${shape.id}_${shape.modified?.getTime()}`}>
+        <group key={`${shape.id}_${shape.modified?.getTime?.() || 0}`}>
           {/* Optimized Shape fill using cached geometry - allow polylines with 3+ points to have fill */}
           {transformedPoints.length >= 3 && !(shape.type === 'line' && shape.points.length <= 2) && geometry && (
-            <mesh
-              key={`fill_${shape.id}_${shape.modified?.getTime()}`} 
+            <MeshWithDynamicGeometry
+              key={`fill_${shape.id}_${shape.modified?.getTime?.() || 0}_${JSON.stringify(shape.points)}_${Math.random()}`}
+              shapeId={shape.id}
               geometry={geometry}
-              position={[0, shapeElevation + 0.001, 0]} // Use shape elevation with slight offset
+              position={[0, shapeElevation + 0.001, 0]}
               onClick={activeTool === 'select' ? handleShapeClick(shape.id) : undefined}
               onDoubleClick={activeTool === 'select' ? handleShapeDoubleClick(shape.id) : undefined}
               onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
               onPointerEnter={activeTool === 'select' ? handleShapeHover(shape.id) : undefined}
               onPointerLeave={activeTool === 'select' ? handleShapeLeave : undefined}
               cursor={activeTool === 'select' && isSelected ? 'move' : activeTool === 'select' ? 'pointer' : 'default'}
-            >
-              <meshBasicMaterial
-                color={material.fillColor}
-                transparent
-                opacity={Math.max(material.opacity, 0.1)} // Ensure minimum visibility
-                depthWrite={false}
-                side={2}
-              />
-            </mesh>
+              material={{
+                fillColor: material.fillColor,
+                opacity: Math.max(material.opacity, 0.1)
+              }}
+            />
           )}
           
           {/* Shape outline */}
           <Line
-            key={`outline_${shape.id}_${shape.modified?.getTime()}`}
+            key={`outline_${shape.id}_${shape.modified?.getTime?.() || 0}`}
             points={points3D}
             color={material.lineColor}
             lineWidth={material.lineWidth}
