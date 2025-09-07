@@ -20,6 +20,7 @@ A professional 3D land visualization tool with CAD-style interface, successfully
 - ✅ **Professional Controls**: Custom mouse mapping (right-orbit, middle-pan)
 - ✅ **Natural Environment**: Green grass ground, blue sky visualization
 - ✅ **Performance**: 60 FPS with infinite grid coverage
+- ✅ **Professional Grid System**: Unified grid functionality with visual/snapping synchronization
 - ✅ **Modern Typography**: Nunito Sans font system for enhanced readability and professional appearance
 
 ## Visual Design Philosophy (Canva-Inspired)
@@ -167,9 +168,10 @@ npm run dev     # Development server (http://localhost:5173)
 ### Main Components
 - `App.tsx` - Main application with ribbon toolbar and 3D scene container
 - `SceneManager.tsx` - 3D scene setup with lighting and canvas configuration
+- `BackgroundManager.tsx` - Dynamic scene background management based on grid state
 - `CameraController.tsx` - Professional orbital controls (left-click disabled, middle pan, right orbit)
 - `GridBackground.tsx` - Infinite green grass grid with custom canvas texture
-- `DrawingCanvas.tsx` - Interactive 3D drawing with raycasting
+- `DrawingCanvas.tsx` - Interactive 3D drawing with raycasting and unified grid snapping
 - `ShapeRenderer.tsx` - Renders drawn shapes in 3D space with rotation transforms
 - `EditableShapeControls.tsx` - Interactive sphere corners for shape editing
 - `ResizableShapeControls.tsx` - Professional resize handles with Windows-style cursors
@@ -203,6 +205,8 @@ npm run dev     # Development server (http://localhost:5173)
 19. **Smart Collapse Behavior**: Both triangle buttons and main buttons intelligently return to thin default menu
 20. **SVG Icon System**: Replaced emoji icons with professional black SVG icons following Canva design principles
 21. **Modern Typography System**: Updated to Nunito Sans font for enhanced readability and professional appearance
+22. **Grid System Unification**: Fixed Grid button functionality with unified state management across visual grid, snapping, and status bar
+23. **Background Management**: Added dynamic background color system (#f5f5f5 when Grid OFF, natural colors when Grid ON)
 
 ## Known Issues & Solutions
 - **CSS Compilation**: Use inline styles exclusively to avoid build issues
@@ -225,6 +229,8 @@ npm run dev     # Development server (http://localhost:5173)
 - **Rotation Mode**: Click Rotate button or drag rotation handle (↻) below selected shape
 - **Free Rotation**: Drag rotation handle to rotate shape to any angle with live preview
 - **Dynamic Angle Snapping**: Hold/release Shift during rotation to snap to 45-degree increments (0°, ±45°, ±90°, ±135°, 180°)
+- **Grid Toggle**: Click Grid button in Properties panel to toggle visual grid and snapping
+- **Grid Status**: Status bar shows "1m snap" when Grid ON, "Free move" when Grid OFF
 - **ESC Key**: Cancel any active operation (drawing, editing, resizing, rotating)
 - **Panel Controls**: Click any panel button to expand that section horizontally
 - **Layers Expansion**: Click Layers button to expand layer management to the right
@@ -237,9 +243,10 @@ app/src/
 ├── App.tsx                 # Main application
 ├── components/Scene/       # 3D scene components
 │   ├── SceneManager.tsx   # Main 3D canvas wrapper
+│   ├── BackgroundManager.tsx # Dynamic background management
 │   ├── CameraController.tsx # Camera controls
 │   ├── GridBackground.tsx  # Infinite grass grid
-│   ├── DrawingCanvas.tsx   # Interactive drawing
+│   ├── DrawingCanvas.tsx   # Interactive drawing with unified grid snapping
 │   ├── ShapeRenderer.tsx   # Shape visualization with rotation transforms
 │   ├── EditableShapeControls.tsx # Shape editing with sphere corners
 │   ├── ResizableShapeControls.tsx # Professional resize handles
@@ -408,3 +415,6 @@ const colors = {
 - ✅ **Dynamic Shift Snapping**: Press/release Shift during rotation for instant snapping to 45° increments
 - ✅ **Improved Transform System**: Solved coordinate system conflicts with proper transform ordering
 - ✅ **Modern Typography**: Updated to Nunito Sans font system for enhanced readability and professional appearance
+- ✅ **Grid System Fix**: Unified Grid button functionality across status bar, visual grid, and snapping systems
+- ✅ **Background Management**: Added BackgroundManager component for dynamic scene backgrounds (#f5f5f5 neutral when Grid OFF)
+- ✅ **State Synchronization**: Fixed Grid button state propagation to all dependent systems

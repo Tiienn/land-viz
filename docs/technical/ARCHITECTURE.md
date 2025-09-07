@@ -33,8 +33,9 @@ app/src/
 │   ├── Scene/               # 3D Scene Components
 │   │   ├── SceneManager.tsx        # Main 3D canvas wrapper
 │   │   ├── CameraController.tsx    # Professional orbital controls  
+│   │   ├── BackgroundManager.tsx   # Dynamic scene background management
 │   │   ├── GridBackground.tsx      # Infinite grass grid texture
-│   │   ├── DrawingCanvas.tsx       # Interactive 3D drawing
+│   │   ├── DrawingCanvas.tsx       # Interactive 3D drawing with unified grid snapping
 │   │   ├── DrawingFeedback.tsx     # Real-time drawing preview
 │   │   ├── ShapeRenderer.tsx       # Shape visualization & rendering with rotation transforms
 │   │   ├── EditableShapeControls.tsx # Sphere corners for editing
@@ -67,6 +68,7 @@ app/src/
 ### State Management (Zustand)
 - **Single Store Pattern**: useAppStore.ts handles all application state
 - **Reactive Updates**: Automatic UI re-rendering on state changes
+- **Unified Grid State**: Single source of truth for grid functionality across all systems
 - **Persist Layer**: Local storage for user preferences
 - **Undo/Redo**: Built-in history management with keyboard shortcuts
 
@@ -88,7 +90,9 @@ app/src/
 ### Drawing Tools Architecture
 - **Tool Strategy Pattern**: Pluggable drawing tools (select, rectangle, circle, polyline)  
 - **Real-time Feedback**: Live preview during drawing operations
-- **Grid Snapping**: Optional grid alignment for precision
+- **Unified Grid System**: Synchronized visual grid, snapping, and status bar
+- **Grid State Management**: Single source of truth for grid functionality
+- **Dynamic Background**: Automatic scene background switching based on grid state
 - **Visual Feedback**: Crosshair cursors and dimension displays
 
 ### Export System
@@ -110,6 +114,12 @@ interface AppState {
     isResizeMode: boolean;
     currentShape: Shape | null;
     rotatingShapeId: string | null;
+    snapping: {
+      config: {
+        activeTypes: Set<'grid' | 'shape'>;
+        gridSize: number;
+      };
+    };
   };
   shapes: Shape[];
   layers: Layer[];
