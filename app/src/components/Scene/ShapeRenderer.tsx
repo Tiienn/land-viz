@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Line } from '@react-three/drei';
+import * as THREE from 'three';
 import { Vector3, Color, BufferGeometry, BufferAttribute, Vector2, Plane } from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { GeometryCache } from '../../utils/GeometryCache';
@@ -14,41 +15,7 @@ interface ShapeRendererProps {
   elevation?: number;
 }
 
-// Nuclear option: Create fresh rectangle geometry bypassing all caching
-const createFreshRectangleGeometry = (points: Point2D[], elevation: number): BufferGeometry => {
-  document.title = 'FRESH RECT GEOM FUNC ' + points.length;
-  const geometry = new BufferGeometry();
-  
-  let rectPoints: Point2D[];
-  if (points.length === 2) {
-    const [p1, p2] = points;
-    const minX = Math.min(p1.x, p2.x);
-    const maxX = Math.max(p1.x, p2.x);
-    const minY = Math.min(p1.y, p2.y);
-    const maxY = Math.max(p1.y, p2.y);
-    
-    rectPoints = [
-      { x: minX, y: minY },
-      { x: maxX, y: minY }, 
-      { x: maxX, y: maxY },
-      { x: minX, y: maxY }
-    ];
-  } else {
-    rectPoints = points.slice(0, 4);
-  }
-
-  const vertices: number[] = [];
-  rectPoints.forEach(point => {
-    vertices.push(point.x, elevation, point.y);
-  });
-
-  const indices = [0, 1, 2, 0, 2, 3];
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(vertices), 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  
-  return geometry;
-};
+// Removed createFreshRectangleGeometry - now using consistent GeometryCache for all shapes
 
 // Component to handle dynamic geometry updates properly
 const MeshWithDynamicGeometry: React.FC<{
@@ -68,7 +35,8 @@ const MeshWithDynamicGeometry: React.FC<{
   // Force geometry update when geometry prop changes
   useEffect(() => {
     if (meshRef.current && geometry) {
-      console.log(`🔧 MeshWithDynamicGeometry: Updating geometry for shape ${shapeId}`);
+      console.log(`🔧 MeshWithDynamicGeometry: Updating geometry for shape ${shapeId}`, 'at', Date.now());
+      document.title = `GEOMETRY UPDATED ${shapeId} ${Date.now()}`;
       // Dispose old geometry to prevent memory leaks
       if (meshRef.current.geometry) {
         meshRef.current.geometry.dispose();
@@ -130,9 +98,6 @@ const applyRotationTransform = (points: Point2D[], rotation?: { angle: number; c
 };
 
 const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
-  document.title = 'SHAPERENDERER ' + Date.now();
-  console.log('🚀🚀🚀 SHAPERENDERER LOADED - TIME:', new Date().toLocaleTimeString());
-  console.log('🚀🚀🚀 CHECKING IF CONSOLE WORKS IN COMPONENTS');
   const { camera, gl, raycaster } = useThree();
   const groundPlane = useRef(new Plane(new Vector3(0, 1, 0), 0));
   
@@ -292,38 +257,73 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
   const forceRefresh = useAppStore(state => state.shapes.reduce((acc, s) => acc + (s.modified?.getTime?.() || 0), 0));
   
   const shapeGeometries = useMemo(() => {
-    console.log('🔄 ShapeRenderer: Regenerating geometries');
-    console.log('🔍 Visible shapes:', visibleShapes.length);
-    console.log('🔍 Shape transforms:', shapeTransforms.length);
     
     return visibleShapes.map((shape, index) => {
       // Get the transformed points for this shape (includes rotation and dragging)
       const transform = shapeTransforms.find(t => t.id === shape.id);
       const pointsForGeometry = transform ? transform.points : shape.points;
       
-      console.log(`📐 Shape ${shape.id}:`, {
-        originalPoints: shape.points,
-        transformedPoints: pointsForGeometry,
-        hasTransform: !!transform,
-        modified: shape.modified
-      });
-      
-      // NUCLEAR OPTION: Never use cache for rectangles - always create fresh geometry
+      // Use consistent geometry cache for all shapes (now with proper bounds)
+      // CRITICAL FIX: For shapes being resized, bypass cache completely and create fresh geometry
       let geometry = null;
       if (pointsForGeometry && pointsForGeometry.length >= 2) {
-        if (shape.type === 'rectangle') {
-          // Always create fresh geometry for rectangles - bypass cache completely
-          document.title = 'CREATING FRESH RECT GEOM ' + new Date().getSeconds();
-          geometry = createFreshRectangleGeometry(pointsForGeometry, elevation);
+        const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
+        const isBeingEdited = drawing.isEditMode && drawing.editingShapeId === shape.id;
+        
+        if (isBeingResized || isBeingEdited) {
+          // Force fresh geometry creation for shapes being resized/edited - completely bypass cache
+          console.log('🔥 LIVE MODE:', isBeingResized ? 'RESIZE' : 'EDIT', '- Creating fresh geometry for', shape.id);
+          document.title = `FRESH GEOMETRY ${shape.id} ${Date.now()}`;
+          
+          // Import GeometryCache here to access createGeometry method
+          if (shape.type === 'rectangle') {
+            geometry = new THREE.BufferGeometry();
+            
+            // Recreate rectangle geometry manually without cache
+            let rectPoints = pointsForGeometry;
+            if (pointsForGeometry.length === 2) {
+              const [p1, p2] = pointsForGeometry;
+              const minX = Math.min(p1.x, p2.x);
+              const maxX = Math.max(p1.x, p2.x);
+              const minY = Math.min(p1.y, p2.y);
+              const maxY = Math.max(p1.y, p2.y);
+              
+              rectPoints = [
+                { x: minX, y: minY }, // bottom-left
+                { x: maxX, y: minY }, // bottom-right
+                { x: maxX, y: maxY }, // top-right
+                { x: minX, y: maxY }  // top-left
+              ];
+            }
+            
+            const vertices: number[] = [];
+            rectPoints.slice(0, 4).forEach(point => {
+              vertices.push(point.x, elevation, point.y);
+            });
+            
+            const indices = [0, 1, 2, 0, 2, 3];
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+            geometry.computeBoundingBox();
+            geometry.computeBoundingSphere();
+          } else {
+            // For other shapes, still use cache but with fresh timestamp
+            geometry = GeometryCache.getGeometry({
+              ...shape, 
+              points: pointsForGeometry,
+              modified: new Date()  // Force fresh timestamp to bypass cache
+            }, elevation);
+          }
         } else {
-          // Use cache for other shapes
-          geometry = GeometryCache.getGeometry({...shape, points: pointsForGeometry}, elevation);
+          // Normal case - use cache with preserved timestamp
+          geometry = GeometryCache.getGeometry({
+            ...shape, 
+            points: pointsForGeometry,
+            modified: shape.modified  // Preserve original timestamp for cache logic
+          }, elevation);
         }
       }
-        
-      console.log(`🎨 Generated geometry for ${shape.id}:`, geometry ? 'success' : 'null');
-      console.log(`🔍 Points for ${shape.id}:`, JSON.stringify(pointsForGeometry));
-      console.log(`🎯 Shape type: ${shape.type}, Modified: ${shape.modified}`);
       
       return {
         id: shape.id,
@@ -334,7 +334,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     visibleShapes.map(s => `${s.id}_${s.type}_${JSON.stringify(s.points)}_${s.rotation?.angle || 0}_${s.modified?.getTime?.() || 0}`).join('|'), 
     shapeTransforms.map(t => `${t.id}_${JSON.stringify(t.points)}`).join('|'),
     elevation,
-    forceRefresh
+    forceRefresh,
+    drawing.isEditMode,
+    drawing.editingShapeId,
+    drawing.isResizeMode,
+    drawing.resizingShapeId
   ]);
 
   // Separate material calculations
@@ -349,7 +353,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       return {
         id: shape.id,
         color: new Color(shape.color || '#3B82F6'),
-        fillColor: isDragging ? "#22C55E" : isSelected ? "#3B82F6" : isHovered ? "#60A5FA" : shape.color,
+        fillColor: isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color,
         lineColor: isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color,
         opacity: isDragging ? 0.8 * layerOpacity : isSelected ? 0.7 * layerOpacity : isHovered ? 0.6 * layerOpacity : 0.4 * layerOpacity,
         lineOpacity: shape.visible ? (isDragging ? 1 : isSelected ? 1 : isHovered ? 0.9 : 0.8) * layerOpacity : 0.3 * layerOpacity,
@@ -391,29 +395,23 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     event.stopPropagation();
     
     if (activeTool === 'select') {
-      // Single click enables ALL functionality: select + rotate + resize + drag
       if (selectedShapeId === shapeId) {
-        // Shape already selected - ensure all modes are active
-        if (!drawing.isRotateMode || !drawing.isResizeMode) {
-          if (!drawing.isEditMode) {
-            enterRotateMode(shapeId);
-            enterResizeMode(shapeId);
-          }
+        // Shape already selected - enter resize mode for quick interaction
+        if (!drawing.isEditMode && !drawing.isResizeMode) {
+          enterResizeMode(shapeId);
         }
-        // If already in all modes, do nothing (keep all functionality active)
       } else {
-        // Select the shape and immediately enter both rotate and resize modes
+        // Select the shape first
         selectShape(shapeId);
-        // Use setTimeout to ensure the selection state is updated before entering modes
+        // Enter resize mode after selection for immediate productivity
         setTimeout(() => {
           if (!drawing.isEditMode) {
-            enterRotateMode(shapeId);
             enterResizeMode(shapeId);
           }
         }, 0);
       }
     }
-  }, [activeTool, selectShape, selectedShapeId, drawing.isRotateMode, drawing.isResizeMode, enterRotateMode, enterResizeMode]);
+  }, [activeTool, selectShape, selectedShapeId, drawing.isEditMode, drawing.isResizeMode, enterResizeMode]);
 
   const handleShapeDoubleClick = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
@@ -517,12 +515,14 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       let renderPoints = shape.points;
       if (shape.type === 'rectangle' && shape.points.length === 2) {
         const [topLeft, bottomRight] = shape.points;
+        console.log('🔧 Converting 2-point rectangle:', { topLeft, bottomRight, shapeId: shape.id });
         renderPoints = [
           { x: topLeft.x, y: topLeft.y },
           { x: bottomRight.x, y: topLeft.y },
           { x: bottomRight.x, y: bottomRight.y },
           { x: topLeft.x, y: bottomRight.y }
         ];
+        console.log('🔧 Converted to 4 corners:', JSON.stringify(renderPoints));
       }
 
       const transformedPoints = transform.points;
@@ -554,7 +554,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
           {/* Optimized Shape fill using cached geometry - allow polylines with 3+ points to have fill */}
           {transformedPoints.length >= 3 && !(shape.type === 'line' && shape.points.length <= 2) && geometry && (
             <MeshWithDynamicGeometry
-              key={`fill_${shape.id}_${shape.modified?.getTime?.() || 0}_${JSON.stringify(shape.points)}_${Math.random()}`}
+              key={`fill_${shape.id}_${shape.modified?.getTime?.() || 0}_${JSON.stringify(shape.points)}`}
               shapeId={shape.id}
               geometry={geometry}
               position={[0, shapeElevation + 0.001, 0]}

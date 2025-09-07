@@ -200,68 +200,70 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
 
   // Add area label for closed shapes
   const areaLabel = useMemo(() => {
-    // Show area for all shapes except pure lines (polylines with 3+ points can have area)
-    if (!shape.points || shape.points.length < 2) return null;
+    // Only skip area calculation for true 2-point lines, not polylines with 3+ points
+    if (shape.type === 'line' && shape.points.length <= 2) return null;
     
-    // Rectangles and circles only need 2 points, polygons/polylines need 3+
-    if (shape.type === 'line' && shape.points.length < 3) return null;
-    if ((shape.type === 'polygon') && shape.points.length < 3) return null;
+    // Calculate center position of shape
+    let centerX = 0, centerY = 0;
     
-    const measurements = precisionCalculator.calculateShapeMeasurements(shape);
-    
-    
-    // Calculate centroid for area label placement
-    // Use expanded points for rectangles
-    let points = shape.points;
-    if (shape.type === 'rectangle' && shape.points.length === 2) {
-      const [topLeft, bottomRight] = shape.points;
-      points = [
-        { x: topLeft.x, y: topLeft.y },      // Top left
-        { x: bottomRight.x, y: topLeft.y },  // Top right
-        { x: bottomRight.x, y: bottomRight.y }, // Bottom right
-        { x: topLeft.x, y: bottomRight.y }   // Bottom left
-      ];
+    if (shape.type === 'circle' && shape.points.length >= 2) {
+      centerX = shape.points[0].x;
+      centerY = shape.points[0].y;
+    } else if (shape.points.length > 0) {
+      centerX = shape.points.reduce((sum, p) => sum + p.x, 0) / shape.points.length;
+      centerY = shape.points.reduce((sum, p) => sum + p.y, 0) / shape.points.length;
     }
     
-    const centroid = points.reduce(
-      (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
-      { x: 0, y: 0 }
-    );
-    centroid.x /= points.length;
-    centroid.y /= points.length;
-    
-    // In resize mode, move area label higher to avoid handles
-    let areaElevation = elevation + 0.25;
-    if (isResizeMode) {
-      areaElevation = elevation + 0.8; // Move area label higher when resizing
+    // Calculate area
+    let area = 0;
+    if (shape.type === 'circle' && shape.points.length >= 2) {
+      const radius = Math.sqrt(
+        Math.pow(shape.points[1].x - shape.points[0].x, 2) + 
+        Math.pow(shape.points[1].y - shape.points[0].y, 2)
+      );
+      area = Math.PI * radius * radius;
+    } else if (shape.points.length >= 3) {
+      // Use shoelace formula for polygon area
+      let sum = 0;
+      for (let i = 0; i < shape.points.length; i++) {
+        const j = (i + 1) % shape.points.length;
+        sum += shape.points[i].x * shape.points[j].y;
+        sum -= shape.points[j].x * shape.points[i].y;
+      }
+      area = Math.abs(sum) / 2;
+    } else if (shape.points.length === 2) {
+      // Rectangle defined by two corner points
+      const width = Math.abs(shape.points[1].x - shape.points[0].x);
+      const height = Math.abs(shape.points[1].y - shape.points[0].y);
+      area = width * height;
+      centerX = (shape.points[0].x + shape.points[1].x) / 2;
+      centerY = (shape.points[0].y + shape.points[1].y) / 2;
     }
+    
+    if (area < 0.1) return null; // Don't show for very small areas
     
     return (
       <Html
-        position={[centroid.x, areaElevation, centroid.y]}
+        key={`area-${shape.id}`}
+        position={[centerX, elevation + 0.2, centerY]}
         center
         sprite
         occlude={false}
-        style={{
-          pointerEvents: 'none',
-          userSelect: 'none',
-          zIndex: 1000
-        }}
+        distanceFactor={scaleInfo.distanceFactor}
       >
         <div style={{
-          background: isSelected ? 'rgba(34, 197, 94, 0.95)' : 'rgba(16, 185, 129, 0.95)',
+          background: 'rgba(34, 197, 94, 0.9)',
           color: 'white',
-          padding: `${scaleInfo.areaPadding}px ${scaleInfo.areaPadding * 2}px`,
-          borderRadius: `${Math.max(6, scaleInfo.areaPadding)}px`,
-          fontSize: `${scaleInfo.areaFontSize}px`,
-          fontWeight: '800',
+          padding: `${scaleInfo.padding * 1.5}px ${scaleInfo.padding * 3}px`,
+          borderRadius: `${Math.max(6, scaleInfo.padding * 1.2)}px`,
+          fontSize: `${scaleInfo.fontSize * 1.2}px`,
+          fontWeight: '700',
           whiteSpace: 'nowrap',
-          boxShadow: '0 6px 20px rgba(0,0,0,0.7)',
-          border: '3px solid rgba(255,255,255,0.8)',
-          opacity: 1,
-          zIndex: 1000
+          boxShadow: '0 3px 12px rgba(0,0,0,0.4)',
+          border: '2px solid #22c55e',
+          opacity: 1
         }}>
-          {measurements.area.squareMeters} m²
+          {area.toFixed(0)} m²
         </div>
       </Html>
     );

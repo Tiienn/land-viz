@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 
 interface LayerPanelProps {
@@ -25,6 +25,31 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
   const [colorPaletteOpen, setColorPaletteOpen] = useState<string | null>(null);
   const [draggedLayer, setDraggedLayer] = useState<string | null>(null);
   const [dragOverLayer, setDragOverLayer] = useState<string | null>(null);
+  const [isUsingOpacitySlider, setIsUsingOpacitySlider] = useState(false);
+
+  // Cleanup opacity slider state on unmount or when panel closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsUsingOpacitySlider(false);
+    }
+  }, [isOpen]);
+
+  // Cleanup opacity slider state on window events (fallback)
+  useEffect(() => {
+    const handleMouseUp = () => setIsUsingOpacitySlider(false);
+    const handlePointerUp = () => setIsUsingOpacitySlider(false);
+    const handleTouchEnd = () => setIsUsingOpacitySlider(false);
+    
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
 
   // Color palette options - matching reference image layout
   const colorPalette = [
@@ -192,6 +217,11 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
 
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, layerId: string) => {
+    // Prevent layer dragging when opacity slider is being used
+    if (isUsingOpacitySlider) {
+      e.preventDefault();
+      return;
+    }
     setDraggedLayer(layerId);
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -238,55 +268,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <>
     <div style={{
-      position: 'fixed',
-      top: 0,
-      right: isOpen ? 0 : '-350px',
-      width: '350px',
+      width: '100%',
       height: '100vh',
       backgroundColor: 'white',
-      border: '1px solid #e5e5e5',
-      boxShadow: '-4px 0 12px rgba(0,0,0,0.1)',
       display: 'flex',
       flexDirection: 'column',
-      zIndex: 1000,
-      transition: 'right 0.3s ease'
+      overflow: 'hidden'
     }}>
-      {/* Header */}
-      <div style={{
-        padding: '20px 20px 16px 20px',
-        borderBottom: '1px solid #e5e7eb',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        background: 'white'
-      }}>
-        <h3 style={{ 
-          margin: 0, 
-          fontSize: '18px', 
-          fontWeight: '600', 
-          color: '#111827'
-        }}>
-          Layers
-        </h3>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            fontSize: '16px',
-            color: '#9ca3af',
-            cursor: 'pointer',
-            padding: '4px',
-            borderRadius: '4px'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
-          onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
-        >
-          ✕
-        </button>
-      </div>
 
       {/* Search Box */}
       <div style={{
@@ -321,7 +310,10 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
             fontSize: '16px',
             color: '#9ca3af'
           }}>
-            🔍
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
           </div>
           {searchTerm && (
             <button
@@ -597,13 +589,24 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                       cursor: 'pointer',
                       padding: '4px',
                       borderRadius: '4px',
-                      opacity: layer.visible ? 1 : 0.4
+                      opacity: layer.visible ? 1 : 0.4,
+                      color: '#6b7280'
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     title={layer.visible ? 'Hide layer' : 'Show layer'}
                   >
-                    👁️
+                    {layer.visible ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </svg>
+                    )}
                   </button>
 
                   {/* Layer Order Menu */}
@@ -627,7 +630,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         title="Layer order"
                       >
-                        📝
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="8" y1="6" x2="21" y2="6"/>
+                          <line x1="8" y1="12" x2="21" y2="12"/>
+                          <line x1="8" y1="18" x2="21" y2="18"/>
+                          <line x1="3" y1="6" x2="3.01" y2="6"/>
+                          <line x1="3" y1="12" x2="3.01" y2="12"/>
+                          <line x1="3" y1="18" x2="3.01" y2="18"/>
+                        </svg>
                       </button>
                       
                     </div>
@@ -653,7 +663,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       title="Delete layer"
                     >
-                      🗑️
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3,6 5,6 21,6"/>
+                        <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                      </svg>
                     </button>
                   )}
                 </div>
@@ -684,7 +699,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                   color: '#6b7280'
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
+                onMouseMove={(e) => e.stopPropagation()}
+                onMouseUp={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerMove={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
                 onDragStart={(e) => e.preventDefault()}
+                onDrag={(e) => e.stopPropagation()}
+                onDragEnd={(e) => e.stopPropagation()}
                 draggable={false}
               >
                 <span style={{ minWidth: '45px' }}>Opacity:</span>
@@ -698,8 +720,47 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                     e.stopPropagation();
                     updateLayer(layer.id, { opacity: parseFloat(e.target.value) });
                   }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onDragStart={(e) => e.preventDefault()}
+                  onInput={(e) => {
+                    e.stopPropagation();
+                    updateLayer(layer.id, { opacity: parseFloat((e.target as HTMLInputElement).value) });
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    setIsUsingOpacitySlider(true);
+                  }}
+                  onMouseMove={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onMouseUp={(e) => {
+                    e.stopPropagation();
+                    setIsUsingOpacitySlider(false);
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setIsUsingOpacitySlider(true);
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    setIsUsingOpacitySlider(false);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    setIsUsingOpacitySlider(true);
+                  }}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    setIsUsingOpacitySlider(false);
+                  }}
+                  onDragStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrag={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onDragEnd={(e) => {
+                    e.stopPropagation();
+                  }}
                   draggable={false}
                   style={{
                     flex: 1,
@@ -737,7 +798,10 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
                     fontSize: '13px',
                     fontWeight: '500'
                   }}>
-                    <span style={{ fontSize: '14px' }}>📚</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                    </svg>
                     Layer Order
                   </div>
                   
@@ -905,9 +969,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
         </div>
       </div>
     </div>
-
-
-    </>
   );
 };
 

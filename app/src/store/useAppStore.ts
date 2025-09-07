@@ -53,9 +53,11 @@ interface AppStore extends AppState {
   exitEditMode: () => void;
   selectCorner: (cornerIndex: number | null) => void;
   updateShapePoint: (shapeId: string, pointIndex: number, point: Point2D) => void;
+  updateShapePointLive: (shapeId: string, pointIndex: number, point: Point2D) => void;
   addShapeCorner: (shapeId: string, pointIndex: number, point: Point2D) => void;
   deleteShapeCorner: (shapeId: string, pointIndex: number) => void;
   convertRectangleToPolygon: (shapeId: string, newPoints: Point2D[]) => void;
+  convertRectangleToPolygonLive: (shapeId: string, newPoints: Point2D[]) => void;
 
   // Resize mode actions (only available in 'select' mode)
   enterResizeMode: (shapeId: string) => void;
@@ -63,6 +65,7 @@ interface AppStore extends AppState {
   setResizeHandle: (handleType: 'corner' | 'edge', handleIndex: number) => void;
   setMaintainAspectRatio: (maintain: boolean) => void;
   resizeShape: (shapeId: string, newPoints: Point2D[]) => void;
+  resizeShapeLive: (shapeId: string, newPoints: Point2D[]) => void;
 
   // Rotation mode actions (only available in 'select' mode)
   enterRotateMode: (shapeId: string) => void;
@@ -143,7 +146,7 @@ const getDefaultDrawingState = () => ({
     config: {
       enabled: true,
       snapRadius: 15,
-      activeTypes: new Set(['grid', 'endpoint', 'midpoint', 'center']),
+      activeTypes: new Set([]),
       visual: {
         showIndicators: true,
         showSnapLines: true,
@@ -210,7 +213,7 @@ const getDefaultDrawingState = () => ({
   // Professional alignment system
   alignment: {
     config: {
-      enabled: true,
+      enabled: false,
       alignmentThreshold: 5,
       snapStrength: 0.8,
       showCenterGuides: true,
@@ -1369,6 +1372,28 @@ export const useAppStore = create<AppStore>()(
         );
       },
 
+      updateShapePointLive: (shapeId: string, pointIndex: number, point: Point2D) => {
+        // Live update without history saving - for real-time dragging
+        set(
+          state => ({
+            shapes: state.shapes.map(shape => {
+              if (shape.id === shapeId && shape.points) {
+                const newPoints = [...shape.points];
+                newPoints[pointIndex] = point;
+                return {
+                  ...shape,
+                  points: newPoints,
+                  modified: new Date(),
+                };
+              }
+              return shape;
+            }),
+          }),
+          false,
+          'updateShapePointLive',
+        );
+      },
+
       addShapeCorner: (shapeId: string, pointIndex: number, point: Point2D) => {
         get().saveToHistory(); // Save state before adding corner
         
@@ -1376,10 +1401,24 @@ export const useAppStore = create<AppStore>()(
           state => ({
             shapes: state.shapes.map(shape => {
               if (shape.id === shapeId && shape.points) {
-                const newPoints = [...shape.points];
+                let newPoints = [...shape.points];
+                
+                // For rectangles with 2 points, first convert to 4 corners
+                if (shape.type === 'rectangle' && shape.points.length === 2) {
+                  const [topLeft, bottomRight] = shape.points;
+                  newPoints = [
+                    { x: topLeft.x, y: topLeft.y },      // Top left (0)
+                    { x: bottomRight.x, y: topLeft.y },  // Top right (1)
+                    { x: bottomRight.x, y: bottomRight.y }, // Bottom right (2)
+                    { x: topLeft.x, y: bottomRight.y }   // Bottom left (3)
+                  ];
+                }
+                
                 newPoints.splice(pointIndex + 1, 0, point); // Insert after the specified index
+                
                 return {
                   ...shape,
+                  type: shape.type === 'rectangle' ? 'polygon' : shape.type, // Convert rectangles to polygons
                   points: newPoints,
                   modified: new Date(),
                 };
@@ -1435,6 +1474,27 @@ export const useAppStore = create<AppStore>()(
           }),
           false,
           'convertRectangleToPolygon',
+        );
+      },
+
+      convertRectangleToPolygonLive: (shapeId: string, newPoints: Point2D[]) => {
+        // Live update without history saving - for real-time dragging
+        set(
+          state => ({
+            shapes: state.shapes.map(shape => {
+              if (shape.id === shapeId) {
+                return {
+                  ...shape,
+                  type: 'polygon' as ShapeType,
+                  points: newPoints,
+                  modified: new Date(),
+                };
+              }
+              return shape;
+            }),
+          }),
+          false,
+          'convertRectangleToPolygonLive',
         );
       },
 
@@ -1508,21 +1568,33 @@ export const useAppStore = create<AppStore>()(
       },
 
       resizeShape: (shapeId: string, newPoints: Point2D[]) => {
-        console.log('🔧 ResizeShape called for:', shapeId, 'with points:', newPoints);
+        document.title = 'RESIZE CALLED ' + new Date().toLocaleTimeString();
+        console.log('🔧 ResizeShape called for:', shapeId, 'with points:', JSON.stringify(newPoints));
+        console.log('🔧 Current shapes before resize:', get().shapes.map(s => ({id: s.id, points: s.points})));
         get().saveToHistory(); // Save state before resizing
-
-        // Clear entire geometry cache to ensure resize is reflected immediately
+        
+        // First invalidate the specific shape from cache BEFORE clearing everything
+        const shape = get().shapes.find(s => s.id === shapeId);
+        if (shape) {
+          GeometryCache.invalidateShape(shape);
+          console.log('🎯 Invalidated specific shape from cache:', shapeId);
+        }
+        
+        // Then clear entire geometry cache to ensure resize is reflected immediately
         GeometryCache.dispose();
+        console.log('🧹 GeometryCache disposed');
 
         set(
           state => ({
             shapes: state.shapes.map(shape => {
               if (shape.id === shapeId) {
-                return {
+                const updatedShape = {
                   ...shape,
                   points: newPoints,
                   modified: new Date(),
                 };
+                console.log('✅ Updated shape in store:', updatedShape);
+                return updatedShape;
               }
               return shape;
             }),
@@ -1530,6 +1602,45 @@ export const useAppStore = create<AppStore>()(
           false,
           'resizeShape',
         );
+        
+        console.log('🔧 Shapes after resize:', get().shapes.map(s => ({id: s.id, points: s.points, modified: s.modified})));
+      },
+
+      // Live resize (for real-time updates without history pollution)
+      resizeShapeLive: (shapeId: string, newPoints: Point2D[]) => {
+        console.log('🔧 ResizeShapeLive called for:', shapeId, 'with points:', JSON.stringify(newPoints));
+        
+        // First invalidate the specific shape from cache BEFORE clearing everything
+        const shape = get().shapes.find(s => s.id === shapeId);
+        if (shape) {
+          GeometryCache.invalidateShape(shape);
+          console.log('🎯 Invalidated specific shape from cache:', shapeId);
+        }
+        
+        // Then clear entire geometry cache to ensure resize is reflected immediately
+        GeometryCache.dispose();
+        console.log('🧹 GeometryCache disposed for live resize');
+
+        set(
+          state => ({
+            shapes: state.shapes.map(shape => {
+              if (shape.id === shapeId) {
+                const updatedShape = {
+                  ...shape,
+                  points: newPoints,
+                  modified: new Date(),
+                };
+                console.log('✅ Updated shape in store (live):', updatedShape);
+                return updatedShape;
+              }
+              return shape;
+            }),
+          }),
+          false,
+          'resizeShapeLive',
+        );
+        
+        console.log('🔧 Shapes after live resize:', get().shapes.map(s => ({id: s.id, points: s.points, modified: s.modified})));
       },
 
       // Rotation mode actions
