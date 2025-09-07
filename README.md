@@ -87,6 +87,11 @@ npm test
 - **Zustand** - Lightweight state management
 - **@react-three/drei** - Three.js helpers and utilities
 
+### Design & Styling
+- **Nunito Sans** - Modern, readable typography system
+- **Custom CSS** - Professional styling with inline approach
+- **Google Fonts** - Web font optimization
+
 ### Testing & Quality
 - **Jest** - Unit testing
 - **React Testing Library** - Component testing

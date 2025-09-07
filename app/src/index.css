@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,7 +7,7 @@
 /* Custom styles for Land Visualizer */
 @layer base {
   html {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Nunito Sans', system-ui, sans-serif;
     font-feature-settings: 'cv11', 'ss01';
   }
   
@@ -20,6 +20,7 @@
     font-smoothing: antialiased;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-family: 'Nunito Sans', system-ui, sans-serif;
   }
   
   * {
@@ -30,207 +31,455 @@
 @layer components {
   /* Professional Button System */
   .btn-primary {
-    @apply bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium shadow-soft hover:bg-blue-700 hover:shadow-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98];
+    background-color: #16a34a;
+    color: white;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
+    transition: all 200ms;
+    border: none;
+    cursor: pointer;
+  }
+  
+  .btn-primary:hover {
+    background-color: #15803d;
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.08);
   }
   
   .btn-secondary {
-    @apply bg-white text-neutral-700 px-4 py-2.5 rounded-lg font-medium border border-neutral-200 shadow-soft hover:bg-neutral-50 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98];
+    background-color: white;
+    color: #334155;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
+    transition: all 200ms;
+    cursor: pointer;
+  }
+
+  .btn-secondary:hover {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
   }
   
   .btn-accent {
-    @apply bg-accent-500 text-white px-4 py-2.5 rounded-lg font-medium shadow-soft hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98];
+    background-color: #ff6b35;
+    color: white;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
+    transition: all 200ms;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-accent:hover {
+    background-color: #ea580c;
   }
   
   .btn-ghost {
-    @apply text-neutral-600 px-3 py-2 rounded-lg font-medium hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200;
+    color: #64748b;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    transition: all 200ms;
+    cursor: pointer;
+  }
+
+  .btn-ghost:hover {
+    background-color: #f1f5f9;
+    color: #1e293b;
   }
   
   /* Professional Tool Button */
   .tool-btn {
-    @apply flex flex-col items-center justify-center p-3 rounded-xl border text-sm font-medium transition-all duration-200 min-h-[4rem] group;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 200ms;
+    min-height: 4rem;
+    cursor: pointer;
   }
   
   .tool-btn-inactive {
-    @apply border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-800 shadow-soft hover:shadow-medium;
+    border-color: #e2e8f0;
+    background-color: white;
+    color: #64748b;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
+  }
+
+  .tool-btn-inactive:hover {
+    border-color: #cbd5e1;
+    background-color: #f8fafc;
+    color: #1e293b;
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.08);
   }
   
   .tool-btn-active {
-    @apply border-primary-500 bg-primary-50 text-primary-700 shadow-medium ring-2 ring-primary-200;
+    border-color: #22c55e;
+    background-color: #f0fdf4;
+    color: #15803d;
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.08);
+    ring: 2px solid #bbf7d0;
   }
   
   /* Professional Input System */
   .input-field {
-    @apply w-full px-3 py-2.5 rounded-lg border border-neutral-200 bg-white text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    background-color: white;
+    color: #0f172a;
+    transition: all 200ms;
+  }
+
+  .input-field::placeholder {
+    color: #94a3b8;
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
   }
   
   .input-label {
-    @apply block text-sm font-medium text-neutral-700 mb-2;
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #334155;
+    margin-bottom: 0.5rem;
   }
   
   /* Professional Card System */
   .card {
-    @apply bg-white border border-neutral-200 rounded-xl shadow-soft;
+    background-color: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
   }
   
   .card-header {
-    @apply px-4 py-3 border-b border-neutral-200;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
   }
   
   .card-content {
-    @apply p-4;
+    padding: 1rem;
   }
   
   /* Status Badge System */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
   }
   
   .badge-success {
-    @apply bg-primary-100 text-primary-800;
+    background-color: #dcfce7;
+    color: #166534;
   }
   
   .badge-warning {
-    @apply bg-earth-100 text-earth-800;
+    background-color: #fef3c7;
+    color: #92400e;
   }
   
   .badge-error {
-    @apply bg-red-100 text-red-800;
+    background-color: #fecaca;
+    color: #991b1b;
   }
   
   .badge-neutral {
-    @apply bg-neutral-100 text-neutral-700;
+    background-color: #f1f5f9;
+    color: #334155;
   }
   
   /* Professional Panel System */
   .panel {
-    @apply bg-white border-r border-neutral-200 shadow-soft;
+    background-color: white;
+    border-right: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
   }
   
   .panel-header {
-    @apply px-4 py-3 border-b border-neutral-200 bg-neutral-25;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background-color: #fcfcfd;
   }
   
   .panel-content {
-    @apply p-4;
+    padding: 1rem;
   }
   
   /* Professional Tab System */
   .tab-nav {
-    @apply flex border-b border-neutral-200;
+    display: flex;
+    border-bottom: 1px solid #e2e8f0;
   }
   
   .tab-button {
-    @apply flex-1 px-4 py-3 text-sm font-medium text-center border-b-2 border-transparent transition-all duration-200;
+    flex: 1;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-align: center;
+    border-bottom: 2px solid transparent;
+    transition: all 200ms;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
   }
   
   .tab-button-inactive {
-    @apply text-neutral-500 hover:text-neutral-700 hover:border-neutral-300;
+    color: #64748b;
+  }
+
+  .tab-button-inactive:hover {
+    color: #334155;
+    border-bottom-color: #cbd5e1;
   }
   
   .tab-button-active {
-    @apply text-primary-600 border-primary-500;
+    color: #16a34a;
+    border-bottom-color: #22c55e;
   }
   
   /* Professional Coordinate Display */
   .coordinate-display {
-    @apply font-mono text-sm text-neutral-600 bg-neutral-50 px-3 py-1.5 rounded border;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 0.875rem;
+    color: #64748b;
+    background-color: #f8fafc;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.25rem;
+    border: 1px solid #e2e8f0;
   }
   
   /* Professional Status Bar */
   .status-bar {
-    @apply bg-neutral-800 text-neutral-200 px-4 py-2 text-sm font-medium border-t border-neutral-700;
+    background-color: #1e293b;
+    color: #e2e8f0;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-top: 1px solid #334155;
   }
   
   /* Professional Tooltips */
   .tooltip {
-    @apply absolute z-50 px-2 py-1 text-xs font-medium text-white bg-neutral-900 rounded shadow-strong whitespace-nowrap;
+    position: absolute;
+    z-index: 50;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: white;
+    background-color: #0f172a;
+    border-radius: 0.25rem;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.12);
+    white-space: nowrap;
   }
   
   /* Ribbon-style Interface */
   .ribbon-group {
-    @apply border-r border-neutral-200 last:border-r-0;
+    border-right: 1px solid #e2e8f0;
+  }
+
+  .ribbon-group:last-child {
+    border-right: none;
   }
 
   .ribbon-tool {
-    @apply flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] h-16 
-           transition-all duration-150 group relative cursor-pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    min-width: 60px;
+    height: 4rem;
+    transition: all 150ms;
+    position: relative;
+    cursor: pointer;
   }
 
   .ribbon-tool-active {
-    @apply bg-primary-100 text-primary-700 shadow-soft border border-primary-200;
+    background-color: #f0fdf4;
+    color: #15803d;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
+    border: 1px solid #bbf7d0;
   }
 
   .ribbon-tool-inactive {
-    @apply text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800 border border-transparent;
+    color: #64748b;
+    border: 1px solid transparent;
+  }
+
+  .ribbon-tool-inactive:hover {
+    background-color: #f8fafc;
+    color: #1e293b;
   }
 
   .ribbon-tool-btn {
-    @apply flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] h-16 
-           text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800 border border-transparent
-           transition-all duration-150 cursor-pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    min-width: 60px;
+    height: 4rem;
+    color: #64748b;
+    border: 1px solid transparent;
+    transition: all 150ms;
+    cursor: pointer;
+    background: none;
+  }
+
+  .ribbon-tool-btn:hover {
+    background-color: #f8fafc;
+    color: #1e293b;
   }
 
   /* Sidebar Enhancement */
   .sidebar-tool {
-    @apply w-full flex flex-col items-center justify-center py-3 px-2 relative group
-           transition-all duration-150 hover:bg-neutral-50;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 0.5rem;
+    position: relative;
+    transition: all 150ms;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .sidebar-tool:hover {
+    background-color: #f8fafc;
   }
 
   .sidebar-tool-active {
-    @apply text-primary-600 bg-primary-50;
+    color: #16a34a;
+    background-color: #f0fdf4;
   }
 
   .sidebar-tool-inactive {
-    @apply text-neutral-600 hover:text-neutral-800;
+    color: #64748b;
+  }
+
+  .sidebar-tool-inactive:hover {
+    color: #1e293b;
   }
 
   .sidebar-indicator {
-    @apply absolute w-1 h-8 bg-blue-600 rounded-full transition-all duration-200;
+    position: absolute;
+    width: 0.25rem;
+    height: 2rem;
+    background-color: #16a34a;
+    border-radius: 9999px;
+    transition: all 200ms;
   }
 
   .sidebar-indicator-left {
-    @apply left-0 top-1/2 transform -translate-y-1/2 rounded-r-full;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: 0 9999px 9999px 0;
   }
 
   .sidebar-indicator-right {
-    @apply right-0 top-1/2 transform -translate-y-1/2 rounded-l-full;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: 9999px 0 0 9999px;
   }
 
   /* Enhanced Tooltips */
   .tooltip-enhanced {
-    @apply absolute px-2 py-1 bg-neutral-800 text-white text-xs rounded 
-           opacity-0 group-hover:opacity-100 transition-opacity duration-200 
-           whitespace-nowrap pointer-events-none z-10;
+    position: absolute;
+    padding: 0.25rem 0.5rem;
+    background-color: #1e293b;
+    color: white;
+    font-size: 0.75rem;
+    border-radius: 0.25rem;
+    opacity: 0;
+    transition: opacity 200ms;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .group:hover .tooltip-enhanced {
+    opacity: 1;
   }
 
   .tooltip-left {
-    @apply right-full top-1/2 transform -translate-y-1/2 mr-3;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-right: 0.75rem;
   }
 
   .tooltip-right {
-    @apply left-full top-1/2 transform -translate-y-1/2 ml-3;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0.75rem;
   }
 
   .tooltip-bottom {
-    @apply bottom-full left-1/2 transform -translate-x-1/2 mb-2;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 0.5rem;
   }
 
   /* Modern Glass Effect */
   .glass-panel {
-    @apply backdrop-filter backdrop-blur-md bg-white/90 border border-white/20;
+    backdrop-filter: blur(12px);
+    background-color: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   .glass-panel-dark {
-    @apply backdrop-filter backdrop-blur-md bg-neutral-900/90 border border-white/10;
+    backdrop-filter: blur(12px);
+    background-color: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   /* 3D Scene Enhancements */
   .scene-container {
-    @apply relative overflow-hidden;
+    position: relative;
+    overflow: hidden;
   }
 
   .scene-overlay {
-    @apply absolute inset-0 pointer-events-none z-10;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 10;
   }
 
   /* Animation Utilities */

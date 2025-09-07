@@ -349,12 +349,13 @@ While maintaining professional CAD functionality, the visual interface adopts mo
 - **Gradient Accents**: Subtle gradients for depth and premium feel
 - **Rounded Corners**: 8-12px radius for approachable interface
 - **Smooth Animations**: 200ms transitions for all interactions
-- **Clean Typography**: Modern sans-serif with clear hierarchy
+- **Clean Typography**: Nunito Sans font system with clear hierarchy and enhanced readability
 - **Consistent Spacing**: 8px base unit grid system
 
 > **Note**: These visual updates enhance the user experience while all professional CAD tools and precision features remain unchanged.
 
 ### Typography Hierarchy
+**Font Family**: Nunito Sans (Google Fonts optimized)
 ```
 Title:     20px - Bold - Key message
 Body:      14px - Regular - General content  

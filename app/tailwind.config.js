@@ -2,12 +2,12 @@
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    fontFamily: {
+      sans: ['Nunito Sans', 'system-ui', 'sans-serif'],
+      mono: ['JetBrains Mono', 'Consolas', 'monospace'],
+      display: ['Nunito Sans', 'system-ui', 'sans-serif'],
+    },
     extend: {
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Consolas', 'monospace'],
-        display: ['Inter', 'system-ui', 'sans-serif'],
-      },
       colors: {
         // Professional Land Surveying Color Palette
         primary: {
@@ -40,6 +40,18 @@ export default {
           600: '#ea580c',
           700: '#c2410c',
         },
+        blue: {
+          50: '#eff6ff',
+          100: '#dbeafe', 
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+        },
         neutral: {
           25: '#fcfcfd',
           50: '#f8fafc',
@@ -66,4 +78,5 @@ export default {
     },
   },
   plugins: [],
+  // Force config reload
 };
