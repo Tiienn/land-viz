@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useCallback } from 'react';
 import { Sphere } from '@react-three/drei';
 import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
@@ -13,7 +13,7 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
   const { camera, raycaster, gl } = useThree();
   
   // Get edit state from store
-  const { drawing, shapes, selectCorner } = useAppStore();
+  const { drawing, shapes, selectCorner, updateShapePointLive, convertRectangleToPolygonLive, saveToHistory } = useAppStore();
 
   // Find the shape being edited
   const editingShape = useMemo(() => {
@@ -39,13 +39,17 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
     return editingShape.points;
   }, [editingShape]);
 
-  // Dragging state and handlers - completely imperative approach
-  let dragState = { isDragging: false, dragCornerIndex: null as number | null };
+  // Persistent dragging state using useRef to survive re-renders
+  const dragState = useRef({ 
+    isDragging: false, 
+    dragCornerIndex: null as number | null,
+    originalPoints: null as Point2D[] | null 
+  });
   
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
 
-  const handlePointerMove = (event: PointerEvent) => {
-    if (!dragState.isDragging || dragState.dragCornerIndex === null) return;
+  const handlePointerMove = useCallback((event: PointerEvent) => {
+    if (!dragState.current.isDragging || dragState.current.dragCornerIndex === null) return;
 
     const rect = gl.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2();
@@ -57,38 +61,40 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
     if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
       const newPoint: Point2D = { x: intersection.x, y: intersection.z };
       
-      // Get fresh state and update
+      // Get fresh state and update WITHOUT saving to history during drag
       const state = useAppStore.getState();
       const currentShape = state.shapes.find(s => s.id === state.drawing.editingShapeId);
       
-      if (currentShape) {
+      if (currentShape && dragState.current.originalPoints) {
+        const newPoints = [...dragState.current.originalPoints];
+        newPoints[dragState.current.dragCornerIndex] = newPoint;
+        
+        // Use live update actions for real-time feedback
+        console.log('🔥 Live updating shape:', currentShape.id, 'point:', dragState.current.dragCornerIndex, 'new point:', newPoint);
         if (currentShape.type === 'rectangle' && currentShape.points.length === 2) {
-          // Convert to polygon for free-form editing
-          const [topLeft, bottomRight] = currentShape.points;
-          const currentPoints = [
-            { x: topLeft.x, y: topLeft.y },
-            { x: bottomRight.x, y: topLeft.y },
-            { x: bottomRight.x, y: bottomRight.y },
-            { x: topLeft.x, y: bottomRight.y }
-          ];
-          currentPoints[dragState.dragCornerIndex] = newPoint;
-          state.convertRectangleToPolygon(currentShape.id, currentPoints);
+          // For rectangles, convert to polygon with new points (live update)
+          convertRectangleToPolygonLive(currentShape.id, newPoints);
         } else {
-          // Direct point update for polygons
-          state.updateShapePoint(currentShape.id, dragState.dragCornerIndex, newPoint);
+          // For polygons, update the specific point (live update)
+          updateShapePointLive(currentShape.id, dragState.current.dragCornerIndex, newPoint);
         }
+        console.log('🔥 Live update complete for:', currentShape.id);
       }
     }
-  };
+  }, [gl.domElement, raycaster, camera, groundPlane]);
 
-  const handlePointerUp = () => {
-    if (dragState.isDragging) {
-      dragState.isDragging = false;
-      dragState.dragCornerIndex = null;
+  const handlePointerUp = useCallback(() => {
+    if (dragState.current.isDragging) {
+      // Save to history once at the end of drag operation
+      saveToHistory();
+      
+      dragState.current.isDragging = false;
+      dragState.current.dragCornerIndex = null;
+      dragState.current.originalPoints = null;
       document.removeEventListener('pointermove', handlePointerMove as any);
       document.removeEventListener('pointerup', handlePointerUp as any);
     }
-  };
+  }, [handlePointerMove, saveToHistory]);
 
   // Cleanup on unmount
   React.useEffect(() => {
@@ -121,10 +127,28 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
             onPointerDown={(event) => {
               event.stopPropagation();
               selectCorner(index);
-              dragState.isDragging = true;
-              dragState.dragCornerIndex = index;
-              document.addEventListener('pointermove', handlePointerMove as any);
-              document.addEventListener('pointerup', handlePointerUp as any);
+              
+              // Store original points for drag operation
+              if (editingShape) {
+                let originalPoints = editingShape.points;
+                
+                // Expand rectangle to 4 corners if needed
+                if (editingShape.type === 'rectangle' && editingShape.points.length === 2) {
+                  const [topLeft, bottomRight] = editingShape.points;
+                  originalPoints = [
+                    { x: topLeft.x, y: topLeft.y },
+                    { x: bottomRight.x, y: topLeft.y },
+                    { x: bottomRight.x, y: bottomRight.y },
+                    { x: topLeft.x, y: bottomRight.y }
+                  ];
+                }
+                
+                dragState.current.isDragging = true;
+                dragState.current.dragCornerIndex = index;
+                dragState.current.originalPoints = [...originalPoints];
+                document.addEventListener('pointermove', handlePointerMove as any);
+                document.addEventListener('pointerup', handlePointerUp as any);
+              }
             }}
           >
             <meshBasicMaterial

@@ -102,14 +102,14 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       return shapes.find(shape => shape.id === drawing.rotatingShapeId) || null;
     }
     
-    // Show rotation handle for selected shape (when not in edit or drawing modes)
-    if (selectedShapeId && activeTool === 'select' && 
-        !drawing.isEditMode && !drawing.isDrawing) {
+    // Show rotation handle for selected shape (when not in edit mode)
+    // Allow rotation handles to show even if just finished drawing
+    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
       return shapes.find(shape => shape.id === selectedShapeId) || null;
     }
     
     return null;
-  }, [shapes, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing]);
+  }, [shapes, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing, shapes.length]);
 
   // Calculate rotation handle position with transforms applied
   const rotationHandlePosition = useMemo(() => {

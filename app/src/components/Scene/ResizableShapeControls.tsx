@@ -39,6 +39,8 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   const setResizeHandle = useAppStore(state => state.setResizeHandle);
   const setMaintainAspectRatio = useAppStore(state => state.setMaintainAspectRatio);
   const resizeShape = useAppStore(state => state.resizeShape);
+  const resizeShapeLive = useAppStore(state => state.resizeShapeLive);
+  const saveToHistory = useAppStore(state => state.saveToHistory);
   
   // Get global drag state to handle shape dragging transforms
   const globalDragState = useAppStore(state => state.dragState);
@@ -486,10 +488,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       }
       
       // Return new rectangle bounds in 2-point format (preserving rectangle shape)
-      return [
+      const result = [
         { x: minX, y: minY },  // Top left
         { x: maxX, y: maxY }   // Bottom right
       ];
+      console.log('🔧 Rectangle resize returning 2-point format:', JSON.stringify(result));
+      return result;
     } else {
       // Edge resizing - constrain to single dimension
       const newCorners = [...corners];
@@ -514,10 +518,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       const minY = Math.min(newCorners[0].y, newCorners[1].y, newCorners[2].y, newCorners[3].y);
       const maxY = Math.max(newCorners[0].y, newCorners[1].y, newCorners[2].y, newCorners[3].y);
       
-      return [
+      const edgeResult = [
         { x: minX, y: minY },  // Top left
         { x: maxX, y: maxY }   // Bottom right
       ];
+      console.log('🔧 Edge resize returning 2-point format:', JSON.stringify(edgeResult));
+      return edgeResult;
     }
   }, [maintainRectangleAspectRatio]);
 
@@ -583,13 +589,24 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         }
       }
       
-      resizeShape(resizingShape.id, newPoints);
+      console.log('🔧 About to call resizeShapeLive:', {
+        shapeId: resizingShape.id,
+        handleType: dragState.current.handleType,
+        handleIndex: dragState.current.handleIndex,
+        newPoints: JSON.stringify(newPoints),
+        originalPoints: JSON.stringify(dragState.current.originalPoints)
+      });
+      document.title = 'LIVE RESIZE CALL ' + new Date().getSeconds();
+      // Use live resize during dragging to avoid history pollution
+      resizeShapeLive(resizingShape.id, newPoints);
     }
-  }, [camera, gl.domElement, raycaster, resizingShape, setMaintainAspectRatio, resizeShape, groundPlane, calculateRectangleResize, calculateCircleResize, calculateEllipseResize]);
+  }, [camera, gl.domElement, raycaster, resizingShape, setMaintainAspectRatio, resizeShapeLive, groundPlane, calculateRectangleResize, calculateCircleResize, calculateEllipseResize]);
 
   const handlePointerUp = useCallback((event: PointerEvent) => {
     if (dragState.current.isDragging && 
         (dragState.current.pointerId === null || event.pointerId === dragState.current.pointerId)) {
+      
+      console.log('🔄 Resize complete - state already saved at beginning');
       
       // Clean up drag state
       dragState.current.isDragging = false;
@@ -652,7 +669,13 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   
                   setResizeHandle('corner', index);
                   
-                  // Set up drag state
+                  // Save initial state to history before starting resize
+                  console.log('🔄 Saving initial state before resize');
+                  saveToHistory();
+                  
+                  // Set up drag state  
+                  console.log('🎯 SPHERE CLICKED! Corner index:', index);
+                  document.title = 'CORNER DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'corner';
                   dragState.current.handleIndex = index;
@@ -721,7 +744,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   
                   setResizeHandle('edge', index);
                   
+                  // Save initial state to history before starting resize
+                  console.log('🔄 Saving initial state before resize');
+                  saveToHistory();
+                  
                   // Set up drag state
+                  document.title = 'EDGE DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'edge';
                   dragState.current.handleIndex = index;
@@ -792,7 +820,13 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   
                   setResizeHandle('corner', index);
                   
-                  // Set up drag state
+                  // Save initial state to history before starting resize
+                  console.log('🔄 Saving initial state before resize');
+                  saveToHistory();
+                  
+                  // Set up drag state  
+                  console.log('🎯 SPHERE CLICKED! Corner index:', index);
+                  document.title = 'CORNER DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'corner';
                   dragState.current.handleIndex = index;
@@ -862,7 +896,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   
                   setResizeHandle('edge', index);
                   
+                  // Save initial state to history before starting resize
+                  console.log('🔄 Saving initial state before resize');
+                  saveToHistory();
+                  
                   // Set up drag state
+                  document.title = 'EDGE DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'edge';
                   dragState.current.handleIndex = index;
@@ -923,6 +962,10 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
               event.stopPropagation();
               
               setResizeHandle('corner', index);
+              
+              // Save initial state to history before starting resize
+              console.log('🔄 Saving initial state before resize');
+              saveToHistory();
               
               // Set up drag state
               dragState.current.isDragging = true;

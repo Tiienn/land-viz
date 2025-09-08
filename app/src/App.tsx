@@ -1,11 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import SceneManager from './components/Scene/SceneManager';
+import LayerPanel from './components/LayerPanel';
+
+console.log('🔥 APP.TSX LOADED AT:', new Date().toLocaleTimeString());
 import { useAppStore } from './store/useAppStore';
 import ExportSettingsDialog, { type ExportSettings } from './components/ExportSettingsDialog';
-import PropertiesPanel from './components/PropertiesPanel';
+// import PropertiesPanel from './components/PropertiesPanel';
+// import AlignmentControls from './components/ui/AlignmentControls';
+import useAlignmentKeyboard from './hooks/useAlignmentKeyboard';
 import Icon from './components/Icon';
 import type { Point2D } from './types';
 
+/**
+ * Root React component for the Land Visualizer application.
+ *
+ * Renders the full UI (header, tool ribbon, side panels, 3D scene, status overlays)
+ * and wires user interactions to the central scene store: tool selection, drawing/editing,
+ * snapping/alignment controls, undo/redo, layer panel, and export flows (Excel/DXF/GeoJSON/PDF).
+ *
+ * Side effects:
+ * - Attaches global keyboard handlers for undo/redo and escape (cancels operations).
+ * - Adds/removes document-level mouse and mount-time styles (hides scrollbars).
+ * - Registers SceneManager callbacks to track mouse world coordinates, drawing dimensions,
+ *   and polyline start proximity.
+ *
+ * @returns The complete application JSX tree.
+ */
 function App(): React.JSX.Element {
   // Local UI state for performance (reduces re-renders)
   const [activeTool, setActiveTool] = useState('select');
@@ -60,6 +80,17 @@ function App(): React.JSX.Element {
     activeLayerId,
     updateLayer
   } = useAppStore();
+
+  // Initialize alignment keyboard shortcuts
+  const {
+    toggleAlignment,
+    toggleGrid,
+    clearAllGuides,
+    shortcuts: alignmentShortcuts
+  } = useAlignmentKeyboard({
+    enabled: true,
+    preventDefaults: true
+  });
 
   // Sync local state with store state when store changes
   useEffect(() => {
@@ -116,7 +147,7 @@ function App(): React.JSX.Element {
   }, [undo, redo, canUndo, canRedo, removeLastPoint, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
 
   // 3D Scene event handlers
-  const handleCoordinateChange = (worldPos: Point2D, screenPos: Point2D) => {
+  const handleCoordinateChange = (worldPos: Point2D, _screenPos: Point2D) => {
     setMousePosition(worldPos);
     setIsMouseOver3D(true);
   };
@@ -264,7 +295,7 @@ function App(): React.JSX.Element {
       <div style={{ 
         background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', 
         borderBottom: '1px solid #e2e8f0', 
-        padding: '20px 24px', 
+        padding: '24px 24px', 
         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         display: 'flex', 
         justifyContent: 'space-between', 
@@ -283,8 +314,8 @@ function App(): React.JSX.Element {
           />
           <div>
             <h1 style={{ 
-              fontSize: '24px', 
-              fontWeight: '700', 
+              fontSize: '20px', 
+              fontWeight: '600', 
               margin: 0, 
               color: '#000000'
             }}>
@@ -304,7 +335,24 @@ function App(): React.JSX.Element {
               color: isProfessionalMode ? '#1d4ed8' : '#000000',
               fontWeight: '500'
             }}>
-              {isProfessionalMode ? '🎯 Professional' : '👤 Standard'}
+              {isProfessionalMode ? (
+                <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L3.09 8.26L12 14L20.91 8.26L12 2Z"/>
+                    <path d="M3.09 8.26L12 14.52L20.91 8.26"/>
+                    <path d="M3.09 15.74L12 22L20.91 15.74"/>
+                  </svg>
+                  Professional
+                </span>
+              ) : (
+                <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  Standard
+                </span>
+              )}
             </span>
             <button
               onClick={() => setIsProfessionalMode(!isProfessionalMode)}
@@ -337,7 +385,15 @@ function App(): React.JSX.Element {
                 justifyContent: 'center',
                 fontSize: '10px'
               }}>
-                {isProfessionalMode ? '⚡' : '📊'}
+                {isProfessionalMode ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#3b82f6">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#6b7280">
+                    <path d="M3 3v18h18v-18h-18zm8 16h-2v-6h2v6zm0-8h-2v-2h2v2zm4 8h-2v-8h2v8zm0-10h-2v-2h2v2z"/>
+                  </svg>
+                )}
               </div>
             </button>
           </div>
@@ -355,7 +411,7 @@ function App(): React.JSX.Element {
         boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
       }}>
         <div style={{ 
-          padding: '12px 20px', 
+          padding: '12px 24px', 
           borderBottom: '1px solid #f1f5f9', 
           background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' 
         }}>
@@ -946,6 +1002,204 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Enter Dimensions</span>
                 </button>
+                
+                {/* Snap Toggle Buttons */}
+                <button 
+                  onClick={() => {
+                    // Toggle snap to grid
+                    const currentState = useAppStore.getState();
+                    useAppStore.setState(state => ({
+                      ...state,
+                      drawing: {
+                        ...state.drawing,
+                        snapping: {
+                          ...state.drawing.snapping,
+                          config: {
+                            ...state.drawing.snapping.config,
+                            activeTypes: currentState.drawing.snapping.config.activeTypes?.has?.('grid')
+                              ? new Set([...currentState.drawing.snapping.config.activeTypes].filter(t => t !== 'grid'))
+                              : new Set([...currentState.drawing.snapping.config.activeTypes, 'grid'])
+                          }
+                        }
+                      }
+                    }));
+                  }}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '6px 8px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: drawing.snapping?.config?.activeTypes?.has?.('grid') ? '#dbeafe' : '#ffffff',
+                    color: drawing.snapping?.config?.activeTypes?.has?.('grid') ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '10px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!drawing.snapping?.config?.activeTypes?.has?.('grid')) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!drawing.snapping?.config?.activeTypes?.has?.('grid')) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title="Toggle Grid Snapping"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                  </svg>
+                  <span style={{ marginTop: '2px' }}>Grid</span>
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    // Toggle shape snapping (endpoints + midpoints + centers)
+                    const currentState = useAppStore.getState();
+                    const hasShapeSnaps = ['endpoint', 'midpoint', 'center'].some(type => 
+                      currentState.drawing.snapping.config.activeTypes?.has?.(type)
+                    );
+                    const newTypes = new Set(currentState.drawing.snapping.config.activeTypes);
+                    
+                    if (hasShapeSnaps) {
+                      // Remove shape snaps
+                      ['endpoint', 'midpoint', 'center'].forEach(type => newTypes.delete(type));
+                    } else {
+                      // Add shape snaps
+                      ['endpoint', 'midpoint', 'center'].forEach(type => newTypes.add(type));
+                    }
+                    
+                    useAppStore.setState(state => ({
+                      ...state,
+                      drawing: {
+                        ...state.drawing,
+                        snapping: {
+                          ...state.drawing.snapping,
+                          config: {
+                            ...state.drawing.snapping.config,
+                            activeTypes: newTypes
+                          }
+                        }
+                      }
+                    }));
+                  }}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '6px 8px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: ['endpoint', 'midpoint', 'center'].some(type => 
+                      drawing.snapping?.config?.activeTypes?.has?.(type)
+                    ) ? '#dcfce7' : '#ffffff',
+                    color: ['endpoint', 'midpoint', 'center'].some(type => 
+                      drawing.snapping?.config?.activeTypes?.has?.(type)
+                    ) ? '#166534' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '10px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!['endpoint', 'midpoint', 'center'].some(type => 
+                      drawing.snapping?.config?.activeTypes?.has?.(type)
+                    )) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!['endpoint', 'midpoint', 'center'].some(type => 
+                      drawing.snapping?.config?.activeTypes?.has?.(type)
+                    )) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title="Toggle Shape Snapping (corners, midpoints, centers)"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="8"></circle>
+                    <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                    <circle cx="12" cy="4" r="2" fill="currentColor"></circle>
+                    <circle cx="12" cy="20" r="2" fill="currentColor"></circle>
+                    <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
+                    <circle cx="20" cy="12" r="2" fill="currentColor"></circle>
+                  </svg>
+                  <span style={{ marginTop: '2px' }}>Shapes</span>
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    // Toggle alignment guides
+                    const currentState = useAppStore.getState();
+                    const alignmentEnabled = currentState.drawing.alignment?.config?.enabled ?? true;
+                    
+                    useAppStore.setState(state => ({
+                      ...state,
+                      drawing: {
+                        ...state.drawing,
+                        alignment: {
+                          ...state.drawing.alignment,
+                          config: {
+                            ...state.drawing.alignment?.config,
+                            enabled: !alignmentEnabled
+                          }
+                        }
+                      }
+                    }));
+                  }}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    padding: '6px 8px', 
+                    borderRadius: '4px', 
+                    minWidth: '60px', 
+                    height: '60px', 
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: drawing.alignment?.config?.enabled ? '#fce7f3' : '#ffffff',
+                    color: drawing.alignment?.config?.enabled ? '#831843' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '10px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!drawing.alignment?.config?.enabled) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!drawing.alignment?.config?.enabled) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title="Toggle Alignment Guides (Canva-style)"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="3" x2="12" y2="21" strokeDasharray="2 2"></line>
+                    <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="2 2"></line>
+                    <rect x="8" y="8" width="8" height="8"></rect>
+                  </svg>
+                  <span style={{ marginTop: '2px' }}>Align</span>
+                </button>
               </div>
             </div>
 
@@ -1155,7 +1409,15 @@ function App(): React.JSX.Element {
                         onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        📊 Excel (.xlsx)
+                        <span style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14,2 14,8 20,8"/>
+                            <line x1="16" y1="13" x2="8" y2="21"/>
+                            <line x1="8" y1="13" x2="16" y2="21"/>
+                          </svg>
+                          Excel (.xlsx)
+                        </span>
                       </button>
                       <button
                         onClick={() => handleQuickExport('dxf')}
@@ -1477,102 +1739,24 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
-          {/* Layers Expansion Panel */}
+          {/* Layers Expansion Panel - Inline */}
           {layersExpanded && (
             <div style={{
-              width: '240px',
-              background: '#f8fafc',
+              width: '350px',
+              background: 'white',
               borderLeft: '1px solid #e2e8f0',
-              padding: '16px',
               overflowY: 'auto',
               maxHeight: '100vh'
             }}>
-              <div style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '12px',
-                textAlign: 'center'
-              }}>
-                <div>{layers.length} Layer{layers.length !== 1 ? 's' : ''}</div>
-                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
-                  {shapes.length} Shape{shapes.length !== 1 ? 's' : ''}
-                </div>
-              </div>
-
-                {layers.map(layer => {
-                  const isActive = layer.id === activeLayerId;
-                  const layerShapes = shapes.filter(shape => shape.layerId === layer.id);
-                  
-                  return (
-                  <div
-                    key={layer.id}
-                    style={{
-                      padding: '12px',
-                      marginBottom: '8px',
-                      background: isActive ? '#e0f2fe' : 'white',
-                      borderRadius: '6px',
-                      border: isActive ? '1px solid #0ea5e9' : '1px solid #e5e7eb',
-                      fontSize: '13px'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      marginBottom: '6px'
-                    }}>
-                      <div
-                        style={{
-                          width: '14px',
-                          height: '14px',
-                          background: layer.color,
-                          borderRadius: '3px',
-                          border: '1px solid #d1d5db'
-                        }}
-                      />
-                      <span style={{
-                        fontWeight: '500',
-                        color: '#374151',
-                        fontSize: '12px',
-                        flex: 1,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {layer.name.length > 20 ? layer.name.substring(0, 20) + '...' : layer.name}
-                      </span>
-                      <button
-                        onClick={() => updateLayer(layer.id, { visible: !layer.visible })}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '14px',
-                          opacity: layer.visible ? 1 : 0.4,
-                          padding: '2px'
-                        }}
-                        title={layer.visible ? 'Hide layer' : 'Show layer'}
-                      >
-                        👁️
-                      </button>
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontSize: '11px',
-                      color: '#6b7280'
-                    }}>
-                      <span>{layerShapes.length} shape{layerShapes.length !== 1 ? 's' : ''}</span>
-                      <span>
-                        {Math.round(layer.opacity * 100)}% opacity
-                      </span>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
+              <LayerPanel 
+                isOpen={true} 
+                onClose={() => {
+                  setLayersExpanded(false);
+                  setLeftPanelExpanded(false);
+                }} 
+              />
+            </div>
+          )}
         </div>
 
         {/* Central 3D Canvas */}
@@ -1599,7 +1783,7 @@ function App(): React.JSX.Element {
               settings={{
                 gridSize: 100,
                 gridDivisions: 50,
-                showGrid: true,
+                showGrid: drawing.snapping?.config?.activeTypes?.has?.('grid') ?? false,
                 backgroundColor: 'transparent',
                 cameraPosition: { x: 0, y: 30, z: 30 },
                 cameraTarget: { x: 0, y: 0, z: 0 },
@@ -1692,8 +1876,8 @@ function App(): React.JSX.Element {
                 <div style={{ fontSize: '11px', opacity: 0.9 }}>
                   <div>X: {mousePosition.x.toFixed(1)}m, Z: {mousePosition.y.toFixed(1)}m</div>
                   <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px' }}>
-                    Grid: {drawing.snapToGrid ? `${drawing.gridSize}m snap` : 'Free move'} 
-                    {drawing.snapToGrid && <span style={{ color: '#22c55e', marginLeft: '4px' }}>📍</span>}
+                    Grid: {drawing.snapping?.config?.activeTypes?.has?.('grid') ? `${drawing.gridSize}m snap` : 'Free move'} 
+                    {drawing.snapping?.config?.activeTypes?.has?.('grid') && <span style={{ color: '#22c55e', marginLeft: '4px' }}>📍</span>}
                   </div>
                 </div>
               </div>
@@ -1701,14 +1885,14 @@ function App(): React.JSX.Element {
               {/* Current Dimensions Display - Show when drawing tools are active */}
               {(currentDimensions || (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'polyline')) && (
                 <div style={{
-                  background: 'rgba(30, 30, 30, 0.95)',
+                  background: 'rgba(59, 130, 246, 0.95)',
                   color: 'white',
                   padding: '8px 12px',
                   borderRadius: '8px',
                   fontSize: '12px',
                   fontWeight: '500',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+                  border: '1px solid rgba(255,255,255,0.2)',
                   backdropFilter: 'blur(10px)',
                   minWidth: '140px'
                 }}>
@@ -2070,6 +2254,12 @@ function App(): React.JSX.Element {
       {/* <PropertiesPanel
         isOpen={propertiesPanelOpen}
         onClose={() => setPropertiesPanelOpen(false)}
+      /> */}
+
+      {/* Professional Alignment Controls */}
+      {/* <AlignmentControls 
+        compact={false}
+        className="alignment-controls"
       /> */}
     </div>
   );

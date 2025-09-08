@@ -7,7 +7,14 @@ import DrawingCanvas from './DrawingCanvas';
 import DrawingFeedback from './DrawingFeedback';
 import ShapeRenderer from './ShapeRenderer';
 import InfiniteGrid from './GridBackground';
+import BackgroundManager from './BackgroundManager';
+import { SnapIndicator } from './SnapIndicator';
+import { ActiveSnapIndicator } from './ActiveSnapIndicator';
+import AlignmentGuides from './AlignmentGuides';
+import DraggableShapes from './DraggableShapes';
+import RulerSystem from './RulerSystem';
 import type { SceneSettings, Point3D, Point2D } from '@/types';
+import { useAppStore } from '@/store/useAppStore';
 
 export interface SceneManagerRef {
   cameraController: React.RefObject<CameraControllerRef | null>;
@@ -57,6 +64,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
   cameraControllerRef
 }) => {
   const finalSettings = { ...defaultSettings, ...settings };
+  const alignmentGuides = useAppStore(state => state.drawing.alignment?.activeGuides || []);
+  const alignmentConfig = useAppStore(state => state.drawing.alignment?.config);
 
   // Note: Click handling is now done by DrawingCanvas component
   // These callbacks are kept for backward compatibility if needed
@@ -92,6 +101,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
         onCameraChange={onCameraChange}
       />
 
+      {/* Background manager handles scene background based on grid state */}
+      <BackgroundManager showGrid={finalSettings.showGrid} gridOffColor="#f5f5f5" />
+
       {finalSettings.showGrid && (
         <InfiniteGrid
           size={10}
@@ -111,6 +123,28 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <DrawingFeedback elevation={0.05} onDimensionChange={onDimensionChange} onPolylineStartProximity={onPolylineStartProximity} />
 
       <ShapeRenderer elevation={0.01} />
+
+      {/* Snap Indicators */}
+      <SnapIndicator maxDistance={100} />
+      <ActiveSnapIndicator />
+
+      {/* Professional Alignment Guides */}
+      <AlignmentGuides 
+        guides={alignmentGuides}
+        visible={alignmentConfig?.enabled && (alignmentConfig?.showCenterGuides || alignmentConfig?.showEdgeGuides || alignmentConfig?.showSpacingGuides)}
+        showLabels={true}
+      />
+
+      {/* Draggable shapes with alignment guides */}
+      <DraggableShapes />
+
+      {/* Professional ruler system - temporarily disabled to find 'm' issue */}
+      {/* <RulerSystem 
+        visible={true}
+        showMarkers={true}
+        unit="m"
+        precision={1}
+      /> */}
 
       <Environment preset="city" background={false} />
 

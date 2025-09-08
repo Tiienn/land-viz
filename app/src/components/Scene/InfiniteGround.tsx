@@ -73,12 +73,25 @@ const InfiniteGround: React.FC<InfiniteGroundProps> = ({
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(50, 50); // Repeat texture to create infinite effect
+    texture.generateMipmaps = false; // Prevent mipmap generation for better performance
+    texture.minFilter = THREE.LinearFilter; // Use linear filtering without mipmaps
+    texture.magFilter = THREE.LinearFilter;
     
-    return new THREE.MeshBasicMaterial({
+    const material = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: false,
       opacity: 1.0
     });
+    
+    // Add cleanup method for proper resource disposal
+    (material as any).dispose = () => {
+      if (material.map) {
+        material.map.dispose();
+      }
+      THREE.MeshBasicMaterial.prototype.dispose.call(material);
+    };
+    
+    return material;
   }, [cellSize, gridColor, sectionColor, backgroundColor]);
 
   return (
