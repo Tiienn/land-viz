@@ -11,6 +11,21 @@ import useAlignmentKeyboard from './hooks/useAlignmentKeyboard';
 import Icon from './components/Icon';
 import type { Point2D } from './types';
 
+/**
+ * Root React component for the Land Visualizer application.
+ *
+ * Renders the full UI (header, tool ribbon, side panels, 3D scene, status overlays)
+ * and wires user interactions to the central scene store: tool selection, drawing/editing,
+ * snapping/alignment controls, undo/redo, layer panel, and export flows (Excel/DXF/GeoJSON/PDF).
+ *
+ * Side effects:
+ * - Attaches global keyboard handlers for undo/redo and escape (cancels operations).
+ * - Adds/removes document-level mouse and mount-time styles (hides scrollbars).
+ * - Registers SceneManager callbacks to track mouse world coordinates, drawing dimensions,
+ *   and polyline start proximity.
+ *
+ * @returns The complete application JSX tree.
+ */
 function App(): React.JSX.Element {
   // Local UI state for performance (reduces re-renders)
   const [activeTool, setActiveTool] = useState('select');
