@@ -4,13 +4,17 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   define: {
-    'console.log': '() => {}',
-    'console.warn': '() => {}',
-    'console.info': '() => {}',
-    'console.debug': '() => {}'
+    // Only disable console methods in production builds
+    ...(mode === 'production' && {
+      'console.log': 'void 0',
+      'console.warn': 'void 0', 
+      'console.info': 'void 0',
+      'console.debug': 'void 0'
+      // Keep console.error for production error tracking
+    })
   },
   resolve: {
     alias: {
@@ -28,4 +32,4 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
   },
-})
+}))

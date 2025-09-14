@@ -1,30 +1,10 @@
 import { render } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Canvas } from '@react-three/fiber';
 import CameraController, { type CameraControllerRef } from '../components/Scene/CameraController';
 import { useRef } from 'react';
 
-vi.mock('@react-three/drei', () => ({
-  OrbitControls: vi.fn((props: Record<string, unknown>) => {
-    // Simulate the OrbitControls component
-    return <div data-testid="orbit-controls" {...props} />;
-  }),
-}));
-
-vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="canvas">{children}</div>
-  ),
-  useFrame: (callback: () => void) => {
-    // Mock useFrame - in real tests you might want to actually call this
-    void callback;
-  },
-  useThree: () => ({
-    camera: {
-      position: { x: 0, y: 30, z: 30, distanceTo: () => 50 },
-    },
-  }),
-}));
+// Global mocks are now in setup.ts - no need for local mocks
 
 const TestWrapper = ({ 
   children,

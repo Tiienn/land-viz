@@ -28,6 +28,9 @@ The application features a **Canva-inspired modern UI** with professional CAD fu
 - **🎛️ Professional Ribbon** - Clean tool grouping with SVG icons and visual separators
 - **🔄 Unit Conversion** - Seamlessly switch between m², ft², acres, and hectares
 - **⚡ Visual Comparisons** - See your land compared to familiar objects
+- **✏️ Polyline Drawing** - Advanced polyline tool with real-time dotted preview line
+- **🔧 Professional Controls** - Windows-style resize handles and CAD-style rotation system
+- **🎯 State Management** - Robust state isolation preventing visual corruption between shapes
 - **🎯 Precision Mode** - Professional-grade accuracy powered by Chili3D
 - **📱 Mobile First** - Works perfectly on phones, tablets, and desktops
 - **🚀 Fast & Lightweight** - Loads in under 3 seconds on 3G

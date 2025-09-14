@@ -3,6 +3,7 @@ import { useThree } from '@react-three/fiber';
 import { useAppStore } from '@/store/useAppStore';
 import { Line, Html } from '@react-three/drei';
 import { Vector3, Color, Plane } from 'three';
+import { logger } from '../../utils/logger';
 import type { Point2D } from '@/types';
 
 interface DrawingFeedbackProps {
@@ -86,7 +87,7 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
           }
         }
       } catch (error) {
-        console.warn('Mouse tracking error:', error);
+        logger.warn('Mouse tracking error:', error);
         // Keep using last known good position
         if (currentMousePosition.current) {
           setMousePosition(currentMousePosition.current);
@@ -158,7 +159,7 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
     // Map drawing tools to shape types
     const getShapeTypeFromTool = (tool: string) => {
       switch (tool) {
-        case 'polyline': return 'line';
+        case 'polyline': return 'polyline';
         case 'rectangle': return 'rectangle';
         case 'circle': return 'circle';
         case 'polygon': return 'polygon';

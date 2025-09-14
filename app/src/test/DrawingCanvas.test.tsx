@@ -3,54 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { Canvas } from '@react-three/fiber';
 import DrawingCanvas from '../components/Scene/DrawingCanvas';
 
-// Mock the Zustand store
-vi.mock('@/store/useAppStore', () => ({
-  useAppStore: vi.fn((selector) => {
-    const state = {
-      drawing: {
-        activeTool: 'select',
-        isDrawing: false,
-        currentShape: null,
-        snapToGrid: true,
-      },
-      startDrawing: vi.fn(),
-      addPoint: vi.fn(),
-      finishDrawing: vi.fn(),
-      cancelDrawing: vi.fn(),
-    };
-    return selector ? selector(state) : state;
-  }),
-}));
-
-vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="canvas">{children}</div>
-  ),
-  useFrame: (callback: () => void) => {
-    void callback;
-  },
-  useThree: () => ({
-    camera: {
-      position: { x: 0, y: 30, z: 30 },
-    },
-    gl: {
-      domElement: {
-        getBoundingClientRect: () => ({
-          left: 0,
-          top: 0,
-          width: 800,
-          height: 600,
-        }),
-      },
-    },
-    raycaster: {
-      setFromCamera: vi.fn(),
-      ray: {
-        intersectPlane: vi.fn(() => true),
-      },
-    },
-  }),
-}));
+// Global mocks are now in setup.ts - no need for local mocks
 
 const TestWrapper = ({ 
   onCoordinateChange,

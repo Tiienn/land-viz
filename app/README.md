@@ -1,69 +1,74 @@
-# React + TypeScript + Vite
+# Land Visualizer - Application
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Professional 3D Land Visualization Tool**  
+Built with React 18 + TypeScript + Vite + Three.js
 
-Currently, two official plugins are available:
+## 🚀 Quick Start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Application runs on: http://localhost:5173
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x';
-import reactDom from 'eslint-plugin-react-dom';
+## 🎯 Features
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+- **Professional 3D Scene**: Three.js + React Three Fiber rendering
+- **Advanced Drawing Tools**: Rectangle, Circle, Polyline with real-time preview
+- **Shape Editing**: Professional resize handles and rotation system
+- **State Management**: Zustand store with robust state isolation
+- **Clean Architecture**: Inline styles, TypeScript, performance optimized
+
+## 📁 Project Structure
+
 ```
+src/
+├── components/Scene/     # 3D visualization components
+├── store/               # Zustand state management
+├── types/               # TypeScript definitions
+├── utils/               # Utility functions
+└── services/            # Business logic services
+```
+
+## 🔧 Recent Updates
+
+- ✅ **State Corruption Fix**: Resolved liveResizePoints leaking across shape selections
+- ✅ **Tool Switching Enhancement**: Clean state transitions between drawing tools  
+- ✅ **Imaginary Line Feature**: Polyline drawing with dotted cursor preview
+- ✅ **Debug Console Cleanup**: Production-ready logging with clean output
+
+## 🛠️ Development
+
+### Commands
+
+```bash
+npm run dev        # Start development server
+npm run build      # Build for production
+npm run preview    # Preview production build
+npm run lint       # Run ESLint
+npm run test       # Run tests
+```
+
+### Tech Stack
+
+- **React 18** - Modern React with hooks and concurrent features
+- **TypeScript** - Type safety and better developer experience  
+- **Vite** - Fast build tool and dev server
+- **Three.js** - 3D graphics and WebGL rendering
+- **React Three Fiber** - React renderer for Three.js
+- **Zustand** - Lightweight state management
+- **Drei** - Three.js utilities and helpers
+
+### Architecture
+
+- **Inline Styles**: All styling done inline to avoid CSS compilation issues
+- **Component Isolation**: Each scene component handles its own state
+- **Performance**: Optimized for 60fps with efficient re-rendering
+- **Type Safety**: Full TypeScript coverage with strict configuration
+
+### Known Issues
+
+- Use inline styles exclusively to avoid CSS compilation issues
+- Kill node processes if hot reload stops working: `taskkill /f /im node.exe`
+- Only run one dev server at a time to avoid port conflicts

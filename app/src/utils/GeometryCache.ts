@@ -1,5 +1,6 @@
 import { BufferGeometry, BufferAttribute } from 'three';
 import type { Point2D, Shape } from '@/types';
+import { logger } from './logger';
 
 /**
  * Geometry cache for efficient BufferGeometry reuse and management
@@ -17,9 +18,120 @@ export class GeometryCache {
     const pointsHash = points
       .map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`)
       .join('|');
-    
+
     const metadataHash = metadata ? JSON.stringify(metadata) : '';
     return `${type}_${pointsHash}_${metadataHash}`;
+  }
+
+  /**
+   * Check if shape is in live resize mode (rapid point updates)
+   */
+  private static isInLiveResizeMode(shape: Shape): boolean {
+    // Detect live resize by checking if points have very recent timestamps
+    // or if modified time is within the last 100ms (indicating active resize)
+    const now = new Date().getTime();
+    const modifiedTime = shape.modified?.getTime?.() || 0;
+    return (now - modifiedTime) < 100; // 100ms window for live operations
+  }
+
+  /**
+   * ENHANCED: Create geometry specifically for live resize scenarios with liveResizePoints
+   * This prevents diagonal line artifacts during rapid resize operations
+   */
+  static getLiveResizeGeometry(shape: Shape, liveResizePoints: Point2D[], elevation = 0): BufferGeometry {
+    if (!liveResizePoints || liveResizePoints.length < 2) {
+      logger.warn('⚠️ GeometryCache: Invalid liveResizePoints, falling back to shape points');
+      return this.getGeometry(shape, elevation);
+    }
+
+    // CRITICAL: Always create fresh geometry for live resize to prevent artifacts
+    logger.log('🔥 GeometryCache: Creating fresh geometry for live resize with', liveResizePoints.length, 'points');
+
+    // ENHANCED VALIDATION: Pre-validate live resize points before creating geometry
+    const validPoints = liveResizePoints.filter(point =>
+      point &&
+      typeof point.x === 'number' && typeof point.y === 'number' &&
+      !isNaN(point.x) && !isNaN(point.y) &&
+      isFinite(point.x) && isFinite(point.y)
+    );
+
+    if (validPoints.length < 2) {
+      logger.error('❌ No valid points in live resize, using fallback');
+      return this.createFallbackGeometry(elevation);
+    }
+
+    // RECTANGLE-SPECIFIC VALIDATION: Ensure proper bounds for rectangles
+    if (shape.type === 'rectangle' && validPoints.length >= 2) {
+      let minX, maxX, minY, maxY;
+
+      if (validPoints.length === 2) {
+        [minX, maxX] = [Math.min(validPoints[0].x, validPoints[1].x), Math.max(validPoints[0].x, validPoints[1].x)];
+        [minY, maxY] = [Math.min(validPoints[0].y, validPoints[1].y), Math.max(validPoints[0].y, validPoints[1].y)];
+      } else {
+        const xCoords = validPoints.map(p => p.x);
+        const yCoords = validPoints.map(p => p.y);
+        minX = Math.min(...xCoords);
+        maxX = Math.max(...xCoords);
+        minY = Math.min(...yCoords);
+        maxY = Math.max(...yCoords);
+      }
+
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      // CRITICAL: Prevent degenerate rectangles that cause diagonal line artifacts
+      if (width < 0.001 || height < 0.001) {
+        logger.warn('⚠️ Degenerate rectangle detected in live resize, using minimal geometry');
+        return this.createMinimalRectangle({ x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, elevation);
+      }
+
+      // FORCE NORMALIZED ORDER: Always normalize rectangle points for consistent rendering
+      const normalizedPoints = [
+        { x: minX, y: minY }, // bottom-left
+        { x: maxX, y: minY }, // bottom-right
+        { x: maxX, y: maxY }, // top-right
+        { x: minX, y: maxY }  // top-left
+      ];
+
+      logger.log('🎯 Normalized live resize points:', JSON.stringify(normalizedPoints));
+
+      // Create geometry with normalized points
+      const liveShape: Shape = {
+        ...shape,
+        points: normalizedPoints,
+        modified: new Date()
+      };
+
+      this.cacheMisses++;
+      const geometry = this.createGeometry(liveShape, elevation);
+
+      // VALIDATION: Ensure geometry is valid before returning
+      if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
+        logger.warn('⚠️ Invalid geometry created for live resize, using fallback');
+        return this.createFallbackGeometry(elevation);
+      }
+
+      logger.log('✅ Live resize geometry created successfully with', geometry.attributes.position.count, 'vertices');
+      return geometry;
+    }
+
+    // For non-rectangle shapes, use standard approach
+    const liveShape: Shape = {
+      ...shape,
+      points: validPoints,
+      modified: new Date()
+    };
+
+    this.cacheMisses++;
+    const geometry = this.createGeometry(liveShape, elevation);
+
+    if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
+      logger.warn('⚠️ Invalid geometry created for live resize, using fallback');
+      return this.createFallbackGeometry(elevation);
+    }
+
+    logger.log('✅ Live resize geometry created successfully with', geometry.attributes.position.count, 'vertices');
+    return geometry;
   }
 
   /**
@@ -27,20 +139,24 @@ export class GeometryCache {
    */
   static getGeometry(shape: Shape, elevation = 0): BufferGeometry {
     if (!shape.points || shape.points.length < 2) {
-      console.log('⚠️ GeometryCache: Invalid points for shape', shape.id);
-      return new BufferGeometry();
+      logger.warn('⚠️ GeometryCache: Invalid points for shape', shape.id);
+      return this.createFallbackGeometry(elevation);
+    }
+
+    // Enhanced validation for live resize operations
+    if (this.isInLiveResizeMode(shape)) {
+      logger.log('🔥 GeometryCache: Live resize detected, creating fresh geometry');
+      this.cacheMisses++;
+      return this.createGeometry(shape, elevation);
     }
 
     // Check if shape was recently modified (within last 2 seconds) - bypass cache
     const now = new Date().getTime();
     const modifiedTime = shape.modified?.getTime?.() || 0;
     const isRecentlyModified = (now - modifiedTime) < 2000; // 2 seconds
-    
-    document.title = `CACHE CHECK: modified=${isRecentlyModified} time=${modifiedTime}`;
-    
+
     if (isRecentlyModified) {
-      console.log('🔥 GeometryCache: Shape', shape.id, 'recently modified, bypassing cache');
-      document.title = `BYPASSING CACHE ${shape.id} ${Date.now()}`;
+      logger.log('🔥 GeometryCache: Shape', shape.id, 'recently modified, bypassing cache');
       this.cacheMisses++;
       return this.createGeometry(shape, elevation);
     }
@@ -53,13 +169,13 @@ export class GeometryCache {
     
     if (this.cache.has(cacheKey)) {
       this.cacheHits++;
-      console.log('🎯 GeometryCache: Cache HIT for', shape.id, 'key:', cacheKey.substring(0, 50) + '...');
+      logger.log('🎯 GeometryCache: Cache HIT for', shape.id, 'key:', cacheKey.substring(0, 50) + '...');
       // Return a clone to prevent shared state issues
       return this.cache.get(cacheKey)!.clone();
     }
 
     this.cacheMisses++;
-    console.log('❌ GeometryCache: Cache MISS for', shape.id, 'key:', cacheKey.substring(0, 50) + '...');
+    logger.log('❌ GeometryCache: Cache MISS for', shape.id, 'key:', cacheKey.substring(0, 50) + '...');
     const geometry = this.createGeometry(shape, elevation);
     
     // Only cache if not recently modified
@@ -70,9 +186,9 @@ export class GeometryCache {
       }
       
       this.cache.set(cacheKey, geometry.clone());
-      console.log('💾 GeometryCache: Stored new geometry for', shape.id, 'cache size:', this.cache.size);
+      logger.log('💾 GeometryCache: Stored new geometry for', shape.id, 'cache size:', this.cache.size);
     } else {
-      console.log('🚫 GeometryCache: Not caching recently modified shape', shape.id);
+      logger.log('🚫 GeometryCache: Not caching recently modified shape', shape.id);
     }
     
     return geometry;
@@ -88,88 +204,263 @@ export class GeometryCache {
       case 'circle':
         return this.createCircleGeometry(shape.points, elevation);
       case 'polygon':
-      case 'line':
-        return this.createPolygonGeometry(shape.points, elevation, shape.type === 'line');
+      case 'polyline':
+        return this.createPolygonGeometry(shape.points, elevation);
       default:
         return new BufferGeometry();
     }
   }
 
   /**
-   * Create optimized rectangle geometry
+   * Create optimized rectangle geometry with enhanced validation and atomic updates
    */
   private static createRectangleGeometry(points: Point2D[], elevation: number): BufferGeometry {
-    console.log('🔵 createRectangleGeometry called with points:', JSON.stringify(points));
-    document.title = `CREATE RECT GEOM: ${points.length}pts ${Date.now()}`;
+    logger.log('🔵 createRectangleGeometry called with points:', JSON.stringify(points));
+    
+    // Create geometry with enhanced validation
     const geometry = new BufferGeometry();
     
-    // Validate input points
-    if (points.length < 2) {
-      console.error('❌ Invalid rectangle points - need at least 2 points');
-      return geometry;
+    // CRITICAL FIX: Enhanced input validation with proper error handling
+    if (!points || !Array.isArray(points) || points.length < 2) {
+      logger.error('❌ Invalid rectangle points - need at least 2 valid points:', points);
+      return this.createFallbackGeometry(elevation);
     }
     
-    // Handle both 2-point and 4-point rectangle formats
+    // Validate each point has valid coordinates
+    const validPoints = points.filter(point => 
+      point && typeof point.x === 'number' && typeof point.y === 'number' && 
+      !isNaN(point.x) && !isNaN(point.y) && isFinite(point.x) && isFinite(point.y)
+    );
+    
+    if (validPoints.length < 2) {
+      logger.error('❌ No valid points found in rectangle data:', points);
+      return this.createFallbackGeometry(elevation);
+    }
+    
+    // CRITICAL FIX: Unified point format conversion with proper normalization
     let rectPoints: Point2D[];
     
-    if (points.length === 2) {
-      // Convert 2-point format to 4-point format
-      const [p1, p2] = points;
-      console.log('🔵 Converting 2-point to 4-point:', { p1, p2 });
+    if (validPoints.length === 2) {
+      // Convert 2-point format to 4-point format with proper ordering
+      const [p1, p2] = validPoints;
+      logger.log('🔵 Converting 2-point to 4-point:', { p1, p2 });
       
-      // Ensure we correctly identify topLeft and bottomRight regardless of drag direction
+      // ENHANCED: Ensure correct point ordering regardless of drag direction
       const minX = Math.min(p1.x, p2.x);
       const maxX = Math.max(p1.x, p2.x);
       const minY = Math.min(p1.y, p2.y);
       const maxY = Math.max(p1.y, p2.y);
       
+      // Standard rectangle point order: bottom-left, bottom-right, top-right, top-left
       rectPoints = [
-        { x: minX, y: minY }, // bottom-left
-        { x: maxX, y: minY }, // bottom-right
-        { x: maxX, y: maxY }, // top-right
-        { x: minX, y: maxY }  // top-left
+        { x: minX, y: minY }, // bottom-left (0)
+        { x: maxX, y: minY }, // bottom-right (1)
+        { x: maxX, y: maxY }, // top-right (2)
+        { x: minX, y: maxY }  // top-left (3)
       ];
-      console.log('🔵 Converted rectPoints (normalized):', JSON.stringify(rectPoints));
-    } else if (points.length >= 4) {
-      // Handle rectangles with 4+ points (may occur during live editing)
-      rectPoints = points.slice(0, 4);
-      console.log('🔵 Using 4-point format (truncated from', points.length, 'points):', JSON.stringify(rectPoints));
+      logger.log('🔵 Converted rectPoints (normalized):', JSON.stringify(rectPoints));
+    } else if (validPoints.length >= 4) {
+      // Handle 4+ point format (live editing or polygon conversion)
+      rectPoints = validPoints.slice(0, 4);
+      logger.log('🔵 Using 4-point format (truncated from', validPoints.length, 'points):', JSON.stringify(rectPoints));
+      
+      // ENHANCED: Validate 4-point rectangle structure
+      if (!this.validateRectangleStructure(rectPoints)) {
+        logger.warn('⚠️ Invalid 4-point rectangle structure, normalizing...');
+        rectPoints = this.normalizeRectanglePoints(rectPoints);
+      }
     } else {
-      console.error('❌ Invalid rectangle points count:', points.length);
-      rectPoints = points.slice(0, 4);
+      // Invalid point count - create minimal rectangle
+      logger.warn('⚠️ Invalid rectangle points count:', validPoints.length, '- creating minimal rectangle');
+      const point = validPoints[0];
+      rectPoints = [
+        { x: point.x, y: point.y },
+        { x: point.x + 1, y: point.y },
+        { x: point.x + 1, y: point.y + 1 },
+        { x: point.x, y: point.y + 1 }
+      ];
     }
 
-    // Validate rectangle points are not degenerate
+    // CRITICAL FIX: Enhanced degenerate rectangle detection with area validation
     const width = Math.abs(rectPoints[1].x - rectPoints[0].x);
     const height = Math.abs(rectPoints[3].y - rectPoints[0].y);
-    
-    if (width < 0.001 || height < 0.001) {
-      console.warn('⚠️ Degenerate rectangle detected:', { width, height });
-      // Return empty geometry for degenerate rectangles
-      return geometry;
+    const area = width * height;
+
+    if (width < 0.001 || height < 0.001 || area < 0.000001) {
+      logger.warn('⚠️ Degenerate rectangle detected:', { width, height, area });
+      // Return minimal valid geometry instead of empty geometry
+      return this.createMinimalRectangle(rectPoints[0] || { x: 0, y: 0 }, elevation);
     }
 
-    // Create vertices for fill
+    // ENHANCED: Validate point ordering to prevent triangle artifacts
+    const validatedPoints = this.validateAndNormalizeRectanglePoints(rectPoints);
+    if (!validatedPoints) {
+      logger.error('❌ Failed to validate rectangle points, using fallback');
+      return this.createFallbackGeometry(elevation);
+    }
+
+    // ATOMIC UPDATE: Create all geometry data atomically with validated points
+    const vertices: number[] = [];
+    validatedPoints.forEach(point => {
+      vertices.push(point.x, elevation, point.y);
+    });
+
+    logger.log('🔵 Final vertices array:', vertices);
+    logger.log('🔵 validatedPoints for vertices:', JSON.stringify(validatedPoints));
+
+    // Create indices for two triangles forming a proper rectangle with consistent counter-clockwise winding
+    // Triangle 1: bottom-left → bottom-right → top-right (0, 1, 2)
+    // Triangle 2: bottom-left → top-right → top-left (0, 2, 3)
+    // Ensure consistent counter-clockwise winding for proper face normals
+    const indices = [0, 1, 2, 0, 2, 3];
+    logger.log('🔵 Triangle indices:', indices);
+
+    // ATOMIC UPDATE: Apply all attributes in single operation
+    try {
+      geometry.setAttribute('position', new BufferAttribute(new Float32Array(vertices), 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      
+      // Essential for Three.js raycasting - compute bounds for click detection
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      
+      logger.log('✅ Rectangle geometry created successfully with', vertices.length/3, 'vertices');
+    } catch (error) {
+      logger.error('❌ Failed to create rectangle geometry:', error);
+      return this.createFallbackGeometry(elevation);
+    }
+
+    return geometry;
+  }
+  
+  /**
+   * Create fallback geometry for error cases
+   */
+  private static createFallbackGeometry(elevation: number): BufferGeometry {
+    const geometry = new BufferGeometry();
+    const vertices = new Float32Array(12); // 4 vertices * 3 components
+    const indices = [0, 1, 2, 0, 2, 3];
+    
+    geometry.setAttribute('position', new BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    
+    return geometry;
+  }
+  
+  /**
+   * Create minimal rectangle geometry for degenerate cases
+   */
+  private static createMinimalRectangle(center: Point2D, elevation: number): BufferGeometry {
+    const size = 0.1; // Minimal visible size
+    const rectPoints = [
+      { x: center.x - size, y: center.y - size },
+      { x: center.x + size, y: center.y - size },
+      { x: center.x + size, y: center.y + size },
+      { x: center.x - size, y: center.y + size }
+    ];
+    
+    const geometry = new BufferGeometry();
     const vertices: number[] = [];
     rectPoints.forEach(point => {
       vertices.push(point.x, elevation, point.y);
     });
-
-    // Create indices for two triangles forming a proper rectangle
-    // Triangle 1: bottom-left → bottom-right → top-right (0, 1, 2)
-    // Triangle 2: bottom-left → top-right → top-left (0, 2, 3)  
+    
     const indices = [0, 1, 2, 0, 2, 3];
-
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(vertices), 3));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    
-    // Essential for Three.js raycasting - compute bounds for click detection
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
-
-    console.log('✅ Rectangle geometry created successfully with', vertices.length/3, 'vertices');
+    
     return geometry;
+  }
+  
+  /**
+   * Validate and normalize rectangle points to prevent rendering artifacts
+   */
+  private static validateAndNormalizeRectanglePoints(points: Point2D[]): Point2D[] | null {
+    if (!points || points.length !== 4) {
+      logger.error('❌ Invalid point count for rectangle:', points?.length || 0);
+      return null;
+    }
+
+    // Check for valid numeric coordinates
+    const validPoints = points.filter(point =>
+      point &&
+      typeof point.x === 'number' && typeof point.y === 'number' &&
+      !isNaN(point.x) && !isNaN(point.y) &&
+      isFinite(point.x) && isFinite(point.y)
+    );
+
+    if (validPoints.length !== 4) {
+      logger.error('❌ Invalid coordinates in rectangle points');
+      return null;
+    }
+
+    // Normalize to consistent ordering: bottom-left, bottom-right, top-right, top-left
+    const minX = Math.min(...validPoints.map(p => p.x));
+    const maxX = Math.max(...validPoints.map(p => p.x));
+    const minY = Math.min(...validPoints.map(p => p.y));
+    const maxY = Math.max(...validPoints.map(p => p.y));
+
+    // Ensure minimum size to prevent degenerate triangles
+    const deltaX = maxX - minX;
+    const deltaY = maxY - minY;
+
+    if (deltaX < 0.001 || deltaY < 0.001) {
+      logger.warn('⚠️ Rectangle too small during validation:', { deltaX, deltaY });
+      return null;
+    }
+
+    // Return normalized rectangle points
+    return [
+      { x: minX, y: minY }, // bottom-left (0)
+      { x: maxX, y: minY }, // bottom-right (1)
+      { x: maxX, y: maxY }, // top-right (2)
+      { x: minX, y: maxY }  // top-left (3)
+    ];
+  }
+
+  /**
+   * Validate rectangle structure integrity
+   */
+  private static validateRectangleStructure(points: Point2D[]): boolean {
+    if (points.length !== 4) return false;
+
+    // Basic validation: check if we have distinct points
+    const tolerance = 0.001;
+    const distinctPoints = points.filter((point, index) =>
+      !points.slice(0, index).some(otherPoint =>
+        Math.abs(point.x - otherPoint.x) < tolerance &&
+        Math.abs(point.y - otherPoint.y) < tolerance
+      )
+    );
+    
+    return distinctPoints.length >= 3; // At least 3 distinct points for a valid shape
+  }
+  
+  /**
+   * Normalize rectangle points to standard format
+   */
+  private static normalizeRectanglePoints(points: Point2D[]): Point2D[] {
+    if (points.length < 2) return points;
+    
+    // Find bounding box
+    const minX = Math.min(...points.map(p => p.x));
+    const maxX = Math.max(...points.map(p => p.x));
+    const minY = Math.min(...points.map(p => p.y));
+    const maxY = Math.max(...points.map(p => p.y));
+    
+    // Return normalized rectangle
+    return [
+      { x: minX, y: minY }, // bottom-left
+      { x: maxX, y: minY }, // bottom-right
+      { x: maxX, y: maxY }, // top-right
+      { x: minX, y: maxY }  // top-left
+    ];
   }
 
   /**
@@ -213,7 +504,7 @@ export class GeometryCache {
   /**
    * Create polygon/line geometry
    */
-  private static createPolygonGeometry(points: Point2D[], elevation: number, isLine = false): BufferGeometry {
+  private static createPolygonGeometry(points: Point2D[], elevation: number): BufferGeometry {
     const geometry = new BufferGeometry();
     
     if (points.length < 2) return geometry;
@@ -313,7 +604,7 @@ export class GeometryCache {
    * Clear specific geometry from cache
    */
   static invalidateShape(shape: Shape, elevation = 0): void {
-    console.log('🎯 Invalidating shape:', shape.id, 'type:', shape.type);
+    logger.log('🎯 Invalidating shape:', shape.id, 'type:', shape.type);
     
     // Generate all possible cache keys for this shape (different elevations, rotations)
     const baseKey = this.generateCacheKey(
@@ -347,7 +638,7 @@ export class GeometryCache {
       }
     });
     
-    console.log('🧹 Invalidated', invalidatedCount, 'cache entries for shape', shape.id);
+    logger.log('🧹 Invalidated', invalidatedCount, 'cache entries for shape', shape.id);
   }
 
   /**
@@ -383,14 +674,14 @@ export class GeometryCache {
    * Clear entire cache and dispose geometries
    */
   static dispose(): void {
-    console.log('🧹 GeometryCache: Disposing entire cache, size:', this.cache.size);
+    logger.log('🧹 GeometryCache: Disposing entire cache, size:', this.cache.size);
     this.cache.forEach(geometry => {
       geometry.dispose();
     });
     this.cache.clear();
     this.cacheHits = 0;
     this.cacheMisses = 0;
-    console.log('✅ GeometryCache: Cache cleared');
+    logger.log('✅ GeometryCache: Cache cleared');
   }
 
   /**
@@ -455,7 +746,7 @@ export class GeometryCache {
 
       // Fallback: if no ear found, break to prevent infinite loop
       if (!earFound) {
-        console.warn('⚠️ Could not triangulate polygon, using fallback triangulation');
+        logger.warn('⚠️ Could not triangulate polygon, using fallback triangulation');
         // Use simple fan triangulation as fallback
         for (let i = 1; i < vertexIndices.length - 1; i++) {
           indices.push(vertexIndices[0], vertexIndices[i], vertexIndices[i + 1]);

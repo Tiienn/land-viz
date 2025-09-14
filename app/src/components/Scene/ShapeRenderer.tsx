@@ -5,9 +5,10 @@ import * as THREE from 'three';
 import { Vector3, Color, BufferGeometry, BufferAttribute, Vector2, Plane } from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { GeometryCache } from '../../utils/GeometryCache';
+import { logger } from '../../utils/logger';
 import ShapeDimensions from './ShapeDimensions';
 import EditableShapeControls from './EditableShapeControls';
-import ResizableShapeControls from './ResizableShapeControls';
+// ResizableShapeControls moved to SceneManager.tsx to avoid duplicate instances
 import RotationControls from './RotationControls';
 import type { Shape, Point2D } from '@/types';
 
@@ -17,7 +18,7 @@ interface ShapeRendererProps {
 
 // Removed createFreshRectangleGeometry - now using consistent GeometryCache for all shapes
 
-// Component to handle dynamic geometry updates properly
+// Component to handle dynamic geometry updates with atomic synchronization
 const MeshWithDynamicGeometry: React.FC<{
   shapeId: string;
   geometry: BufferGeometry;
@@ -31,28 +32,73 @@ const MeshWithDynamicGeometry: React.FC<{
   material: any;
 }> = ({ shapeId, geometry, position, onClick, onDoubleClick, onPointerDown, onPointerEnter, onPointerLeave, cursor, material }) => {
   const meshRef = useRef<any>();
+  const lastGeometryRef = useRef<BufferGeometry | null>(null);
 
-  // Force geometry update when geometry prop changes
+  // CRITICAL FIX: Atomic geometry update with proper validation
   useEffect(() => {
-    if (meshRef.current && geometry) {
-      console.log(`🔧 MeshWithDynamicGeometry: Updating geometry for shape ${shapeId}`, 'at', Date.now());
-      document.title = `GEOMETRY UPDATED ${shapeId} ${Date.now()}`;
-      // Dispose old geometry to prevent memory leaks
-      if (meshRef.current.geometry) {
-        meshRef.current.geometry.dispose();
+    if (!meshRef.current || !geometry) return;
+    
+    // Validate geometry before applying
+    if (!geometry.attributes.position || geometry.attributes.position.count === 0) {
+      logger.warn(`Invalid geometry for shape ${shapeId}, skipping update`);
+      return;
+    }
+    
+    // ATOMIC UPDATE: Only update if geometry actually changed
+    if (lastGeometryRef.current !== geometry) {
+      logger.log(`🌍 Updating mesh geometry for shape ${shapeId}`);
+      
+      // Dispose old geometry to prevent memory leaks - but only if it's different
+      if (meshRef.current.geometry && meshRef.current.geometry !== geometry) {
+        const oldGeometry = meshRef.current.geometry;
+        // Schedule disposal after render to avoid race conditions
+        setTimeout(() => {
+          if (oldGeometry && oldGeometry !== geometry) {
+            oldGeometry.dispose();
+          }
+        }, 0);
       }
-      // Apply new geometry
-      meshRef.current.geometry = geometry;
-      // Force update of geometry attributes
-      if (geometry.attributes.position) {
-        geometry.attributes.position.needsUpdate = true;
+      
+      // Apply new geometry atomically
+      try {
+        meshRef.current.geometry = geometry;
+        
+        // ENHANCED: Force attribute updates only if needed
+        if (geometry.attributes.position) {
+          geometry.attributes.position.needsUpdate = true;
+        }
+        if (geometry.index) {
+          geometry.index.needsUpdate = true;
+        }
+        
+        // Ensure bounds are computed for raycasting
+        if (!geometry.boundingBox || !geometry.boundingSphere) {
+          geometry.computeBoundingBox();
+          geometry.computeBoundingSphere();
+        }
+        
+        // Update vertex normals for proper lighting
+        geometry.computeVertexNormals();
+        
+        // Track this geometry as current
+        lastGeometryRef.current = geometry;
+        
+        logger.log(`✅ Successfully updated geometry for shape ${shapeId}`);
+      } catch (error) {
+        logger.error(`❌ Failed to update geometry for shape ${shapeId}:`, error);
       }
-      if (geometry.index) {
-        geometry.index.needsUpdate = true;
-      }
-      geometry.computeVertexNormals();
     }
   }, [geometry, shapeId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (lastGeometryRef.current && meshRef.current?.geometry !== lastGeometryRef.current) {
+        // Only dispose if it's not being used elsewhere
+        lastGeometryRef.current.dispose();
+      }
+    };
+  }, []);
 
   return (
     <mesh
@@ -68,10 +114,11 @@ const MeshWithDynamicGeometry: React.FC<{
     >
       <meshBasicMaterial
         color={material.fillColor}
-        transparent
+        transparent={true}
         opacity={Math.max(material.opacity, 0.1)} // Ensure minimum visibility
         depthWrite={false}
-        side={2}
+        side={THREE.DoubleSide} // Use explicit constant instead of magic number
+        alphaTest={0.01} // Prevent transparent pixel rendering artifacts
       />
     </mesh>
   );
@@ -217,9 +264,38 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
 
   // Separate transform calculations
   const shapeTransforms = useMemo(() => {
-    return visibleShapes.map(shape => {
+    logger.log('🎨 ==> SHAPE TRANSFORMS CALCULATION <==');
+    logger.log('🎨 Drawing state:', {
+      isResizeMode: drawing.isResizeMode,
+      resizingShapeId: drawing.resizingShapeId,
+      liveResizePoints: drawing.liveResizePoints ? `${drawing.liveResizePoints.length} points` : 'null'
+    });
+    logger.log('🎨 Visible shapes count:', visibleShapes.length);
+    
+    const transforms = visibleShapes.map(shape => {
       const isDragging = dragState.isDragging && dragState.draggedShapeId === shape.id;
+      const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
+      
+      logger.log(`🎨 Processing shape ${shape.id}:`, {
+        type: shape.type,
+        originalPoints: shape.points?.length || 0,
+        isDragging,
+        isBeingResized
+      });
+      
+      // Use liveResizePoints when available during resize operations
       let transformedPoints = shape.points || [];
+      if (isBeingResized && drawing.liveResizePoints) {
+        logger.log(`🎨 🔥 USING LIVE POINTS for ${shape.id}:`, {
+          originalPoints: JSON.stringify(shape.points),
+          livePoints: JSON.stringify(drawing.liveResizePoints)
+        });
+        transformedPoints = drawing.liveResizePoints;
+      } else if (isBeingResized && !drawing.liveResizePoints) {
+        logger.log(`🎨 ⚠️ Shape ${shape.id} is being resized but NO LIVE POINTS available`);
+      } else if (!isBeingResized && drawing.liveResizePoints) {
+        logger.log(`🎨 ⚠️ Live points exist but ${shape.id} is NOT being resized. Current resizingShapeId:`, drawing.resizingShapeId);
+      }
       
       // Handle dragging transform
       if (isDragging && dragState.startPosition && dragState.currentPosition) {
@@ -235,12 +311,24 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         transformedPoints = applyRotationTransform(transformedPoints, shape.rotation);
       }
       
+      logger.log(`🎨 Final points for ${shape.id}:`, {
+        finalPointsCount: transformedPoints.length,
+        firstPoint: transformedPoints[0],
+        lastPoint: transformedPoints[transformedPoints.length - 1]
+      });
+      
       return {
         id: shape.id,
         points: transformedPoints,
-        isDragging
+        isDragging,
+        isBeingResized
       };
     });
+    
+    logger.log('🎨 ==> SHAPE TRANSFORMS COMPLETE <==');
+    logger.log('');
+    
+    return transforms;
   }, [
     visibleShapes.map(s => s.id).join('|'),
     dragState.isDragging,
@@ -249,85 +337,221 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     dragState.startPosition?.y, 
     dragState.currentPosition?.x,
     dragState.currentPosition?.y,
-    visibleShapes.map(s => s.rotation?.angle || 0).join('|')
+    visibleShapes.map(s => s.rotation?.angle || 0).join('|'),
+    drawing.isResizeMode,
+    drawing.resizingShapeId,
+    drawing.liveResizePoints
   ]);
+
+  // Helper function for fresh rectangle geometry creation
+  const createFreshRectangleGeometry = useCallback((points: Point2D[], elevation: number): BufferGeometry => {
+    const geometry = new THREE.BufferGeometry();
+
+    // Enhanced validation for input points
+    if (!points || !Array.isArray(points) || points.length < 2) {
+      logger.error('❌ Invalid points for fresh rectangle geometry:', points);
+      return geometry; // Return empty geometry as fallback
+    }
+
+    // Validate point coordinates
+    const validPoints = points.filter(point =>
+      point &&
+      typeof point.x === 'number' && typeof point.y === 'number' &&
+      !isNaN(point.x) && !isNaN(point.y) &&
+      isFinite(point.x) && isFinite(point.y)
+    );
+
+    if (validPoints.length < 2) {
+      logger.error('❌ Insufficient valid points for rectangle geometry:', validPoints.length);
+      return geometry;
+    }
+
+    // Convert to normalized 4-point format with enhanced validation
+    let rectPoints = validPoints;
+    if (validPoints.length === 2) {
+      const [p1, p2] = validPoints;
+      const minX = Math.min(p1.x, p2.x);
+      const maxX = Math.max(p1.x, p2.x);
+      const minY = Math.min(p1.y, p2.y);
+      const maxY = Math.max(p1.y, p2.y);
+
+      // Prevent degenerate rectangles
+      const deltaX = maxX - minX;
+      const deltaY = maxY - minY;
+
+      if (deltaX < 0.001 || deltaY < 0.001) {
+        logger.warn('⚠️ Degenerate rectangle detected in fresh geometry:', { deltaX, deltaY });
+        // Create minimal valid rectangle
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const size = 0.1;
+        rectPoints = [
+          { x: centerX - size, y: centerY - size },
+          { x: centerX + size, y: centerY - size },
+          { x: centerX + size, y: centerY + size },
+          { x: centerX - size, y: centerY + size }
+        ];
+      } else {
+        rectPoints = [
+          { x: minX, y: minY }, // bottom-left
+          { x: maxX, y: minY }, // bottom-right
+          { x: maxX, y: maxY }, // top-right
+          { x: minX, y: maxY }  // top-left
+        ];
+      }
+    } else if (validPoints.length >= 4) {
+      rectPoints = validPoints.slice(0, 4);
+    }
+
+    // Create vertices with validated points
+    const vertices: number[] = [];
+    rectPoints.forEach(point => {
+      vertices.push(point.x, elevation, point.y);
+    });
+
+    // Ensure we have exactly 12 vertices (4 points * 3 components)
+    if (vertices.length !== 12) {
+      logger.error('❌ Invalid vertex count for rectangle:', vertices.length);
+      return geometry;
+    }
+
+    // Create indices for triangulation with consistent winding
+    const indices = [0, 1, 2, 0, 2, 3];
+
+    // Apply attributes atomically with error handling
+    try {
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+
+      logger.log('✅ Fresh rectangle geometry created successfully');
+    } catch (error) {
+      logger.error('❌ Failed to create fresh rectangle geometry:', error);
+      return new THREE.BufferGeometry(); // Return empty geometry on error
+    }
+
+    return geometry;
+  }, []);
 
   // Separate shape data calculations
   // Add a force refresh trigger for geometry cache
   const forceRefresh = useAppStore(state => state.shapes.reduce((acc, s) => acc + (s.modified?.getTime?.() || 0), 0));
   
   const shapeGeometries = useMemo(() => {
+    logger.log('🌍 ==> GEOMETRY CREATION START <==');
+    logger.log('🌍 Visible shapes:', visibleShapes.length);
+    logger.log('🌍 Drawing state:', {
+      isResizeMode: drawing.isResizeMode,
+      resizingShapeId: drawing.resizingShapeId,
+      liveResizePoints: drawing.liveResizePoints ? drawing.liveResizePoints.length : 0
+    });
     
     return visibleShapes.map((shape, index) => {
       // Get the transformed points for this shape (includes rotation and dragging)
       const transform = shapeTransforms.find(t => t.id === shape.id);
       const pointsForGeometry = transform ? transform.points : shape.points;
       
-      // Use consistent geometry cache for all shapes (now with proper bounds)
-      // CRITICAL FIX: For shapes being resized, bypass cache completely and create fresh geometry
+      logger.log(`🌍 Processing ${shape.type} ${shape.id}:`, {
+        originalPoints: shape.points?.length || 0,
+        transformedPoints: pointsForGeometry?.length || 0,
+        hasTransform: !!transform
+      });
+      
+      // CRITICAL FIX: Enhanced geometry creation with validation
       let geometry = null;
       if (pointsForGeometry && pointsForGeometry.length >= 2) {
         const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
         const isBeingEdited = drawing.isEditMode && drawing.editingShapeId === shape.id;
+        const needsFreshGeometry = isBeingResized || isBeingEdited;
         
-        if (isBeingResized || isBeingEdited) {
-          // Force fresh geometry creation for shapes being resized/edited - completely bypass cache
-          console.log('🔥 LIVE MODE:', isBeingResized ? 'RESIZE' : 'EDIT', '- Creating fresh geometry for', shape.id);
-          document.title = `FRESH GEOMETRY ${shape.id} ${Date.now()}`;
-          
-          // Import GeometryCache here to access createGeometry method
-          if (shape.type === 'rectangle') {
-            geometry = new THREE.BufferGeometry();
-            
-            // Recreate rectangle geometry manually without cache
-            let rectPoints = pointsForGeometry;
-            if (pointsForGeometry.length === 2) {
-              const [p1, p2] = pointsForGeometry;
-              const minX = Math.min(p1.x, p2.x);
-              const maxX = Math.max(p1.x, p2.x);
-              const minY = Math.min(p1.y, p2.y);
-              const maxY = Math.max(p1.y, p2.y);
-              
-              rectPoints = [
-                { x: minX, y: minY }, // bottom-left
-                { x: maxX, y: minY }, // bottom-right
-                { x: maxX, y: maxY }, // top-right
-                { x: minX, y: maxY }  // top-left
-              ];
+        logger.log(`🌍 Shape ${shape.id} status:`, {
+          isBeingResized,
+          isBeingEdited,
+          needsFreshGeometry,
+          pointsLength: pointsForGeometry.length
+        });
+        
+        if (needsFreshGeometry) {
+          // ENHANCED: Use specialized live resize geometry for better rendering
+          logger.log('🔥 LIVE MODE:', isBeingResized ? 'RESIZE' : 'EDIT', '- Creating geometry for', shape.id);
+
+          try {
+            // CRITICAL: Use specialized method for live resize to prevent diagonal line artifacts
+            if (isBeingResized && shape.type === 'rectangle') {
+              if (drawing.liveResizePoints && drawing.liveResizePoints.length >= 2) {
+                logger.log('🎯 Using specialized live resize geometry for', shape.id, 'with', drawing.liveResizePoints.length, 'live points');
+                geometry = GeometryCache.getLiveResizeGeometry(shape, drawing.liveResizePoints, elevation);
+              } else {
+                logger.log('🎯 Using live resize geometry with transformed points for', shape.id);
+                // Still use live resize method but with transformed points to ensure proper geometry creation
+                geometry = GeometryCache.getLiveResizeGeometry(shape, pointsForGeometry, elevation);
+              }
+            } else if (shape.type === 'rectangle') {
+              // Standard fresh geometry for non-live operations
+              console.log('🏗️ Creating FRESH rectangle geometry for', shape.id, 'with points:', JSON.stringify(pointsForGeometry));
+              geometry = createFreshRectangleGeometry(pointsForGeometry, elevation);
+            } else {
+              // For other shapes, use cache but force fresh creation
+              geometry = GeometryCache.getGeometry({
+                ...shape,
+                points: pointsForGeometry,
+                modified: new Date()  // Force fresh timestamp
+              }, elevation);
             }
-            
-            const vertices: number[] = [];
-            rectPoints.slice(0, 4).forEach(point => {
-              vertices.push(point.x, elevation, point.y);
-            });
-            
-            const indices = [0, 1, 2, 0, 2, 3];
-            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-            geometry.setIndex(indices);
-            geometry.computeVertexNormals();
-            geometry.computeBoundingBox();
-            geometry.computeBoundingSphere();
-          } else {
-            // For other shapes, still use cache but with fresh timestamp
+
+            logger.log(`✅ Fresh geometry created for ${shape.id} (${geometry.attributes.position?.count || 0} vertices)`);
+          } catch (error) {
+            logger.error(`❌ Failed to create fresh geometry for ${shape.id}:`, error);
+            // Fallback to cached geometry
             geometry = GeometryCache.getGeometry({
-              ...shape, 
-              points: pointsForGeometry,
-              modified: new Date()  // Force fresh timestamp to bypass cache
+              ...shape,
+              points: shape.points, // Use original points as fallback
+              modified: shape.modified
             }, elevation);
           }
         } else {
-          // Normal case - use cache with preserved timestamp
+          // CACHED GEOMETRY: Normal case - use cache with preserved timestamp
+          console.log('🗜️ Using CACHED geometry for', shape.id, 'type:', shape.type, 'with points:', JSON.stringify(pointsForGeometry));
+
+          // CRITICAL FIX: Ensure rectangles are in 4-point format for cache
+          let cachePoints = pointsForGeometry;
+          if (shape.type === 'rectangle' && pointsForGeometry.length === 2) {
+            const [p1, p2] = pointsForGeometry;
+            const minX = Math.min(p1.x, p2.x);
+            const maxX = Math.max(p1.x, p2.x);
+            const minY = Math.min(p1.y, p2.y);
+            const maxY = Math.max(p1.y, p2.y);
+
+            cachePoints = [
+              { x: minX, y: minY }, // Top-left
+              { x: maxX, y: minY }, // Top-right
+              { x: maxX, y: maxY }, // Bottom-right
+              { x: minX, y: maxY }  // Bottom-left
+            ];
+            console.log('🔄 Converted 2-point rectangle to 4-point for cache:', JSON.stringify(cachePoints));
+          }
+
           geometry = GeometryCache.getGeometry({
-            ...shape, 
-            points: pointsForGeometry,
+            ...shape,
+            points: cachePoints,
             modified: shape.modified  // Preserve original timestamp for cache logic
           }, elevation);
+          logger.log(`🗜️ Cached geometry used for ${shape.id}`);
         }
+      }
+      
+      // VALIDATION: Ensure geometry is valid before returning
+      if (geometry && (!geometry.attributes.position || geometry.attributes.position.count === 0)) {
+        logger.warn(`⚠️ Invalid geometry detected for ${shape.id}, creating fallback`);
+        geometry = createFallbackGeometry(shape, elevation);
       }
       
       return {
         id: shape.id,
-        geometry
+        geometry,
+        valid: !!geometry && geometry.attributes.position && geometry.attributes.position.count > 0
       };
     });
   }, [
@@ -338,28 +562,77 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     drawing.isEditMode,
     drawing.editingShapeId,
     drawing.isResizeMode,
-    drawing.resizingShapeId
+    drawing.resizingShapeId,
+    drawing.liveResizePoints // Add this to dependencies for proper updates
   ]);
+  
+  
+  // Helper function for fallback geometry creation
+  const createFallbackGeometry = useCallback((shape: Shape, elevation: number): BufferGeometry => {
+    const geometry = new THREE.BufferGeometry();
+    
+    // Create minimal geometry based on shape type
+    if (shape.type === 'rectangle') {
+      const center = shape.points?.[0] || { x: 0, y: 0 };
+      const size = 1;
+      const vertices = new Float32Array([
+        center.x - size, elevation, center.y - size,
+        center.x + size, elevation, center.y - size,
+        center.x + size, elevation, center.y + size,
+        center.x - size, elevation, center.y + size
+      ]);
+      const indices = [0, 1, 2, 0, 2, 3];
+      
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+    } else {
+      // For other shapes, create a simple triangle
+      const center = shape.points?.[0] || { x: 0, y: 0 };
+      const vertices = new Float32Array([
+        center.x, elevation, center.y,
+        center.x + 1, elevation, center.y,
+        center.x + 0.5, elevation, center.y + 1
+      ]);
+      const indices = [0, 1, 2];
+      
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+    }
+    
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    
+    return geometry;
+  }, []);
 
   // Separate material calculations
   const shapeMaterials = useMemo(() => {
-    return visibleShapes.map((shape, index) => {
+    
+    const materials = visibleShapes.map((shape, index) => {
       const isSelected = shape.id === selectedShapeId;
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
       const isDragging = shapeTransforms[index]?.isDragging;
+      const isBeingResized = shapeTransforms[index]?.isBeingResized;
       const layer = layers.find(l => l.id === shape.layerId);
       const layerOpacity = layer?.opacity ?? 1;
+      
+      const fillColor = isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color;
+      const opacity = isDragging ? 0.8 * layerOpacity : isSelected ? 0.7 * layerOpacity : isHovered ? 0.6 * layerOpacity : 0.4 * layerOpacity;
+      
       
       return {
         id: shape.id,
         color: new Color(shape.color || '#3B82F6'),
-        fillColor: isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color,
+        fillColor,
         lineColor: isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color,
-        opacity: isDragging ? 0.8 * layerOpacity : isSelected ? 0.7 * layerOpacity : isHovered ? 0.6 * layerOpacity : 0.4 * layerOpacity,
+        opacity,
         lineOpacity: shape.visible ? (isDragging ? 1 : isSelected ? 1 : isHovered ? 0.9 : 0.8) * layerOpacity : 0.3 * layerOpacity,
         lineWidth: isDragging ? 5 : isSelected ? 4 : isHovered ? 3 : 2
       };
     });
+    
+    return materials;
   }, [
     visibleShapes.map(s => `${s.id}_${s.color}_${s.visible}`).join('|'),
     selectedShapeId,
@@ -403,15 +676,16 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       } else {
         // Select the shape first
         selectShape(shapeId);
-        // Enter resize mode after selection for immediate productivity
+        // Enter resize mode after selection for immediate productivity - force resize mode for all shapes
         setTimeout(() => {
-          if (!drawing.isEditMode) {
+          const currentDrawing = useAppStore.getState().drawing;
+          if (!currentDrawing.isEditMode && currentDrawing.activeTool === 'select') {
             enterResizeMode(shapeId);
           }
-        }, 0);
+        }, 50); // Longer timeout to ensure state updates properly
       }
     }
-  }, [activeTool, selectShape, selectedShapeId, drawing.isEditMode, drawing.isResizeMode, enterResizeMode]);
+  }, [activeTool, selectShape, selectedShapeId, drawing.isEditMode, drawing.isResizeMode, drawing.isRotateMode, enterResizeMode]);
 
   const handleShapeDoubleClick = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
@@ -507,7 +781,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       
       // Ensure we have a valid geometry - create a simple one if cache failed
       if (!geometry || geometry.attributes.position?.count === 0) {
-        console.warn(`Invalid geometry for shape ${shape.id}, type: ${shape.type}`);
+        logger.warn(`Invalid geometry for shape ${shape.id}, type: ${shape.type}`);
         return null;
       }
 
@@ -515,14 +789,12 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       let renderPoints = shape.points;
       if (shape.type === 'rectangle' && shape.points.length === 2) {
         const [topLeft, bottomRight] = shape.points;
-        console.log('🔧 Converting 2-point rectangle:', { topLeft, bottomRight, shapeId: shape.id });
         renderPoints = [
           { x: topLeft.x, y: topLeft.y },
           { x: bottomRight.x, y: topLeft.y },
           { x: bottomRight.x, y: bottomRight.y },
           { x: topLeft.x, y: bottomRight.y }
         ];
-        console.log('🔧 Converted to 4 corners:', JSON.stringify(renderPoints));
       }
 
       const transformedPoints = transform.points;
@@ -533,7 +805,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         shape.type === 'rectangle' || 
         shape.type === 'polygon' || 
         shape.type === 'circle' ||
-        (shape.type === 'line' && renderPoints.length > 2);
+        (shape.type === 'polyline' && renderPoints.length > 2);
         
       if (shouldCloseShape && points3D.length > 2) {
         const firstPoint = points3D[0];
@@ -552,13 +824,16 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       return (
         <group key={`${shape.id}_${shape.modified?.getTime?.() || 0}`}>
           {/* Optimized Shape fill using cached geometry - allow polylines with 3+ points to have fill */}
-          {transformedPoints.length >= 3 && !(shape.type === 'line' && shape.points.length <= 2) && geometry && (
+          {transformedPoints.length >= 3 && !(shape.type === 'polyline' && shape.points.length <= 2) && geometry && (
             <MeshWithDynamicGeometry
               key={`fill_${shape.id}_${shape.modified?.getTime?.() || 0}_${JSON.stringify(shape.points)}`}
               shapeId={shape.id}
               geometry={geometry}
               position={[0, shapeElevation + 0.001, 0]}
-              onClick={activeTool === 'select' ? handleShapeClick(shape.id) : undefined}
+              onClick={activeTool === 'select' ? (event: any) => {
+                logger.log('🚀 MESH CLICKED DIRECTLY!', shape.id, 'activeTool:', activeTool);
+                return handleShapeClick(shape.id)(event);
+              } : undefined}
               onDoubleClick={activeTool === 'select' ? handleShapeDoubleClick(shape.id) : undefined}
               onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
               onPointerEnter={activeTool === 'select' ? handleShapeHover(shape.id) : undefined}
@@ -582,7 +857,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
           />
 
           {/* Invisible interaction line for 2-point lines */}
-          {shape.type === 'line' && transformedPoints.length === 2 && (
+          {shape.type === 'polyline' && transformedPoints.length === 2 && (
             <Line
               points={points3D}
               lineWidth={6}
@@ -657,7 +932,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       {completedShapes}
       {currentShapeRender}
       <EditableShapeControls elevation={elevation} />
-      <ResizableShapeControls elevation={elevation} />
+      {/* ResizableShapeControls moved to SceneManager.tsx to avoid duplicate instances */}
       <RotationControls elevation={elevation} />
     </group>
   );

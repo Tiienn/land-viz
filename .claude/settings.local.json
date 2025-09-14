@@ -1,97 +1,44 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)",
-      "Bash(move:*)",
-      "Bash(mv:*)",
-      "Bash(git init:*)",
-      "Bash(git config:*)",
-      "Bash(git add:*)",
-      "Bash(git remote add:*)",
-      "Bash(git push:*)",
-      "Bash(git log:*)",
-      "Bash(git commit:*)",
-      "WebSearch",
-      "Bash(curl:*)",
-      "Bash(npm create:*)",
-      "Bash(npm install)",
-      "Bash(npm install:*)",
-      "Bash(npm run build:*)",
-      "Bash(timeout 5 npm run dev)",
-      "Bash(npm run lint)",
-      "Bash(npm run format:check:*)",
-      "Bash(npm run format:*)",
-      "Bash(npx tailwindcss init:*)",
-      "Bash(npm run test:run:*)",
-      "Bash(npm run type-check:*)",
-      "Bash(npm run dev:*)",
-      "Read(C:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(copy:*)",
-      "Bash(cmd /c copy:*)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "mcp__ide__getDiagnostics",
-      "Bash(npm run:*)",
-      "Bash(find:*)",
-      "Bash(npx vite:*)",
-      "Bash(taskkill:*)",
-      "Bash(wmic process where:*)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(npx kill-port:*)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:chili3d.com)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(npm test)",
-      "Bash(npm test:*)",
-      "Bash(git checkout:*)",
-      "Bash(npx tsc:*)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(node:*)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(npm start)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(chmod:*)",
-      "Bash(.claude/statusline.sh:*)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "WebFetch(domain:www.canva.com)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Read(c:\\Users\\Tien\\Desktop\\New folder/**)",
-      "Bash(timeout 10 npm run dev)",
-      "Read(c:\\Users\\Tien\\Documents\\land-viz\\app\\src\\components\\Scene/**)",
-      "Read(c:\\Users\\Tien\\Documents\\land-viz\\app\\src\\types/**)",
-      "Read(c:\\Users\\Tien\\Documents\\land-viz\\app\\src\\store/**)",
-      "Read(c:\\Users\\Tien\\Documents\\land-viz\\app\\src/**)",
-      "Bash(touch:*)",
-      "Bash(grep:*)",
-      "Read(//c//**)",
-      "Bash(sed:*)",
-      "Read(//c/Users/Tien/Documents/ShareX/Screenshots/2025-09/**)",
-      "mcp__playwright__browser_navigate",
-      "mcp__playwright__browser_resize",
-      "mcp__playwright__browser_click",
-      "mcp__playwright__browser_take_screenshot",
-      "mcp__playwright__browser_handle_dialog",
-      "mcp__playwright__browser_snapshot",
-      "mcp__playwright__browser_console_messages",
-      "mcp__playwright__browser_evaluate",
-      "mcp__playwright__browser_drag",
-      "mcp__playwright__browser_press_key",
-      "Bash(pkill:*)",
-      "mcp__playwright__browser_type"
+      "Read(//c/Users/Tien/Documents/ShareX/Screenshots/2025-09/**)"
     ],
     "deny": [],
     "ask": []
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Tien\\Documents\\land-viz\\.claude\\scripts\\claude-notification-simple.ps1\" -Message \"Claude has finished the task!\" -Title \"✅ Claude Done\" -Sound \"Asterisk\" -Type \"completion\""
+          }
+        ]
+      }
+    ],
+    "Start": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Tien\\Documents\\land-viz\\.claude\\scripts\\claude-notification-simple.ps1\" -Message \"Claude is requesting permission! Check Cursor for details.\" -Title \"🔐 Permission Request\" -Sound \"Question\" -Type \"permission\""
+          }
+        ]
+      }
+    ],
+    "ToolUse": [
+      {
+        "matcher": "compact|toggle|expand|collapse",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Tien\\Documents\\land-viz\\.claude\\scripts\\compact-notification.ps1\" -Message \"Compact mode operation completed!\" -Title \"📱 Compact Done\" -Sound \"Beep\" -Operation \"toggle\""
+          }
+        ]
+      }
+    ]
   }
 }

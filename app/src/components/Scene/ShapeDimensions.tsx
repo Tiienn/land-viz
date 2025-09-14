@@ -124,7 +124,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
       
       // Skip the last segment for simple 2-point lines (not closed shapes)
       // But allow it for multi-point polylines that should be closed
-      if (shape.type === 'line' && points.length === 2 && i === points.length - 1) break;
+      if (shape.type === 'polyline' && points.length === 2 && i === points.length - 1) break;
       
       // Calculate distance between points
       const distance = precisionCalculator.calculateDistance(currentPoint, nextPoint);
@@ -201,7 +201,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
   // Add area label for closed shapes
   const areaLabel = useMemo(() => {
     // Only skip area calculation for true 2-point lines, not polylines with 3+ points
-    if (shape.type === 'line' && shape.points.length <= 2) return null;
+    if (shape.type === 'polyline' && shape.points.length <= 2) return null;
     
     // Calculate center position of shape
     let centerX = 0, centerY = 0;

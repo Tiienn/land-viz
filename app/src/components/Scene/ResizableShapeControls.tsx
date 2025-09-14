@@ -4,6 +4,7 @@ import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { logger } from '@/utils/logger';
 
 interface ResizableShapeControlsProps {
   elevation?: number;
@@ -129,6 +130,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         );
       }
       
+      // Debug logging removed - resize handles working correctly
       return { corners: cornerPoints, edges: [], allHandles };
     }
     
@@ -272,13 +274,14 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   }, [resizingShape, globalDragState]);
 
   // Dragging state and handlers
-  const dragState = useRef({ 
-    isDragging: false, 
+  const dragState = useRef({
+    isDragging: false,
     handleType: null as 'corner' | 'edge' | null,
     handleIndex: null as number | null,
     originalPoints: null as Point2D[] | null,
     startMousePos: null as Point2D | null,
-    pointerId: null as number | null
+    pointerId: null as number | null,
+    lastValidResizePoints: null as Point2D[] | null // Store last valid points for reliable capture
   });
   
   const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
@@ -416,18 +419,58 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     newPoint: Point2D,
     maintainAspectRatio: boolean
   ): Point2D[] => {
-    // Convert to 4-corner format if needed
+    // Enhanced validation for input parameters
+    if (!originalPoints || !Array.isArray(originalPoints) || originalPoints.length < 2) {
+      logger.error('❌ Invalid originalPoints for rectangle resize:', originalPoints);
+      return originalPoints || [];
+    }
+
+    if (!newPoint || typeof newPoint.x !== 'number' || typeof newPoint.y !== 'number' ||
+        !isFinite(newPoint.x) || !isFinite(newPoint.y)) {
+      logger.error('❌ Invalid newPoint for rectangle resize:', newPoint);
+      return originalPoints;
+    }
+
+    if (typeof handleIndex !== 'number' || handleIndex < 0) {
+      logger.error('❌ Invalid handleIndex for rectangle resize:', handleIndex);
+      return originalPoints;
+    }
+
+    // Convert to 4-corner format if needed with enhanced validation
     let corners: Point2D[] = [];
     if (originalPoints.length === 2) {
       const [topLeft, bottomRight] = originalPoints;
+
+      // Validate 2-point format
+      if (!topLeft || !bottomRight ||
+          typeof topLeft.x !== 'number' || typeof topLeft.y !== 'number' ||
+          typeof bottomRight.x !== 'number' || typeof bottomRight.y !== 'number') {
+        logger.error('❌ Invalid 2-point format for rectangle resize');
+        return originalPoints;
+      }
+
       corners = [
         { x: topLeft.x, y: topLeft.y },      // Top left (0)
         { x: bottomRight.x, y: topLeft.y },  // Top right (1)
         { x: bottomRight.x, y: bottomRight.y }, // Bottom right (2)
         { x: topLeft.x, y: bottomRight.y }   // Bottom left (3)
       ];
+    } else if (originalPoints.length >= 4) {
+      // Validate 4-point format
+      const validCorners = originalPoints.slice(0, 4).filter(point =>
+        point && typeof point.x === 'number' && typeof point.y === 'number' &&
+        isFinite(point.x) && isFinite(point.y)
+      );
+
+      if (validCorners.length !== 4) {
+        logger.error('❌ Invalid 4-point format for rectangle resize');
+        return originalPoints;
+      }
+
+      corners = validCorners;
     } else {
-      corners = [...originalPoints.slice(0, 4)];
+      logger.error('❌ Unsupported point count for rectangle resize:', originalPoints.length);
+      return originalPoints;
     }
     
     if (handleType === 'corner') {
@@ -487,12 +530,21 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         ];
       }
       
+      // Validate bounds before returning
+      const deltaX = maxX - minX;
+      const deltaY = maxY - minY;
+
+      if (deltaX < 0.001 || deltaY < 0.001) {
+        logger.warn('⚠️ Degenerate rectangle bounds detected in resize:', { deltaX, deltaY });
+        return originalPoints; // Return original points if result is degenerate
+      }
+
       // Return new rectangle bounds in 2-point format (preserving rectangle shape)
       const result = [
         { x: minX, y: minY },  // Top left
         { x: maxX, y: maxY }   // Bottom right
       ];
-      console.log('🔧 Rectangle resize returning 2-point format:', JSON.stringify(result));
+      logger.log('✅ Rectangle resize returning validated 2-point format:', JSON.stringify(result));
       return result;
     } else {
       // Edge resizing - constrain to single dimension
@@ -512,17 +564,26 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         newCorners[3].x = newPoint.x;
       }
       
-      // Convert back to 2-point format for rectangles
+      // Convert back to 2-point format for rectangles with validation
       const minX = Math.min(newCorners[0].x, newCorners[1].x, newCorners[2].x, newCorners[3].x);
       const maxX = Math.max(newCorners[0].x, newCorners[1].x, newCorners[2].x, newCorners[3].x);
       const minY = Math.min(newCorners[0].y, newCorners[1].y, newCorners[2].y, newCorners[3].y);
       const maxY = Math.max(newCorners[0].y, newCorners[1].y, newCorners[2].y, newCorners[3].y);
-      
+
+      // Validate edge resize result bounds
+      const edgeDeltaX = maxX - minX;
+      const edgeDeltaY = maxY - minY;
+
+      if (edgeDeltaX < 0.001 || edgeDeltaY < 0.001) {
+        logger.warn('⚠️ Degenerate rectangle bounds detected in edge resize:', { edgeDeltaX, edgeDeltaY });
+        return originalPoints; // Return original points if result is degenerate
+      }
+
       const edgeResult = [
         { x: minX, y: minY },  // Top left
         { x: maxX, y: maxY }   // Bottom right
       ];
-      console.log('🔧 Edge resize returning 2-point format:', JSON.stringify(edgeResult));
+      logger.log('✅ Edge resize returning validated 2-point format:', JSON.stringify(edgeResult));
       return edgeResult;
     }
   }, [maintainRectangleAspectRatio]);
@@ -588,44 +649,174 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
           newPoints[dragState.current.handleIndex] = newPoint;
         }
       }
-      
-      console.log('🔧 About to call resizeShapeLive:', {
-        shapeId: resizingShape.id,
-        handleType: dragState.current.handleType,
-        handleIndex: dragState.current.handleIndex,
-        newPoints: JSON.stringify(newPoints),
-        originalPoints: JSON.stringify(dragState.current.originalPoints)
-      });
-      document.title = 'LIVE RESIZE CALL ' + new Date().getSeconds();
-      // Use live resize during dragging to avoid history pollution
-      resizeShapeLive(resizingShape.id, newPoints);
+
+      // ENHANCED VALIDATION: Prevent geometry corruption from invalid points
+      if (!newPoints || !Array.isArray(newPoints) || newPoints.length === 0) {
+        logger.warn('⚠️ Invalid newPoints array, skipping live resize:', newPoints);
+        return;
+      }
+
+      // Validate each point has proper numeric coordinates
+      const validPoints = newPoints.filter(point =>
+        point &&
+        typeof point.x === 'number' && typeof point.y === 'number' &&
+        !isNaN(point.x) && !isNaN(point.y) &&
+        isFinite(point.x) && isFinite(point.y)
+      );
+
+      if (validPoints.length !== newPoints.length) {
+        logger.warn('⚠️ Some points have invalid coordinates, skipping live resize');
+        return;
+      }
+
+      // Additional validation for rectangles to prevent diagonal line artifacts
+      if (resizingShape.type === 'rectangle' && validPoints.length >= 2) {
+        if (validPoints.length === 2) {
+          // 2-point format: check for minimum size
+          const [p1, p2] = validPoints;
+          const width = Math.abs(p2.x - p1.x);
+          const height = Math.abs(p2.y - p1.y);
+          if (width < 0.01 || height < 0.01) {
+            logger.warn('⚠️ Rectangle too small during live resize, skipping');
+            return;
+          }
+        } else if (validPoints.length === 4) {
+          // 4-point format: check for degenerate geometry
+          const xCoords = validPoints.map(p => p.x);
+          const yCoords = validPoints.map(p => p.y);
+          const width = Math.max(...xCoords) - Math.min(...xCoords);
+          const height = Math.max(...yCoords) - Math.min(...yCoords);
+          if (width < 0.01 || height < 0.01) {
+            logger.warn('⚠️ Rectangle geometry degenerate during live resize, skipping');
+            return;
+          }
+        }
+      }
+
+      // Store last valid points for reliable capture in handlePointerUp
+      dragState.current.lastValidResizePoints = [...validPoints];
+
+      // Use validated points for live resize
+      console.log('🔄 POINTER MOVE - Setting liveResizePoints:', JSON.stringify(validPoints));
+      resizeShapeLive(resizingShape.id, validPoints);
     }
   }, [camera, gl.domElement, raycaster, resizingShape, setMaintainAspectRatio, resizeShapeLive, groundPlane, calculateRectangleResize, calculateCircleResize, calculateEllipseResize]);
 
   const handlePointerUp = useCallback((event: PointerEvent) => {
-    if (dragState.current.isDragging && 
-        (dragState.current.pointerId === null || event.pointerId === dragState.current.pointerId)) {
-      
-      console.log('🔄 Resize complete - state already saved at beginning');
-      
-      // Clean up drag state
+    // CRITICAL FIX: Prevent duplicate pointer up events
+    if (!dragState.current.isDragging ||
+        (dragState.current.pointerId !== null && event.pointerId !== dragState.current.pointerId)) {
+      console.log('🚫 POINTER UP - Ignoring duplicate/invalid event');
+      return;
+    }
+
+    // CRITICAL FIX: Capture live resize points IMMEDIATELY before resizeShape() clears them
+    console.log('🔍 PRE-CAPTURE DEBUG - drawing.liveResizePoints:', drawing.liveResizePoints ? JSON.stringify(drawing.liveResizePoints) : 'null');
+    const capturedLivePoints = drawing.liveResizePoints ? [...drawing.liveResizePoints] : null;
+
+    // ENHANCED: Robust final resize commit with comprehensive fallback logic
+    if (resizingShape) {
+      let finalPoints = null;
+
+      // DEBUG: Log current state at pointer up
+      console.log('🔍 POINTER UP DEBUG - Current state:', {
+        resizingShapeId: resizingShape.id,
+        currentShapePoints: JSON.stringify(resizingShape.points),
+        capturedLivePointsExist: !!capturedLivePoints,
+        capturedLivePointsLength: capturedLivePoints?.length || 0,
+        capturedLivePoints: capturedLivePoints ? JSON.stringify(capturedLivePoints) : 'null'
+      });
+
+      // Priority 1: Use stored drag state points (most reliable)
+      if (dragState.current.lastValidResizePoints && dragState.current.lastValidResizePoints.length >= 2) {
+        finalPoints = [...dragState.current.lastValidResizePoints];
+        console.log('🎯 Using stored drag state resize points for final commit:', JSON.stringify(finalPoints));
+        logger.log('✅ Using stored drag state resize points for final commit:', JSON.stringify(finalPoints));
+      }
+      // Priority 2: Fallback to captured live resize points if drag state fails
+      else if (capturedLivePoints && Array.isArray(capturedLivePoints) && capturedLivePoints.length >= 2) {
+        // Validate all points have proper coordinates
+        const validLivePoints = capturedLivePoints.filter(point =>
+          point && typeof point.x === 'number' && typeof point.y === 'number' &&
+          !isNaN(point.x) && !isNaN(point.y) && isFinite(point.x) && isFinite(point.y)
+        );
+
+        if (validLivePoints.length >= 2) {
+          finalPoints = validLivePoints;
+          console.log('🎯 Using validated CAPTURED live resize points for final commit:', JSON.stringify(finalPoints));
+          logger.log('✅ Using validated CAPTURED live resize points for final commit:', JSON.stringify(finalPoints));
+        }
+      }
+
+      // Priority 3: Fall back to current intersection point calculation if live points invalid
+      if (!finalPoints && dragState.current.originalPoints) {
+        // Get current mouse position and calculate final points
+        const rect = gl.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersection = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+          const currentPoint: Point2D = { x: intersection.x, y: intersection.z };
+
+          // Calculate final points using the same logic as handlePointerMove
+          if (resizingShape.type === 'rectangle') {
+            finalPoints = calculateRectangleResize(
+              dragState.current.originalPoints,
+              dragState.current.handleType || 'corner',
+              dragState.current.handleIndex || 0,
+              currentPoint,
+              event.shiftKey
+            );
+            logger.log('✅ Calculated final points from current mouse position:', JSON.stringify(finalPoints));
+          }
+        }
+      }
+
+      // Priority 4: Last resort - maintain original points (no change)
+      if (!finalPoints) {
+        finalPoints = dragState.current.originalPoints || resizingShape.points;
+        logger.warn('⚠️ Using fallback to original points - resize may be lost');
+      }
+
+      // Clean up drag state IMMEDIATELY to prevent duplicate calls
       dragState.current.isDragging = false;
       dragState.current.handleType = null;
       dragState.current.handleIndex = null;
       dragState.current.originalPoints = null;
       dragState.current.startMousePos = null;
       dragState.current.pointerId = null;
-      
-      // Remove event listeners
-      document.removeEventListener('pointermove', handlePointerMove, true);
-      document.removeEventListener('pointerup', handlePointerUp, true);
-      document.removeEventListener('pointercancel', handlePointerUp, true);
-      
-      // Reset cursor and other states
-      setCursorOverride(null);
-      setMaintainAspectRatio(false);
+      dragState.current.lastValidResizePoints = null;
+
+      // ATOMIC COMMIT: Ensure the resize is committed atomically
+      if (finalPoints && finalPoints.length >= 2) {
+        try {
+          console.log('🔒 FINAL COMMIT - Committing final points:', JSON.stringify(finalPoints));
+          logger.log('🔒 Atomic resize commit for shape:', resizingShape.id);
+          resizeShape(resizingShape.id, finalPoints);
+          console.log('✅ FINAL COMMIT - resizeShape() called successfully');
+        } catch (error) {
+          console.error('❌ FINAL COMMIT - Failed:', error);
+          logger.error('❌ Failed to commit final resize:', error);
+        }
+      } else {
+        console.error('❌ FINAL COMMIT - No valid finalPoints:', finalPoints);
+      }
+    } else {
+      logger.error('❌ No resizing shape available for final commit');
     }
-  }, [handlePointerMove, setMaintainAspectRatio]);
+
+    // Remove event listeners
+    document.removeEventListener('pointermove', handlePointerMove, true);
+    document.removeEventListener('pointerup', handlePointerUp, true);
+    document.removeEventListener('pointercancel', handlePointerUp, true);
+
+    // Reset cursor and other states
+    setCursorOverride(null);
+    setMaintainAspectRatio(false);
+  }, [handlePointerMove, setMaintainAspectRatio, resizingShape, resizeShape, gl.domElement, camera, raycaster, groundPlane, calculateRectangleResize]);
 
 
   // Cleanup on unmount
@@ -658,36 +849,37 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             return (
               <Sphere
                 key={`resize-corner-${index}`}
-                position={[point.x, elevation + 0.2, point.y]}
-                args={[0.5]}
+                position={[point.x, elevation + 0.3, point.y]}
+                args={[0.6]} // Professional size for corner handles
                 onClick={(event) => {
                   event.stopPropagation();
                   setResizeHandle('corner', index);
                 }}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  
+
                   setResizeHandle('corner', index);
-                  
+
                   // Save initial state to history before starting resize
-                  console.log('🔄 Saving initial state before resize');
                   saveToHistory();
-                  
-                  // Set up drag state  
-                  console.log('🎯 SPHERE CLICKED! Corner index:', index);
-                  document.title = 'CORNER DRAG START ' + index;
+
+                  // Set up drag state
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'corner';
                   dragState.current.handleIndex = index;
                   dragState.current.originalPoints = [...resizingShape.points];
                   dragState.current.pointerId = event.nativeEvent.pointerId;
-                  
+
                   // Set cursor for the entire drag operation
                   setCursorOverride(cornerCursor);
-                  
+
                   // Capture pointer to ensure we get all events
-                  event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
-                  
+                  try {
+                    event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+                  } catch (error) {
+                    console.warn('⚠️ Failed to capture pointer:', error);
+                  }
+
                   // Add global listeners with capture
                   document.addEventListener('pointermove', handlePointerMove, true);
                   document.addEventListener('pointerup', handlePointerUp, true);
@@ -721,20 +913,48 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const isSelected = drawing.resizeHandleType === 'edge' && drawing.resizeHandleIndex === index;
             const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
             
-            // Make edge handles larger and oriented based on which edge
-            let handleArgs: [number, number, number] = [1.5, 0.3, 0.4]; // Horizontal handles (top/bottom edges) - bigger
-            let edgeCursor = 'ns-resize'; // Vertical resize for top/bottom edges
+            // Calculate parallel direction for this edge handle
+            const baseRotation = resizingShape.rotation?.angle || 0;
             
-            if (index === 1 || index === 3) { // Right and left edges - vertical handles
-              handleArgs = [0.4, 0.3, 1.5]; // Bigger vertical handles
-              edgeCursor = 'ew-resize'; // Horizontal resize for left/right edges
+            // Each edge has a base parallel direction relative to unrotated rectangle:
+            // Top edge (0): runs horizontally = 0°
+            // Right edge (1): runs vertically = 90°
+            // Bottom edge (2): runs horizontally = 180°  
+            // Left edge (3): runs vertically = 270°
+            const baseParallels = [0, 90, 180, 270];
+            const parallelAngle = baseRotation + baseParallels[index];
+            
+            // Normalize angle to 0-360 range
+            const normalizedAngle = ((parallelAngle % 360) + 360) % 360;
+            
+            // Determine handle orientation based on final parallel direction
+            // Vertical edges (running up/down): 45-135° and 225-315°  
+            // Horizontal edges (running left/right): 135-225° and 315-45°
+            const isEdgeVertical = (normalizedAngle >= 45 && normalizedAngle < 135) || 
+                                  (normalizedAngle >= 225 && normalizedAngle < 315);
+            
+            // Set handle dimensions to create thin bar parallel to edge direction
+            let handleArgs: [number, number, number];
+            let edgeCursor: string;
+            
+            if (isEdgeVertical) {
+              // Edge runs vertically - create thin vertical handle bar
+              handleArgs = [0.3, 0.3, 1.5]; 
+              edgeCursor = 'ew-resize'; // Cursor for horizontal resize (perpendicular to vertical edge)
+            } else {
+              // Edge runs horizontally - create thin horizontal handle bar  
+              handleArgs = [1.5, 0.3, 0.3];
+              edgeCursor = 'ns-resize'; // Cursor for vertical resize (perpendicular to horizontal edge)
             }
+            
+            const rotationRadians = parallelAngle * Math.PI / 180;
             
             return (
               <Box
                 key={`resize-edge-${index}`}
                 position={[point.x, elevation + 0.15, point.y]}
                 args={handleArgs}
+                rotation={[0, 0, rotationRadians]}
                 onClick={(event) => {
                   event.stopPropagation();
                   setResizeHandle('edge', index);

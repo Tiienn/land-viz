@@ -1,0 +1,34 @@
+{
+  "notification": {
+    "enabled": true,
+    "message": "Claude has finished the task!",
+    "title": "✅ Claude Done",
+    "sound": "Asterisk",
+    "showToast": true,
+    "showDialog": true,
+    "autoCloseSeconds": 3,
+    "sounds": {
+      "Asterisk": "Standard system asterisk sound",
+      "Beep": "Simple beep sound",
+      "Exclamation": "Exclamation sound",
+      "Hand": "Stop/error sound",
+      "Question": "Question sound"
+    }
+  },
+  "customization": {
+    "messages": [
+      "Claude has finished the task!",
+      "Task completed successfully!",
+      "All done! Claude finished working.",
+      "Claude is ready for the next task!",
+      "Work completed! 🎉"
+    ],
+    "titles": [
+      "✅ Claude Done",
+      "🎯 Task Complete",
+      "✨ Claude Finished",
+      "🚀 Ready for Next",
+      "💡 Work Complete"
+    ]
+  }
+}

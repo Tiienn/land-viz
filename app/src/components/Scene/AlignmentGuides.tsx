@@ -227,26 +227,20 @@ export const AlignmentGuides: React.FC<AlignmentGuidesProps> = ({
   // Update Three.js objects when animated guides change
   useEffect(() => {
     if (!groupRef.current || !visible) {
-      console.log('AlignmentGuides: not rendering', { hasGroup: !!groupRef.current, visible });
+      // Debug logging removed to reduce console noise
       return;
     }
 
     // Clear existing objects
     groupRef.current.clear();
 
-    console.log('AlignmentGuides: rendering guides', animatedGuides.size, 'guides');
+    // Debug logging removed to reduce console noise
 
     // Create and add new objects for each animated guide
     animatedGuides.forEach((animatedGuide, id) => {
       const { guide, opacity } = animatedGuide;
       
-      console.log('AlignmentGuides: creating guide', { 
-        id, 
-        type: guide.type,
-        start: guide.start,
-        end: guide.end,
-        opacity
-      });
+      // Debug logging removed to reduce console noise
       
       // Create guide line
       const geometry = new THREE.BufferGeometry();
@@ -263,12 +257,7 @@ export const AlignmentGuides: React.FC<AlignmentGuidesProps> = ({
       line.computeLineDistances();
       line.renderOrder = 999;
       
-      console.log('AlignmentGuides: created line', {
-        points: points.map(p => ({ x: p.x, y: p.y, z: p.z })),
-        material: material.type,
-        color: material.color.getHexString(),
-        opacity: material.opacity
-      });
+      // Debug logging removed to reduce console noise
       
       // Store reference for animation updates
       animatedGuide.line = line;

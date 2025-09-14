@@ -42,7 +42,7 @@ export interface Shape {
   rotation?: ShapeRotation;
 }
 
-export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'line';
+export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline';
 
 // Drawing tool types
 export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate';
@@ -63,6 +63,7 @@ export interface DrawingState {
   resizeHandleType: 'corner' | 'edge' | null;
   resizeHandleIndex: number | null;
   maintainAspectRatio: boolean;
+  liveResizePoints: Point2D[] | null;
   // Rotation mode state (only available in 'select' mode)
   isRotateMode: boolean;
   rotatingShapeId: string | null;
@@ -101,6 +102,15 @@ export interface DrawingState {
     /** Enhanced grid configuration */
     config: GridConfig;
   };
+}
+
+// Area unit types for Insert Area feature
+export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm';
+
+export interface AreaValidation {
+  isValid: boolean;
+  error?: string;
+  numValue?: number;
 }
 
 // Measurement types

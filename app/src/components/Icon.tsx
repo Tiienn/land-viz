@@ -1,4 +1,5 @@
 import React from 'react';
+import { logger } from '../utils/logger';
 
 export interface IconProps {
   name: string;
@@ -49,6 +50,22 @@ const iconPaths: Record<string, React.ReactNode> = {
   quickTools: (
     <>
       <polygon points="13,2 3,14 12,14 11,22 21,10 12,10" />
+    </>
+  ),
+  
+  calculator: (
+    <>
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <rect x="8" y="6" width="8" height="4" rx="1" />
+      <rect x="6" y="12" width="2" height="2" rx="1" />
+      <rect x="10" y="12" width="2" height="2" rx="1" />
+      <rect x="14" y="12" width="2" height="2" rx="1" />
+      <rect x="6" y="16" width="2" height="2" rx="1" />
+      <rect x="10" y="16" width="2" height="2" rx="1" />
+      <rect x="14" y="16" width="2" height="2" rx="1" />
+      <rect x="6" y="20" width="2" height="2" rx="1" />
+      <rect x="10" y="20" width="2" height="2" rx="1" />
+      <rect x="14" y="20" width="2" height="2" rx="1" />
     </>
   ),
   
@@ -115,7 +132,7 @@ const Icon: React.FC<IconProps> = ({
   const iconContent = iconPaths[name];
   
   if (!iconContent) {
-    console.warn(`Icon "${name}" not found`);
+    logger.warn(`Icon "${name}" not found`);
     return null;
   }
 

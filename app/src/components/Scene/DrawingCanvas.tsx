@@ -42,6 +42,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const cancelDrawing = useAppStore(state => state.cancelDrawing);
   const selectShape = useAppStore(state => state.selectShape);
   const hoverShape = useAppStore(state => state.hoverShape);
+  const exitRotateMode = useAppStore(state => state.exitRotateMode);
   
   // Get the entire store for updating state
   const store = useAppStore;
@@ -217,6 +218,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     // Handle deselection when select tool is active and clicking empty space
     if (activeTool === 'select') {
       selectShape(null);
+      exitRotateMode(); // Clear rotation handles when clicking empty space
       return;
     }
     
@@ -304,6 +306,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     addPoint,
     finishDrawing,
     selectShape,
+    exitRotateMode,
   ]);
 
   const handleDoubleClick = useCallback(() => {

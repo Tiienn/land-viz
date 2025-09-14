@@ -12,6 +12,7 @@ import { SnapIndicator } from './SnapIndicator';
 import { ActiveSnapIndicator } from './ActiveSnapIndicator';
 import AlignmentGuides from './AlignmentGuides';
 import DraggableShapes from './DraggableShapes';
+import ResizableShapeControls from './ResizableShapeControls';
 import RulerSystem from './RulerSystem';
 import type { SceneSettings, Point3D, Point2D } from '@/types';
 import { useAppStore } from '@/store/useAppStore';
@@ -124,6 +125,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       <ShapeRenderer elevation={0.01} />
 
+      {/* Resize handles for selected shapes */}
+      <ResizableShapeControls elevation={0.02} />
+
       {/* Snap Indicators */}
       <SnapIndicator maxDistance={100} />
       <ActiveSnapIndicator />
@@ -146,7 +150,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
         precision={1}
       /> */}
 
-      <Environment preset="city" background={false} />
+      {/* Environment disabled temporarily due to CSP/HDR loading issues */}
+      {/* <Environment preset="city" background={false} /> */}
 
       {children}
     </>

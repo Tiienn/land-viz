@@ -4,6 +4,7 @@ import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { logger } from '../../utils/logger';
 
 interface EditableShapeControlsProps {
   elevation?: number;
@@ -70,7 +71,7 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
         newPoints[dragState.current.dragCornerIndex] = newPoint;
         
         // Use live update actions for real-time feedback
-        console.log('🔥 Live updating shape:', currentShape.id, 'point:', dragState.current.dragCornerIndex, 'new point:', newPoint);
+        logger.log('🔥 Live updating shape:', currentShape.id, 'point:', dragState.current.dragCornerIndex, 'new point:', newPoint);
         if (currentShape.type === 'rectangle' && currentShape.points.length === 2) {
           // For rectangles, convert to polygon with new points (live update)
           convertRectangleToPolygonLive(currentShape.id, newPoints);
@@ -78,7 +79,7 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
           // For polygons, update the specific point (live update)
           updateShapePointLive(currentShape.id, dragState.current.dragCornerIndex, newPoint);
         }
-        console.log('🔥 Live update complete for:', currentShape.id);
+        logger.log('🔥 Live update complete for:', currentShape.id);
       }
     }
   }, [gl.domElement, raycaster, camera, groundPlane]);

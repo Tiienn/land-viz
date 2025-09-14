@@ -93,8 +93,10 @@ export const ActiveSnapIndicator: React.FC = () => {
     })
   }), []);
 
-  // Get active snap point
-  const activeSnapPoint = snapping.config.enabled && snapping.activeSnapPoint 
+  // Get active snap point - only show if the snap type is active
+  const activeSnapPoint = snapping.config.enabled && 
+                          snapping.activeSnapPoint &&
+                          snapping.config.activeTypes?.has?.(snapping.activeSnapPoint.type)
     ? snapping.activeSnapPoint 
     : null;
 

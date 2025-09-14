@@ -15,6 +15,7 @@ import {
   Download,
 } from 'lucide-react';
 
+import { logger } from '../../utils/logger';
 import type { DrawingTool } from '@/types';
 
 interface RibbonProps {
@@ -115,7 +116,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
       if (drawingTools.includes(toolId)) {
         onToolChange(toolId as DrawingTool);
       } else {
-        console.log(`Non-drawing tool clicked: ${toolId}`);
+        logger.log(`Non-drawing tool clicked: ${toolId}`);
       }
     }
   };

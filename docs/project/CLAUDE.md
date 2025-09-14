@@ -162,6 +162,14 @@ User Input → Validation → Precision Mode Check
 | Accuracy | ±0.01% | ±1% | 🔴 Pending Chili3D |
 | Bundle Size | <5MB | 3.2MB | 🟢 Good |
 
+### Recent Updates (January 2025)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| State Corruption Fix | ✅ Complete | Fixed liveResizePoints leaking causing gray polylines |
+| Tool Switching Enhancement | ✅ Complete | Clean state transitions prevent visual corruption |
+| Imaginary Line Feature | ✅ Complete | Polyline drawing with dotted cursor preview |
+| Debug Console Cleanup | ✅ Complete | Production-ready logging with clean output |
+
 ---
 
 ## 🔧 Chili3D Integration Plan

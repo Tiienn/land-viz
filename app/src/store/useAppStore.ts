@@ -5,7 +5,9 @@ import { booleanOperationEngine, type BooleanResult, type SubdivisionSettings } 
 import { professionalExportEngine, type ExportOptions, type ExportResult } from '@/services/professionalExport';
 import { alignmentService } from '@/services/alignmentService';
 import { GeometryCache } from '@/utils/GeometryCache';
-import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide } from '@/types';
+import { logger } from '@/utils/logger';
+import { convertToSquareMeters, calculateSquareDimensions, getUnitLabel } from '@/utils/areaCalculations';
+import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide, AreaUnit } from '@/types';
 
 interface AppStore extends AppState {
   // Layer actions
@@ -36,6 +38,7 @@ interface AppStore extends AppState {
   selectShape: (id: string | null) => void;
   hoverShape: (id: string | null) => void;
   duplicateShape: (id: string) => void;
+  createShapeFromArea: (area: number, unit: AreaUnit) => void;
 
   // Drag actions
   startDragging: (shapeId: string, startPosition: Point2D) => void;
@@ -136,6 +139,7 @@ const getDefaultDrawingState = () => ({
   resizeHandleType: null,
   resizeHandleIndex: null,
   maintainAspectRatio: false,
+  liveResizePoints: null,
   // Rotation mode state
   isRotateMode: false,
   rotatingShapeId: null,
@@ -146,7 +150,7 @@ const getDefaultDrawingState = () => ({
     config: {
       enabled: true,
       snapRadius: 15,
-      activeTypes: new Set([]),
+      activeTypes: new Set(['grid']),
       visual: {
         showIndicators: true,
         showSnapLines: true,
@@ -485,26 +489,67 @@ export const useAppStore = create<AppStore>()(
 
       // Drawing actions
       setActiveTool: (tool: DrawingTool) => {
+        const state = get();
+        
+        logger.log('🔧 ==> TOOL SWITCH DEBUG START <==');
+        logger.log('🔧 Switching from', state.drawing.activeTool, 'to', tool);
+        logger.log('🔧 Current resize state:', {
+          isResizeMode: state.drawing.isResizeMode,
+          resizingShapeId: state.drawing.resizingShapeId,
+          liveResizePoints: state.drawing.liveResizePoints ? `${state.drawing.liveResizePoints.length} points` : 'null'
+        });
+        
+        // Check if we need to clear resize state
+        const isLeavingSelectTool = state.drawing.activeTool === 'select' && tool !== 'select';
+        const needsResizeCleanup = isLeavingSelectTool && (state.drawing.isResizeMode || state.drawing.liveResizePoints);
+        
+        if (needsResizeCleanup) {
+          logger.log('🔧 CRITICAL FIX: Tool switch requires resize cleanup');
+          logger.log('🔧 Clearing liveResizePoints and geometry cache');
+          
+          // Clear geometry cache for shapes with live resize state
+          if (state.drawing.resizingShapeId) {
+            const resizingShape = state.shapes.find(s => s.id === state.drawing.resizingShapeId);
+            if (resizingShape) {
+              GeometryCache.invalidateShape(resizingShape);
+            }
+          }
+        }
+        
         set(
-          state => ({
+          prevState => ({
             drawing: {
-              ...state.drawing,
+              ...prevState.drawing,
               activeTool: tool,
               isDrawing: false,
               currentShape: null,
-              // Reset resize mode when switching away from select tool
-              isResizeMode: tool === 'select' ? state.drawing.isResizeMode : false,
-              resizingShapeId: tool === 'select' ? state.drawing.resizingShapeId : null,
-              resizeHandleType: tool === 'select' ? state.drawing.resizeHandleType : null,
-              resizeHandleIndex: tool === 'select' ? state.drawing.resizeHandleIndex : null,
-              maintainAspectRatio: tool === 'select' ? state.drawing.maintainAspectRatio : false,
+              // CRITICAL FIX: Comprehensive state clearing when leaving select tool
+              isResizeMode: tool === 'select' ? prevState.drawing.isResizeMode : false,
+              resizingShapeId: tool === 'select' ? prevState.drawing.resizingShapeId : null,
+              resizeHandleType: tool === 'select' ? prevState.drawing.resizeHandleType : null,
+              resizeHandleIndex: tool === 'select' ? prevState.drawing.resizeHandleIndex : null,
+              maintainAspectRatio: tool === 'select' ? prevState.drawing.maintainAspectRatio : false,
+              // ATOMIC CLEAR: Always clear liveResizePoints when leaving select tool
+              liveResizePoints: tool === 'select' ? prevState.drawing.liveResizePoints : null,
             },
             // Clear hover state when switching away from select tool
-            hoveredShapeId: tool === 'select' ? state.hoveredShapeId : null,
+            hoveredShapeId: tool === 'select' ? prevState.hoveredShapeId : null,
+            // CRITICAL FIX: Deselect shape when leaving resize mode via tool switch
+            selectedShapeId: needsResizeCleanup ? null : prevState.selectedShapeId,
           }),
           false,
           'setActiveTool',
         );
+        
+        const finalState = get();
+        logger.log('🔧 Final state after tool switch:', {
+          activeTool: finalState.drawing.activeTool,
+          selectedShapeId: finalState.selectedShapeId,
+          isResizeMode: finalState.drawing.isResizeMode,
+          liveResizePoints: finalState.drawing.liveResizePoints ? `${finalState.drawing.liveResizePoints.length} points` : 'null'
+        });
+        logger.log('🔧 ==> TOOL SWITCH DEBUG END <==');
+        logger.log('');
       },
 
       toggleSnapToGrid: () => {
@@ -555,7 +600,7 @@ export const useAppStore = create<AppStore>()(
                 case 'polygon':
                   return 'polygon';
                 case 'polyline':
-                  return 'line';
+                  return 'polyline';
                 case 'rectangle':
                   return 'rectangle';
                 case 'circle':
@@ -619,7 +664,7 @@ export const useAppStore = create<AppStore>()(
                 return '#3B82F6'; // Blue for rectangles
               case 'circle':
                 return '#10B981'; // Green for circles  
-              case 'line': // polyline
+              case 'polyline':
                 return '#F59E0B'; // Orange/Yellow for polylines
               case 'polygon':
                 return '#8B5CF6'; // Purple for polygons
@@ -752,7 +797,7 @@ export const useAppStore = create<AppStore>()(
       // Shape actions
       addShape: shape => {
         get().saveToHistory(); // Save state before adding shape
-        
+
         const newShape: Shape = {
           id: generateId(),
           created: new Date(),
@@ -767,6 +812,116 @@ export const useAppStore = create<AppStore>()(
           false,
           'addShape',
         );
+      },
+
+      createShapeFromArea: (area: number, unit: AreaUnit) => {
+        get().saveToHistory(); // Save state before modifying shape
+
+        // Convert and calculate
+        const areaInSqM = convertToSquareMeters(area, unit);
+        const { width, height } = calculateSquareDimensions(areaInSqM);
+
+        // Create rectangle at center
+        const center = { x: 0, y: 0 };
+        const points = [
+          { x: center.x - width/2, y: center.y - height/2 },
+          { x: center.x + width/2, y: center.y - height/2 },
+          { x: center.x + width/2, y: center.y + height/2 },
+          { x: center.x - width/2, y: center.y + height/2 }
+        ];
+
+        const state = get();
+
+        // Apply grid snapping if enabled
+        const finalPoints = state.drawing.snapToGrid
+          ? points.map(p => ({
+              x: Math.round(p.x / state.drawing.gridSize) * state.drawing.gridSize,
+              y: Math.round(p.y / state.drawing.gridSize) * state.drawing.gridSize
+            }))
+          : points;
+
+        // Find the default land area shape (main square)
+        const defaultShapeId = 'default-land-area';
+        const defaultShapeExists = state.shapes.some(shape => shape.id === defaultShapeId);
+
+        if (defaultShapeExists) {
+          // Replace the default main square
+          set(
+            state => ({
+              shapes: state.shapes.map(shape =>
+                shape.id === defaultShapeId
+                  ? {
+                      ...shape,
+                      name: `Land Area ${area} ${getUnitLabel(unit)}`,
+                      points: finalPoints,
+                      modified: new Date()
+                    }
+                  : shape
+              ),
+              selectedShapeId: defaultShapeId,
+              drawing: {
+                ...state.drawing,
+                activeTool: 'select'
+              }
+            }),
+            false,
+            'createShapeFromArea',
+          );
+        } else {
+          // If default shape doesn't exist, replace the first shape or create a new one
+          if (state.shapes.length > 0) {
+            // Replace the first shape
+            const firstShapeId = state.shapes[0].id;
+            set(
+              state => ({
+                shapes: state.shapes.map((shape, index) =>
+                  index === 0
+                    ? {
+                        ...shape,
+                        name: `Land Area ${area} ${getUnitLabel(unit)}`,
+                        points: finalPoints,
+                        type: 'rectangle' as const,
+                        modified: new Date()
+                      }
+                    : shape
+                ),
+                selectedShapeId: firstShapeId,
+                drawing: {
+                  ...state.drawing,
+                  activeTool: 'select'
+                }
+              }),
+              false,
+              'createShapeFromArea',
+            );
+          } else {
+            // No shapes exist, create a new one
+            const newShape: Shape = {
+              id: 'default-land-area',
+              name: `Land Area ${area} ${getUnitLabel(unit)}`,
+              points: finalPoints,
+              type: 'rectangle',
+              color: '#3B82F6',
+              visible: true,
+              layerId: state.activeLayerId,
+              created: new Date(),
+              modified: new Date()
+            };
+
+            set(
+              state => ({
+                shapes: [newShape],
+                selectedShapeId: newShape.id,
+                drawing: {
+                  ...state.drawing,
+                  activeTool: 'select'
+                }
+              }),
+              false,
+              'createShapeFromArea',
+            );
+          }
+        }
       },
 
       updateShape: (id: string, updates: Partial<Shape>) => {
@@ -804,8 +959,36 @@ export const useAppStore = create<AppStore>()(
 
       selectShape: (id: string | null) => {
         const state = get();
-        // Exit resize mode when selecting a different shape
-        if (state.drawing.isResizeMode && state.drawing.resizingShapeId !== id) {
+        
+        logger.log('🎯 ==> SELECTSHAPE DEBUG START <==');
+        logger.log('🎯 Selecting shape:', id);
+        logger.log('🎯 Previous selectedShapeId:', state.selectedShapeId);
+        logger.log('🎯 Current resize state:', {
+          isResizeMode: state.drawing.isResizeMode,
+          resizingShapeId: state.drawing.resizingShapeId,
+          liveResizePoints: state.drawing.liveResizePoints ? `${state.drawing.liveResizePoints.length} points` : 'null'
+        });
+        logger.log('🎯 Current rotation state:', {
+          isRotateMode: state.drawing.isRotateMode,
+          rotatingShapeId: state.drawing.rotatingShapeId
+        });
+        
+        // CRITICAL FIX: Always clear liveResizePoints FIRST to prevent corruption
+        const shouldClearResizeMode = state.drawing.isResizeMode && state.drawing.resizingShapeId !== id;
+        const shouldClearRotateMode = state.drawing.isRotateMode && state.drawing.rotatingShapeId !== id;
+        
+        if (shouldClearResizeMode || shouldClearRotateMode) {
+          logger.log('🎯 CLEARING RESIZE/ROTATE STATE - switching from', state.drawing.resizingShapeId || state.drawing.rotatingShapeId, 'to', id);
+          logger.log('🎯 Previous liveResizePoints:', state.drawing.liveResizePoints);
+          
+          // Clear geometry cache before state change to prevent stale geometry usage
+          if (state.drawing.resizingShapeId) {
+            const resizingShape = state.shapes.find(s => s.id === state.drawing.resizingShapeId);
+            if (resizingShape) {
+              GeometryCache.invalidateShape(resizingShape);
+            }
+          }
+          
           set(
             prevState => ({
               selectedShapeId: id,
@@ -816,13 +999,67 @@ export const useAppStore = create<AppStore>()(
                 resizeHandleType: null,
                 resizeHandleIndex: null,
                 maintainAspectRatio: false,
+                liveResizePoints: null, // ALWAYS clear first
+                // ROTATION FIX: Clear rotation mode when switching shapes
+                isRotateMode: false,
+                rotatingShapeId: null,
+                rotationStartAngle: 0,
+                rotationCenter: null,
               },
             }),
             false,
             'selectShape'
           );
+          
+          logger.log('🎯 RESIZE/ROTATE STATE CLEARED - modes reset to false');
         } else {
-          set({ selectedShapeId: id }, false, 'selectShape');
+          logger.log('🎯 CLEARING LIVE RESIZE POINTS AND ROTATION STATE - selection change requires cleanup');
+          
+          // CRITICAL FIX: Always clear liveResizePoints on ANY selection change
+          // This is the ROOT CAUSE fix - prevents geometry corruption across selections
+          set(
+            prevState => ({
+              selectedShapeId: id,
+              drawing: {
+                ...prevState.drawing,
+                // ATOMIC CLEAR: Clear all live state to prevent cross-contamination
+                liveResizePoints: null,
+                // Also clear any lingering resize state markers
+                resizeHandleType: prevState.drawing.resizingShapeId === id ? prevState.drawing.resizeHandleType : null,
+                resizeHandleIndex: prevState.drawing.resizingShapeId === id ? prevState.drawing.resizeHandleIndex : null,
+                // ROTATION FIX: Clear rotation mode when changing selection
+                isRotateMode: prevState.drawing.rotatingShapeId !== id ? false : prevState.drawing.isRotateMode,
+                rotatingShapeId: prevState.drawing.rotatingShapeId !== id ? null : prevState.drawing.rotatingShapeId,
+                rotationStartAngle: prevState.drawing.rotatingShapeId !== id ? 0 : prevState.drawing.rotationStartAngle,
+                rotationCenter: prevState.drawing.rotatingShapeId !== id ? null : prevState.drawing.rotationCenter,
+              }
+            }),
+            false,
+            'selectShape'
+          );
+        }
+        
+        // Log final state
+        const finalState = get();
+        logger.log('🎯 Final state after selectShape:', {
+          selectedShapeId: finalState.selectedShapeId,
+          isResizeMode: finalState.drawing.isResizeMode,
+          resizingShapeId: finalState.drawing.resizingShapeId,
+          liveResizePoints: finalState.drawing.liveResizePoints ? `${finalState.drawing.liveResizePoints.length} points` : 'null',
+          isRotateMode: finalState.drawing.isRotateMode,
+          rotatingShapeId: finalState.drawing.rotatingShapeId
+        });
+        logger.log('🎯 ==> SELECTSHAPE DEBUG END <==');
+        logger.log('');
+        
+        // Auto-enter resize mode for polylines when selected
+        if (id && state.drawing.activeTool === 'select') {
+          const selectedShape = state.shapes.find(shape => shape.id === id);
+          if (selectedShape && selectedShape.type === 'polyline') {
+            setTimeout(() => {
+              get().enterResizeMode(id);
+            }, 50);
+          }
         }
       },
 
@@ -901,7 +1138,7 @@ export const useAppStore = create<AppStore>()(
               detectedGuides = guides;
             }
           } catch (error) {
-            console.warn('Alignment detection failed:', error);
+            logger.warn('Alignment detection failed:', error);
           }
         }
 
@@ -1106,8 +1343,10 @@ export const useAppStore = create<AppStore>()(
             );
           }
           
-          // Preserve current drawing tool - don't change it during undo
+          // Preserve current UI settings that shouldn't be affected by undo
           const currentActiveTool = state.drawing.activeTool;
+          const currentSnappingConfig = state.drawing.snapping; // Preserve entire snapping config (includes Grid)
+          const currentDimensionsState = state.drawing.showDimensions;
           
           set(
             {
@@ -1115,6 +1354,8 @@ export const useAppStore = create<AppStore>()(
               drawing: {
                 ...previousState.drawing,
                 activeTool: currentActiveTool, // Keep current tool
+                snapping: currentSnappingConfig, // Preserve snapping settings (including Grid)
+                showDimensions: currentDimensionsState, // Preserve Dimensions setting
                 isDrawing: false, // Reset drawing state
                 currentShape: null, // Clear current shape
               },
@@ -1128,7 +1369,7 @@ export const useAppStore = create<AppStore>()(
             'undo'
           );
         } catch (error) {
-          console.error('Failed to undo:', error);
+          logger.error('Failed to undo:', error);
         }
       },
 
@@ -1158,8 +1399,10 @@ export const useAppStore = create<AppStore>()(
             );
           }
           
-          // Preserve current drawing tool - don't change it during redo
+          // Preserve current UI settings that shouldn't be affected by redo
           const currentActiveTool = state.drawing.activeTool;
+          const currentSnappingConfig = state.drawing.snapping; // Preserve entire snapping config (includes Grid)
+          const currentDimensionsState = state.drawing.showDimensions;
           
           set(
             {
@@ -1167,6 +1410,8 @@ export const useAppStore = create<AppStore>()(
               drawing: {
                 ...nextState.drawing,
                 activeTool: currentActiveTool, // Keep current tool
+                snapping: currentSnappingConfig, // Preserve snapping settings (including Grid)
+                showDimensions: currentDimensionsState, // Preserve Dimensions setting
                 isDrawing: false, // Reset drawing state
                 currentShape: null, // Clear current shape
               },
@@ -1180,7 +1425,7 @@ export const useAppStore = create<AppStore>()(
             'redo'
           );
         } catch (error) {
-          console.error('Failed to redo:', error);
+          logger.error('Failed to redo:', error);
         }
       },
 
@@ -1230,7 +1475,7 @@ export const useAppStore = create<AppStore>()(
         }
         
         // Handle polylines and polygons - preserve their structure
-        if (shape.type === 'polygon' || shape.type === 'line') {
+        if (shape.type === 'polygon' || shape.type === 'polyline') {
           // Don't modify the points - they should be preserved as-is
           // The closing behavior is handled at render time, not storage time
           return shape;
@@ -1501,6 +1746,7 @@ export const useAppStore = create<AppStore>()(
       // Resize mode actions (only available in 'select' mode)
       enterResizeMode: (shapeId: string) => {
         const state = get();
+        
         // Only allow resize mode when in 'select' mode and not in edit mode
         if (state.drawing.activeTool !== 'select' || state.drawing.isEditMode) {
           return;
@@ -1533,6 +1779,7 @@ export const useAppStore = create<AppStore>()(
               resizeHandleType: null,
               resizeHandleIndex: null,
               maintainAspectRatio: false,
+              liveResizePoints: null,
             },
           }),
           false,
@@ -1569,20 +1816,20 @@ export const useAppStore = create<AppStore>()(
 
       resizeShape: (shapeId: string, newPoints: Point2D[]) => {
         document.title = 'RESIZE CALLED ' + new Date().toLocaleTimeString();
-        console.log('🔧 ResizeShape called for:', shapeId, 'with points:', JSON.stringify(newPoints));
-        console.log('🔧 Current shapes before resize:', get().shapes.map(s => ({id: s.id, points: s.points})));
+        logger.log('🔧 ResizeShape called for:', shapeId, 'with points:', JSON.stringify(newPoints));
+        logger.log('🔧 Current shapes before resize:', get().shapes.map(s => ({id: s.id, points: s.points})));
         get().saveToHistory(); // Save state before resizing
         
         // First invalidate the specific shape from cache BEFORE clearing everything
         const shape = get().shapes.find(s => s.id === shapeId);
         if (shape) {
           GeometryCache.invalidateShape(shape);
-          console.log('🎯 Invalidated specific shape from cache:', shapeId);
+          logger.log('🎯 Invalidated specific shape from cache:', shapeId);
         }
         
         // Then clear entire geometry cache to ensure resize is reflected immediately
         GeometryCache.dispose();
-        console.log('🧹 GeometryCache disposed');
+        logger.log('🧹 GeometryCache disposed');
 
         set(
           state => ({
@@ -1593,54 +1840,124 @@ export const useAppStore = create<AppStore>()(
                   points: newPoints,
                   modified: new Date(),
                 };
-                console.log('✅ Updated shape in store:', updatedShape);
+                logger.log('✅ Updated shape in store:', updatedShape);
                 return updatedShape;
               }
               return shape;
             }),
+            drawing: {
+              ...state.drawing,
+              liveResizePoints: null,
+            },
           }),
           false,
           'resizeShape',
         );
         
-        console.log('🔧 Shapes after resize:', get().shapes.map(s => ({id: s.id, points: s.points, modified: s.modified})));
+        logger.log('🔧 Shapes after resize:', get().shapes.map(s => ({id: s.id, points: s.points, modified: s.modified})));
       },
 
       // Live resize (for real-time updates without history pollution)
       resizeShapeLive: (shapeId: string, newPoints: Point2D[]) => {
-        console.log('🔧 ResizeShapeLive called for:', shapeId, 'with points:', JSON.stringify(newPoints));
-        
-        // First invalidate the specific shape from cache BEFORE clearing everything
-        const shape = get().shapes.find(s => s.id === shapeId);
-        if (shape) {
-          GeometryCache.invalidateShape(shape);
-          console.log('🎯 Invalidated specific shape from cache:', shapeId);
-        }
-        
-        // Then clear entire geometry cache to ensure resize is reflected immediately
-        GeometryCache.dispose();
-        console.log('🧹 GeometryCache disposed for live resize');
+        const currentState = get();
 
-        set(
-          state => ({
-            shapes: state.shapes.map(shape => {
-              if (shape.id === shapeId) {
-                const updatedShape = {
-                  ...shape,
-                  points: newPoints,
-                  modified: new Date(),
-                };
-                console.log('✅ Updated shape in store (live):', updatedShape);
-                return updatedShape;
-              }
-              return shape;
-            }),
-          }),
-          false,
-          'resizeShapeLive',
+        // CRITICAL VALIDATION: Only proceed if this shape is actively being resized
+        if (!currentState.drawing.isResizeMode || currentState.drawing.resizingShapeId !== shapeId) {
+          logger.warn('⚠️ Live resize aborted - invalid state:', {
+            shapeId,
+            isResizeMode: currentState.drawing.isResizeMode,
+            resizingShapeId: currentState.drawing.resizingShapeId
+          });
+          return;
+        }
+
+        // VALIDATION: Ensure newPoints is valid
+        if (!newPoints || !Array.isArray(newPoints) || newPoints.length === 0) {
+          logger.error('❌ Invalid newPoints for live resize:', newPoints);
+          return;
+        }
+
+        // Validate and sanitize points atomically
+        const validPoints = newPoints.filter(point =>
+          point &&
+          typeof point.x === 'number' && typeof point.y === 'number' &&
+          !isNaN(point.x) && !isNaN(point.y) &&
+          isFinite(point.x) && isFinite(point.y)
         );
-        
-        console.log('🔧 Shapes after live resize:', get().shapes.map(s => ({id: s.id, points: s.points, modified: s.modified})));
+
+        if (validPoints.length === 0) {
+          logger.error('❌ No valid points in live resize');
+          return;
+        }
+
+        // Find target shape for cache invalidation
+        const shape = currentState.shapes.find(s => s.id === shapeId);
+        if (!shape) {
+          logger.error('❌ Shape not found for live resize:', shapeId);
+          return;
+        }
+
+        // ENHANCED: Additional geometry bounds validation for rectangles
+        if (shape.type === 'rectangle' && validPoints.length >= 2) {
+          let minX, maxX, minY, maxY;
+
+          if (validPoints.length === 2) {
+            // 2-point format validation
+            [minX, maxX] = [Math.min(validPoints[0].x, validPoints[1].x), Math.max(validPoints[0].x, validPoints[1].x)];
+            [minY, maxY] = [Math.min(validPoints[0].y, validPoints[1].y), Math.max(validPoints[0].y, validPoints[1].y)];
+          } else {
+            // Multi-point format validation
+            const xCoords = validPoints.map(p => p.x);
+            const yCoords = validPoints.map(p => p.y);
+            minX = Math.min(...xCoords);
+            maxX = Math.max(...xCoords);
+            minY = Math.min(...yCoords);
+            maxY = Math.max(...yCoords);
+          }
+
+          const width = maxX - minX;
+          const height = maxY - minY;
+
+          // Prevent degenerate rectangles that cause diagonal line artifacts
+          if (width < 0.001 || height < 0.001) {
+            logger.warn('⚠️ Degenerate rectangle bounds detected in live resize, skipping:', { width, height });
+            return; // Skip this live update to prevent visual artifacts
+          }
+
+          // Additional sanity check: ensure aspect ratio is reasonable (prevent extreme distortion)
+          const aspectRatio = width / height;
+          if (aspectRatio < 0.001 || aspectRatio > 1000) {
+            logger.warn('⚠️ Extreme aspect ratio detected in live resize, skipping:', aspectRatio);
+            return; // Skip this live update to prevent rendering issues
+          }
+        }
+
+        // ATOMIC UPDATE: Only update liveResizePoints during live operations
+        // The actual shape points will be updated when resize is finalized
+        try {
+          // Invalidate geometry cache before state update
+          GeometryCache.invalidateShape(shape);
+
+          // Atomic state update - only update liveResizePoints during live operations
+          set(
+            state => ({
+              ...state,
+              drawing: {
+                ...state.drawing,
+                liveResizePoints: validPoints, // This is the authoritative source during resize
+              },
+            }),
+            false,
+            'resizeShapeLive'
+          );
+
+          logger.log('✅ Live resize updated successfully:', {
+            shapeId,
+            pointCount: validPoints.length
+          });
+        } catch (error) {
+          logger.error('❌ Failed to update live resize state:', error);
+        }
       },
 
       // Rotation mode actions

@@ -1,6 +1,7 @@
 import polygonClipping from 'polygon-clipping';
 import type { Point2D, Shape } from '@/types';
 import { precisionCalculator } from './precisionCalculations';
+import { logger } from '../utils/logger';
 
 export interface BooleanResult {
   success: boolean;
@@ -97,7 +98,7 @@ export class BooleanOperationEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('Union operation failed:', error);
+      logger.error('Union operation failed:', error);
       return {
         success: false,
         shapes: [],
@@ -144,7 +145,7 @@ export class BooleanOperationEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('Intersection operation failed:', error);
+      logger.error('Intersection operation failed:', error);
       return {
         success: false,
         shapes: [],
@@ -191,7 +192,7 @@ export class BooleanOperationEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('Difference operation failed:', error);
+      logger.error('Difference operation failed:', error);
       return {
         success: false,
         shapes: [],
@@ -238,7 +239,7 @@ export class BooleanOperationEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('XOR operation failed:', error);
+      logger.error('XOR operation failed:', error);
       return {
         success: false,
         shapes: [],
@@ -291,7 +292,7 @@ export class BooleanOperationEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('Property subdivision failed:', error);
+      logger.error('Property subdivision failed:', error);
       return {
         success: false,
         shapes: [],

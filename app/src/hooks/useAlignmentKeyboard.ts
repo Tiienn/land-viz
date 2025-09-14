@@ -5,6 +5,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
+import { logger } from '../utils/logger';
 
 interface UseAlignmentKeyboardOptions {
   enabled?: boolean;
@@ -65,14 +66,14 @@ export const useAlignmentKeyboard = (options: UseAlignmentKeyboardOptions = {}) 
   // Create horizontal guide at cursor position
   const createHorizontalGuide = useCallback(() => {
     // This would need cursor position from the scene
-    console.log('Create horizontal guide at cursor');
+    logger.log('Create horizontal guide at cursor');
     // TODO: Implement guide creation
   }, []);
 
   // Create vertical guide at cursor position
   const createVerticalGuide = useCallback(() => {
     // This would need cursor position from the scene
-    console.log('Create vertical guide at cursor');
+    logger.log('Create vertical guide at cursor');
     // TODO: Implement guide creation
   }, []);
 

@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useAppStore } from '../../store/useAppStore';
+import type { SnapPoint } from '../../types';
 
 interface SnapIndicatorProps {
   maxDistance?: number;
@@ -11,15 +12,78 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
   maxDistance = 100 
 }) => {
   const groupRef = useRef<THREE.Group>(null);
-  const { drawing } = useAppStore();
+  const { drawing, shapes } = useAppStore();
   const snapping = drawing.snapping;
+  const currentShape = drawing.currentShape;
+  const isDrawing = drawing.isDrawing;
+  const activeTool = drawing.activeTool;
 
   // Performance optimization: limit visible indicators
   const maxVisibleIndicators = 25; // Limit to 25 indicators for performance
   const limitedSnapPoints = useMemo(() => {
-    if (!snapping?.availableSnapPoints) return [];
-    return snapping.availableSnapPoints.slice(0, maxVisibleIndicators);
-  }, [snapping?.availableSnapPoints, maxVisibleIndicators]);
+    let allSnapPoints = [...(snapping?.availableSnapPoints || [])];
+    
+    // Add snap points from current drawing shape (for polyline midpoints during drawing)
+    if (currentShape && isDrawing && currentShape.points && currentShape.points.length >= 1) {
+      const currentShapeSnapPoints: SnapPoint[] = [];
+      
+      // Generate midpoint snap points for current drawing shape segments (between placed points)
+      for (let i = 0; i < currentShape.points.length - 1; i++) {
+        const p1 = currentShape.points[i];
+        const p2 = currentShape.points[i + 1];
+        const midpoint = {
+          x: (p1.x + p2.x) / 2,
+          y: (p1.y + p2.y) / 2
+        };
+        
+        currentShapeSnapPoints.push({
+          position: midpoint,
+          type: 'midpoint',
+          shapeId: 'current_drawing_shape',
+          priority: 8,
+          metadata: { segmentIndex: i, isCurrentShape: true }
+        });
+      }
+      
+      // Generate midpoint for the imaginary line segment (from last point to cursor)
+      if (activeTool === 'polyline' && snapping.snapPreviewPosition && currentShape.points.length >= 1) {
+        const lastPoint = currentShape.points[currentShape.points.length - 1];
+        const cursorPosition = snapping.snapPreviewPosition;
+        const imaginaryMidpoint = {
+          x: (lastPoint.x + cursorPosition.x) / 2,
+          y: (lastPoint.y + cursorPosition.y) / 2
+        };
+        
+        currentShapeSnapPoints.push({
+          position: imaginaryMidpoint,
+          type: 'midpoint',
+          shapeId: 'current_drawing_shape',
+          priority: 8,
+          metadata: { segmentIndex: currentShape.points.length - 1, isCurrentShape: true, isImaginaryLine: true }
+        });
+      }
+      
+      // Add endpoint snap points for current drawing shape
+      currentShape.points.forEach((point, index) => {
+        currentShapeSnapPoints.push({
+          position: { x: point.x, y: point.y },
+          type: 'endpoint',
+          shapeId: 'current_drawing_shape',
+          priority: 10,
+          metadata: { pointIndex: index, isCurrentShape: true }
+        });
+      });
+      
+      allSnapPoints = [...allSnapPoints, ...currentShapeSnapPoints];
+    }
+    
+    // Filter snap points by active types
+    const filteredPoints = allSnapPoints.filter(snapPoint => 
+      snapping.config?.activeTypes?.has?.(snapPoint.type)
+    );
+    
+    return filteredPoints.slice(0, maxVisibleIndicators);
+  }, [snapping?.availableSnapPoints, snapping?.config?.activeTypes, snapping?.snapPreviewPosition, currentShape, isDrawing, activeTool, maxVisibleIndicators]);
   
   // Geometry cache for different snap types (made larger and more visible)
   const geometries = useMemo(() => ({

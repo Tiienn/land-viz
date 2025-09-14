@@ -1,20 +1,8 @@
 import { render } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { SceneManager } from '../components/Scene/SceneManager';
 
-vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-    <div data-testid="canvas" {...props}>
-      {children}
-    </div>
-  ),
-}));
-
-vi.mock('@react-three/drei', () => ({
-  OrbitControls: () => <div data-testid="orbit-controls" />,
-  Grid: () => <div data-testid="grid" />,
-  Environment: () => <div data-testid="environment" />,
-}));
+// Global mocks are now in setup.ts - no need for local mocks
 
 describe('SceneManager Component', () => {
   it('renders canvas container', () => {

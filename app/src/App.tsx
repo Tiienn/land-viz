@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import SceneManager from './components/Scene/SceneManager';
 import LayerPanel from './components/LayerPanel';
-
-console.log('🔥 APP.TSX LOADED AT:', new Date().toLocaleTimeString());
+import AppHeader from './components/Layout/AppHeader';
+import SceneErrorBoundary from './components/ErrorBoundary/SceneErrorBoundary';
+import UIErrorBoundary from './components/ErrorBoundary/UIErrorBoundary';
+import DataErrorBoundary from './components/ErrorBoundary/DataErrorBoundary';
 import { useAppStore } from './store/useAppStore';
 import ExportSettingsDialog, { type ExportSettings } from './components/ExportSettingsDialog';
+import { CalculatorDemo } from './components/CalculatorDemo';
+import { InsertAreaModal } from './components/InsertArea';
 // import PropertiesPanel from './components/PropertiesPanel';
 // import AlignmentControls from './components/ui/AlignmentControls';
 import useAlignmentKeyboard from './hooks/useAlignmentKeyboard';
 import Icon from './components/Icon';
-import type { Point2D } from './types';
+import logger from './utils/logger';
+import type { Point2D, AreaUnit } from './types';
 
 /**
  * Root React component for the Land Visualizer application.
@@ -47,11 +52,13 @@ function App(): React.JSX.Element {
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
   const [propertiesExpanded, setPropertiesExpanded] = useState(false);
   const [layersExpanded, setLayersExpanded] = useState(false);
+  const [calculatorExpanded, setCalculatorExpanded] = useState(false);
+  const [insertAreaModalOpen, setInsertAreaModalOpen] = useState(false);
   
   // Connect to the 3D scene store
-  const { 
-    drawing, 
-    setActiveTool: setStoreActiveTool, 
+  const {
+    drawing,
+    setActiveTool: setStoreActiveTool,
     toggleShowDimensions,
     clearAll,
     getTotalArea,
@@ -70,6 +77,7 @@ function App(): React.JSX.Element {
     convertRectangleToPolygon,
     cancelAll,
     enterRotateMode,
+    createShapeFromArea,
     undo,
     redo,
     canUndo,
@@ -78,7 +86,9 @@ function App(): React.JSX.Element {
     layers,
     shapes,
     activeLayerId,
-    updateLayer
+    updateLayer,
+    selectShape,
+    enterResizeMode
   } = useAppStore();
 
   // Initialize alignment keyboard shortcuts
@@ -171,6 +181,11 @@ function App(): React.JSX.Element {
     // Could be used for camera presets or view saving
   };
 
+  // Insert Area handler
+  const handleInsertArea = (area: number, unit: AreaUnit) => {
+    createShapeFromArea(area, unit);
+  };
+
   // Export handlers
   const handleQuickExport = async (format: 'excel' | 'dxf' | 'geojson' | 'pdf') => {
     try {
@@ -199,7 +214,7 @@ function App(): React.JSX.Element {
         alert(`${format.toUpperCase()} export failed. Please try again.`);
       }
     } catch (error) {
-      console.error(`${format} export error:`, error);
+      logger.error(`${format} export error:`, error);
       alert(`${format.toUpperCase()} export failed. Please try again.`);
     }
   };
@@ -233,7 +248,7 @@ function App(): React.JSX.Element {
           alert(`${format.toUpperCase()} export failed. Please try again.`);
         }
       } catch (error) {
-        console.error(`${format} export error:`, error);
+        logger.error(`${format} export error:`, error);
         alert(`${format.toUpperCase()} export failed. Please try again.`);
       }
     };
@@ -291,118 +306,13 @@ function App(): React.JSX.Element {
       left: 0
     }}>
       
-      {/* Enhanced Header */}
-      <div style={{ 
-        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', 
-        borderBottom: '1px solid #e2e8f0', 
-        padding: '24px 24px', 
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center' 
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <img 
-            src="/Land-Visualizer512.png" 
-            alt="Land Visualizer Logo"
-            style={{
-              width: '40px', 
-              height: '40px', 
-              borderRadius: '8px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-            }}
-          />
-          <div>
-            <h1 style={{ 
-              fontSize: '20px', 
-              fontWeight: '600', 
-              margin: 0, 
-              color: '#000000'
-            }}>
-              Land Visualizer
-            </h1>
-            <span style={{ fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
-              {isProfessionalMode ? 'Create Professional Land Visualizations' : 'Create Beautiful Land Visualizations'}
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Professional Mode Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ 
-              fontSize: '12px', 
-              color: isProfessionalMode ? '#1d4ed8' : '#000000',
-              fontWeight: '500'
-            }}>
-              {isProfessionalMode ? (
-                <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2L3.09 8.26L12 14L20.91 8.26L12 2Z"/>
-                    <path d="M3.09 8.26L12 14.52L20.91 8.26"/>
-                    <path d="M3.09 15.74L12 22L20.91 15.74"/>
-                  </svg>
-                  Professional
-                </span>
-              ) : (
-                <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  Standard
-                </span>
-              )}
-            </span>
-            <button
-              onClick={() => setIsProfessionalMode(!isProfessionalMode)}
-              style={{
-                position: 'relative',
-                width: '52px',
-                height: '28px',
-                borderRadius: '14px',
-                border: 'none',
-                cursor: 'pointer',
-                background: isProfessionalMode ? '#3b82f6' : '#d1d5db',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '2px',
-                boxShadow: isProfessionalMode ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none'
-              }}
-              title={`Switch to ${isProfessionalMode ? 'Standard' : 'Professional'} Mode`}
-            >
-              <div style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '12px',
-                background: 'white',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                transform: `translateX(${isProfessionalMode ? '24px' : '0px'})`,
-                transition: 'transform 0.3s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '10px'
-              }}>
-                {isProfessionalMode ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#3b82f6">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                  </svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#6b7280">
-                    <path d="M3 3v18h18v-18h-18zm8 16h-2v-6h2v6zm0-8h-2v-2h2v2zm4 8h-2v-8h2v8zm0-10h-2v-2h2v2z"/>
-                  </svg>
-                )}
-              </div>
-            </button>
-          </div>
-
-          <div style={{ fontSize: '12px', color: '#000000' }}>
-            <span>FPS: 60</span> | <span>Quality: 100%</span> | <strong>{getTotalArea()} SQUARE METERS</strong>
-          </div>
-        </div>
-      </div>
+      <UIErrorBoundary componentName="AppHeader" showMinimalError={true}>
+        <AppHeader 
+          isProfessionalMode={isProfessionalMode}
+          setIsProfessionalMode={setIsProfessionalMode}
+          getTotalArea={getTotalArea}
+        />
+      </UIErrorBoundary>
 
       {/* Enhanced Ribbon Toolbar */}
       <div style={{ 
@@ -444,21 +354,33 @@ function App(): React.JSX.Element {
                 textAlign: 'center'
               }}>Area Configuration</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                <button style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  padding: '8px 12px', 
-                  borderRadius: '4px', 
-                  minWidth: '70px', 
-                  height: '60px', 
-                  color: '#000000', 
-                  background: 'white', 
-                  border: '1px solid #e5e7eb', 
+                <button
+                  onClick={() => setInsertAreaModalOpen(true)}
+                  style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  minWidth: '70px',
+                  height: '60px',
+                  color: '#000000',
+                  background: 'white',
+                  border: '1px solid #e5e7eb',
                   cursor: 'pointer',
                   fontSize: '11px',
-                  fontWeight: '500'
-                }}>
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f3f4f6';
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'white';
+                  e.currentTarget.style.borderColor = '#e5e7eb';
+                }}
+                >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -710,10 +632,10 @@ function App(): React.JSX.Element {
 
             {/* Tools */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ 
-                fontSize: '11px', 
-                fontWeight: '600', 
-                color: '#64748b', 
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
                 marginBottom: '8px',
                 textAlign: 'center'
               }}>Tools</div>
@@ -1115,7 +1037,7 @@ function App(): React.JSX.Element {
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
-                    if (!['endpoint', 'midpoint', 'center'].some(type => 
+                    if (['endpoint', 'midpoint', 'center'].some(type => 
                       drawing.snapping?.config?.activeTypes?.has?.(type)
                     )) {
                       e.currentTarget.style.background = '#f3f4f6';
@@ -1123,10 +1045,10 @@ function App(): React.JSX.Element {
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!['endpoint', 'midpoint', 'center'].some(type => 
+                    if (['endpoint', 'midpoint', 'center'].some(type => 
                       drawing.snapping?.config?.activeTypes?.has?.(type)
                     )) {
-                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.background = '#dcfce7';
                       e.currentTarget.style.borderColor = '#e5e7eb';
                     }
                   }}
@@ -1470,7 +1392,7 @@ function App(): React.JSX.Element {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar */}
         <div style={{ 
-          width: layersExpanded ? '400px' : (leftPanelExpanded ? '160px' : '50px'), 
+          width: calculatorExpanded ? '450px' : (layersExpanded ? '400px' : (leftPanelExpanded ? '160px' : '50px')), 
           background: 'white', 
           borderRight: '1px solid #e5e5e5', 
           display: 'flex', 
@@ -1481,7 +1403,11 @@ function App(): React.JSX.Element {
           {/* Expand/Collapse Toggle */}
           <button
             onClick={() => {
-              if (layersExpanded) {
+              if (calculatorExpanded) {
+                // If calculator is expanded, collapse it and return to thin default menu
+                setCalculatorExpanded(false);
+                setLeftPanelExpanded(false);
+              } else if (layersExpanded) {
                 // If layers are expanded, collapse them and return to thin default menu
                 setLayersExpanded(false);
                 setLeftPanelExpanded(false);
@@ -1683,6 +1609,58 @@ function App(): React.JSX.Element {
                 </span>
               </button>
             
+              <button 
+                onClick={() => {
+                  if (calculatorExpanded) {
+                    setCalculatorExpanded(false);
+                    setLeftPanelExpanded(false);
+                  } else {
+                    if (!leftPanelExpanded) {
+                      setLeftPanelExpanded(true);
+                    }
+                    setCalculatorExpanded(true);
+                  }
+                }}
+                style={{ 
+                  padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                  borderRadius: '8px', 
+                  background: calculatorExpanded ? '#dbeafe' : 'transparent', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '4px',
+                  width: '100%',
+                  textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                  color: calculatorExpanded ? '#1d4ed8' : '#374151'
+                }} 
+                title="Calculator"
+                onMouseEnter={(e) => {
+                  if (!calculatorExpanded) {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!calculatorExpanded) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.transform = 'translateY(0px)';
+                  }
+                }}
+              >
+                <Icon name="calculator" size={20} color="#000000" />
+                <span style={{ 
+                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontWeight: '500', 
+                  color: calculatorExpanded ? '#1d4ed8' : '#374151',
+                  lineHeight: '1'
+                }}>
+                  Calculator
+                </span>
+              </button>
+            
             <button 
               onClick={() => {
                 if (layersExpanded) {
@@ -1739,6 +1717,22 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
+          {/* Calculator Expansion Panel - Inline */}
+          {calculatorExpanded && (
+            <div style={{
+              width: '400px',
+              background: 'white',
+              borderLeft: '1px solid #e2e8f0',
+              overflowY: 'auto',
+              maxHeight: '100vh',
+              padding: '16px'
+            }}>
+              <UIErrorBoundary componentName="CalculatorDemo" showMinimalError={true}>
+                <CalculatorDemo />
+              </UIErrorBoundary>
+            </div>
+          )}
+
           {/* Layers Expansion Panel - Inline */}
           {layersExpanded && (
             <div style={{
@@ -1748,13 +1742,15 @@ function App(): React.JSX.Element {
               overflowY: 'auto',
               maxHeight: '100vh'
             }}>
-              <LayerPanel 
-                isOpen={true} 
-                onClose={() => {
-                  setLayersExpanded(false);
-                  setLeftPanelExpanded(false);
-                }} 
-              />
+              <UIErrorBoundary componentName="LayerPanel" showMinimalError={true}>
+                <LayerPanel 
+                  isOpen={true} 
+                  onClose={() => {
+                    setLayersExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }} 
+                />
+              </UIErrorBoundary>
             </div>
           )}
         </div>
@@ -1775,24 +1771,26 @@ function App(): React.JSX.Element {
             left: 0,
             cursor: activeTool !== 'select' ? (isNearPolylineStart && activeTool === 'polyline' ? 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair' : 'crosshair') : 'default'
           }}>
-            <SceneManager 
-              onCoordinateChange={handleCoordinateChange}
-              onCameraChange={handleCameraChange}
-              onDimensionChange={handleDimensionChange}
-              onPolylineStartProximity={handlePolylineStartProximity}
-              settings={{
-                gridSize: 100,
-                gridDivisions: 50,
-                showGrid: drawing.snapping?.config?.activeTypes?.has?.('grid') ?? false,
-                backgroundColor: 'transparent',
-                cameraPosition: { x: 0, y: 30, z: 30 },
-                cameraTarget: { x: 0, y: 0, z: 0 },
-                enableOrbitControls: true,
-                maxPolarAngle: Math.PI / 2.1,
-                minDistance: 0.1,
-                maxDistance: Infinity
-              }}
-            />
+            <SceneErrorBoundary>
+              <SceneManager 
+                onCoordinateChange={handleCoordinateChange}
+                onCameraChange={handleCameraChange}
+                onDimensionChange={handleDimensionChange}
+                onPolylineStartProximity={handlePolylineStartProximity}
+                settings={{
+                  gridSize: 100,
+                  gridDivisions: 50,
+                  showGrid: drawing.snapping?.config?.activeTypes?.has?.('grid') ?? false,
+                  backgroundColor: 'transparent',
+                  cameraPosition: { x: 0, y: 30, z: 30 },
+                  cameraTarget: { x: 0, y: 0, z: 0 },
+                  enableOrbitControls: true,
+                  maxPolarAngle: Math.PI / 2.1,
+                  minDistance: 0.1,
+                  maxDistance: Infinity
+                }}
+              />
+            </SceneErrorBoundary>
           </div>
           
           {/* Status overlay - shows active tool and current measurements */}
@@ -2243,12 +2241,23 @@ function App(): React.JSX.Element {
       </div>
 
       {/* Export Settings Dialog */}
-      <ExportSettingsDialog
-        isOpen={exportSettingsOpen}
-        onClose={() => setExportSettingsOpen(false)}
-        onExport={handleExportWithSettings}
-        initialFormat={exportSettingsFormat}
-      />
+      <DataErrorBoundary 
+        operationType="export"
+        retryAction={() => {
+          // Retry export with current settings
+          if (exportSettingsFormat) {
+            handleQuickExport(exportSettingsFormat);
+          }
+        }}
+        onCancel={() => setExportSettingsOpen(false)}
+      >
+        <ExportSettingsDialog
+          isOpen={exportSettingsOpen}
+          onClose={() => setExportSettingsOpen(false)}
+          onExport={handleExportWithSettings}
+          initialFormat={exportSettingsFormat}
+        />
+      </DataErrorBoundary>
 
       {/* Properties Panel - Now using horizontal expansion instead */}
       {/* <PropertiesPanel
@@ -2257,10 +2266,17 @@ function App(): React.JSX.Element {
       /> */}
 
       {/* Professional Alignment Controls */}
-      {/* <AlignmentControls 
+      {/* <AlignmentControls
         compact={false}
         className="alignment-controls"
       /> */}
+
+      {/* Insert Area Modal */}
+      <InsertAreaModal
+        isOpen={insertAreaModalOpen}
+        onClose={() => setInsertAreaModalOpen(false)}
+        onSubmit={handleInsertArea}
+      />
     </div>
   );
 }

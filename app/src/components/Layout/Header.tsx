@@ -10,6 +10,7 @@ import {
   Globe,
   MapPin,
 } from 'lucide-react';
+import { logger } from '../../utils/logger';
 
 interface HeaderProps {
   projectName?: string;
@@ -122,7 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
                           key={option.format}
                           type="button"
                           onClick={() => {
-                            console.log(`Export as ${option.format}`);
+                            logger.log(`Export as ${option.format}`);
                             setShowExportMenu(false);
                           }}
                           className="flex w-full items-center px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-neutral-900"

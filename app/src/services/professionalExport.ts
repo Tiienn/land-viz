@@ -1,5 +1,6 @@
 import type { Shape } from '@/types';
 import { precisionCalculator } from './precisionCalculations';
+import { logger } from '../utils/logger';
 
 export interface ExportOptions {
   format: 'excel' | 'dxf' | 'pdf' | 'geojson' | 'csv';
@@ -87,7 +88,7 @@ export class ProfessionalExportEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('Excel export failed:', error);
+      logger.error('Excel export failed:', error);
       return {
         success: false,
         data: '',
@@ -138,7 +139,7 @@ export class ProfessionalExportEngine {
             dxfContent += '10\n' + point.x.toFixed(options.precision) + '\n';
             dxfContent += '20\n' + point.y.toFixed(options.precision) + '\n';
           }
-        } else if (shape.type === 'line') {
+        } else if (shape.type === 'polyline') {
           // Create LINE entities
           for (let i = 0; i < shape.points.length - 1; i++) {
             const p1 = shape.points[i];
@@ -193,7 +194,7 @@ export class ProfessionalExportEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('DXF export failed:', error);
+      logger.error('DXF export failed:', error);
       return {
         success: false,
         data: '',
@@ -289,7 +290,7 @@ export class ProfessionalExportEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('GeoJSON export failed:', error);
+      logger.error('GeoJSON export failed:', error);
       return {
         success: false,
         data: '',
@@ -349,7 +350,7 @@ export class ProfessionalExportEngine {
         timestamp: new Date()
       };
     } catch (error) {
-      console.error('PDF export failed:', error);
+      logger.error('PDF export failed:', error);
       return {
         success: false,
         data: '',
@@ -386,7 +387,7 @@ export class ProfessionalExportEngine {
       // Clean up
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Download failed:', error);
+      logger.error('Download failed:', error);
     }
   }
 }

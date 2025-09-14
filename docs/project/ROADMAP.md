@@ -28,6 +28,10 @@ Transform Land Visualizer from a simple visualization tool into the global stand
 - **Expandable sidebar panels** - Left and right collapsible panels
 - **Real-time area calculations** and measurements
 - **Layer management system** with visibility controls
+- **Advanced polyline drawing** with imaginary line cursor preview
+- **State corruption fixes** - Resolved liveResizePoints leaking across selections
+- **Tool switching enhancements** - Clean state transitions between drawing tools
+- **Production-ready debugging** - Clean console output with preserved debug infrastructure
 - **Professional camera controls** (right-orbit, middle-pan)
 - **Natural 3D environment** (grass ground, sky visualization)
 - **Properties panel** with tool instructions and settings

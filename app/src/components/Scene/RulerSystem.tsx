@@ -7,6 +7,7 @@ import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { useAppStore } from '../../store/useAppStore';
+import { logger } from '../../utils/logger';
 import type { Point2D } from '../../types';
 
 interface RulerSystemProps {
@@ -146,7 +147,7 @@ export const RulerSystem: React.FC<RulerSystemProps> = ({
     setStaticGuides(prev => [...prev, newGuide]);
     
     // TODO: Integrate with main guide system
-    console.log(`Created ${type} guide at ${position}`);
+    logger.log(`Created ${type} guide at ${position}`);
   }, []);
 
   // Generate horizontal ruler ticks
