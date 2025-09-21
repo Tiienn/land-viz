@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import SceneManager from './components/Scene/SceneManager';
+import React, { useState, useEffect, useRef } from 'react';
+import SceneManager, { type SceneManagerRef } from './components/Scene/SceneManager';
 import LayerPanel from './components/LayerPanel';
 import AppHeader from './components/Layout/AppHeader';
 import SceneErrorBoundary from './components/ErrorBoundary/SceneErrorBoundary';
@@ -9,6 +9,13 @@ import { useAppStore } from './store/useAppStore';
 import ExportSettingsDialog, { type ExportSettings } from './components/ExportSettingsDialog';
 import { CalculatorDemo } from './components/CalculatorDemo';
 import { InsertAreaModal } from './components/InsertArea';
+import { AddAreaModal } from './components/AddArea';
+import { PresetsModal } from './components/AddArea/PresetsModal';
+import { MeasurementOverlay } from './components/MeasurementOverlay';
+import ComparisonPanel from './components/ComparisonPanel';
+import { ConvertPanel } from './components/ConvertPanel';
+import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer';
+import { ObjectPositioner } from './utils/objectPositioning';
 // import PropertiesPanel from './components/PropertiesPanel';
 // import AlignmentControls from './components/ui/AlignmentControls';
 import useAlignmentKeyboard from './hooks/useAlignmentKeyboard';
@@ -35,8 +42,9 @@ function App(): React.JSX.Element {
   // Local UI state for performance (reduces re-renders)
   const [activeTool, setActiveTool] = useState('select');
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const sceneManagerRef = useRef<SceneManagerRef>(null);
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
-  const [exportSettingsFormat, setExportSettingsFormat] = useState<ExportSettings['format']>('excel');
+  const [exportSettingsFormat] = useState<ExportSettings['format']>('excel');
   const [isProfessionalMode, setIsProfessionalMode] = useState(false);
   const [mousePosition, setMousePosition] = useState<Point2D>({ x: 0, y: 0 });
   const [isMouseOver3D, setIsMouseOver3D] = useState(false);
@@ -54,7 +62,9 @@ function App(): React.JSX.Element {
   const [layersExpanded, setLayersExpanded] = useState(false);
   const [calculatorExpanded, setCalculatorExpanded] = useState(false);
   const [insertAreaModalOpen, setInsertAreaModalOpen] = useState(false);
-  
+  const [comparisonExpanded, setComparisonExpanded] = useState(false);
+  const [convertExpanded, setConvertExpanded] = useState(false);
+
   // Connect to the 3D scene store
   const {
     drawing,
@@ -77,27 +87,38 @@ function App(): React.JSX.Element {
     convertRectangleToPolygon,
     cancelAll,
     enterRotateMode,
+    exitResizeMode,
     createShapeFromArea,
+    addAreaModalOpen,
+    openAddAreaModal,
+    closeAddAreaModal,
+    presets,
+    openPresetsModal,
+    closePresetsModal,
+    createShapeFromPreset,
+    customizePreset,
+    triggerRender,
     undo,
     redo,
     canUndo,
     canRedo,
     removeLastPoint,
-    layers,
+    deleteShape,
+    activateMeasurementTool,
+    deactivateMeasurementTool,
+    deleteMeasurement,
+    selectMeasurement,
+    comparison,
     shapes,
-    activeLayerId,
-    updateLayer,
-    selectShape,
-    enterResizeMode
+    // layers,
+    // activeLayerId,
+    // updateLayer,
+    // selectShape,
+    // enterResizeMode
   } = useAppStore();
 
   // Initialize alignment keyboard shortcuts
-  const {
-    toggleAlignment,
-    toggleGrid,
-    clearAllGuides,
-    shortcuts: alignmentShortcuts
-  } = useAlignmentKeyboard({
+  useAlignmentKeyboard({
     enabled: true,
     preventDefaults: true
   });
@@ -145,6 +166,17 @@ function App(): React.JSX.Element {
         }
       }
 
+      // Delete/Backspace key: Delete selected shape or measurement
+      if ((event.key === 'Delete' || event.key === 'Backspace')) {
+        if (selectedShapeId) {
+          event.preventDefault();
+          deleteShape(selectedShapeId);
+        } else if (drawing.measurement?.selectedMeasurementId) {
+          event.preventDefault();
+          deleteMeasurement(drawing.measurement.selectedMeasurementId);
+        }
+      }
+
       // ESC key: Cancel all active operations
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -154,10 +186,10 @@ function App(): React.JSX.Element {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, removeLastPoint, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
+  }, [undo, redo, canUndo, canRedo, removeLastPoint, deleteShape, selectedShapeId, deleteMeasurement, drawing.measurement?.selectedMeasurementId, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
 
   // 3D Scene event handlers
-  const handleCoordinateChange = (worldPos: Point2D, _screenPos: Point2D) => {
+  const handleCoordinateChange = (worldPos: Point2D) => {
     setMousePosition(worldPos);
     setIsMouseOver3D(true);
   };
@@ -182,8 +214,16 @@ function App(): React.JSX.Element {
   };
 
   // Insert Area handler
-  const handleInsertArea = (area: number, unit: AreaUnit) => {
+  const handleInsertArea = async (area: number, unit: AreaUnit) => {
     createShapeFromArea(area, unit);
+
+    // Force a small delay to ensure state updates are processed
+    // This prevents the issue where user needs to click on 3D scene to see rectangle update
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Trigger an additional render to ensure the UI updates immediately
+    // This ensures the rectangle appears with the correct area without requiring user interaction
+    triggerRender();
   };
 
   // Export handlers
@@ -256,11 +296,11 @@ function App(): React.JSX.Element {
     exportWithCustomSettings();
   };
 
-  const openExportSettings = (format: ExportSettings['format']) => {
-    setExportSettingsFormat(format);
-    setExportSettingsOpen(true);
-    setExportDropdownOpen(false);
-  };
+  // const openExportSettings = (format: ExportSettings['format']) => {
+  //   setExportSettingsFormat(format);
+  //   setExportSettingsOpen(true);
+  //   setExportDropdownOpen(false);
+  // };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -387,42 +427,70 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Insert Area</span>
                 </button>
-                <button style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  padding: '8px 12px', 
-                  borderRadius: '4px', 
-                  minWidth: '70px', 
-                  height: '60px', 
-                  color: '#000000', 
-                  background: 'white', 
-                  border: '1px solid #e5e7eb', 
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: '500'
-                }}>
+                <button
+                  onClick={openAddAreaModal}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '70px',
+                    height: '60px',
+                    color: '#000000',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'white';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                  title="Create shape from specified area"
+                >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="7.5,4.21 12,6.81 16.5,4.21"></polyline>
+                    <polyline points="7.5,19.79 7.5,14.6 3,12"></polyline>
+                    <polyline points="21,12 16.5,14.6 16.5,19.79"></polyline>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Add Area</span>
                 </button>
-                <button style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  padding: '8px 12px', 
-                  borderRadius: '4px', 
-                  minWidth: '70px', 
-                  height: '60px', 
-                  color: '#000000', 
-                  background: 'white', 
-                  border: '1px solid #e5e7eb', 
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: '500'
-                }}>
+                <button
+                  onClick={openPresetsModal}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '70px',
+                    height: '60px',
+                    color: '#000000',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'white';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                  title="Access area configuration presets"
+                >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                     <rect x="9" y="9" width="6" height="6"></rect>
@@ -619,15 +687,65 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Circle</span>
                 </button>
+                <button
+                  onClick={() => {
+                    setActiveTool('measure');
+                    activateMeasurementTool();
+                  }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '70px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: activeTool === 'measure'
+                      ? '#dbeafe'
+                      : '#ffffff',
+                    color: activeTool === 'measure' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'measure'
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)'
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'measure') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'measure') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title="Measure distances between points with precision"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 14H3l1.5-2h15z"></path>
+                    <path d="M21 19H3l1.5-2h15z"></path>
+                    <path d="M21 9H3l1.5-2h15z"></path>
+                    <circle cx="6" cy="6" r="2"></circle>
+                    <circle cx="18" cy="18" r="2"></circle>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Measure</span>
+                </button>
               </div>
             </div>
 
             {/* Vertical Separator */}
-            <div style={{ 
-              width: '1px', 
-              height: '70px', 
-              background: '#e5e7eb', 
-              margin: '0 8px' 
+            <div style={{
+              width: '1px',
+              height: '70px',
+              background: '#e5e7eb',
+              margin: '0 8px'
             }}></div>
 
             {/* Tools */}
@@ -666,13 +784,22 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Dimensions</span>
                 </button>
-                <button 
+                <button
                   onClick={() => {
-                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isResizeMode) {
-                      enterRotateMode(selectedShapeId);
+                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
+                      // If in resize mode, exit it first, then enter rotate mode
+                      if (drawing.isResizeMode) {
+                        exitResizeMode();
+                        // Use a small timeout to ensure resize mode exits before entering rotate mode
+                        setTimeout(() => {
+                          enterRotateMode(selectedShapeId);
+                        }, 10);
+                      } else {
+                        enterRotateMode(selectedShapeId);
+                      }
                     }
                   }}
-                  disabled={!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing}
+                  disabled={!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing}
                   style={{ 
                     display: 'flex', 
                     flexDirection: 'column', 
@@ -682,23 +809,23 @@ function App(): React.JSX.Element {
                     minWidth: '80px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
-                    cursor: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing) 
-                      ? 'not-allowed' 
+                    cursor: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
+                      ? 'not-allowed'
                       : 'pointer',
                     background: drawing.isRotateMode ? '#a5b4fc' : '#ffffff',
-                    color: drawing.isRotateMode ? '#312e81' : 
-                           (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing) 
-                             ? '#9ca3af' 
+                    color: drawing.isRotateMode ? '#312e81' :
+                           (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
+                             ? '#9ca3af'
                              : '#000000',
                     transition: 'all 0.2s ease',
                     fontSize: '11px',
                     fontWeight: '500',
-                    opacity: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isResizeMode || drawing.isDrawing) 
-                      ? 0.5 
+                    opacity: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
+                      ? 0.5
                       : 1
                   }}
                   onMouseEnter={(e) => {
-                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isResizeMode && !drawing.isDrawing && !drawing.isRotateMode) {
+                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.isRotateMode) {
                       e.currentTarget.style.background = '#f3f4f6';
                       e.currentTarget.style.borderColor = '#d1d5db';
                     }
@@ -817,7 +944,62 @@ function App(): React.JSX.Element {
                     {(drawing.isEditMode && drawing.editingShapeId === selectedShapeId) ? 'Exit Edit' : 'Edit'}
                   </span>
                 </button>
-                <button 
+                <button
+                  onClick={() => {
+                    if (selectedShapeId) {
+                      deleteShape(selectedShapeId);
+                    } else if (drawing.measurement?.selectedMeasurementId) {
+                      deleteMeasurement(drawing.measurement.selectedMeasurementId);
+                    }
+                  }}
+                  disabled={!selectedShapeId && !drawing.measurement?.selectedMeasurementId}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '60px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? 'pointer' : 'not-allowed',
+                    background: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? '#ffffff' : '#f9fafb',
+                    color: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? '#ef4444' : '#9ca3af',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedShapeId || drawing.measurement?.selectedMeasurementId) {
+                      e.currentTarget.style.background = '#fef2f2';
+                      e.currentTarget.style.borderColor = '#fecaca';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedShapeId || drawing.measurement?.selectedMeasurementId) {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title={
+                    selectedShapeId
+                      ? 'Delete selected shape (Delete key)'
+                      : drawing.measurement?.selectedMeasurementId
+                        ? 'Delete selected measurement (Delete key)'
+                        : 'Select a shape or measurement to delete'
+                  }
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Delete</span>
+                </button>
+                <button
                   onClick={undo}
                   disabled={!canUndo()}
                   style={{ 
@@ -1391,63 +1573,15 @@ function App(): React.JSX.Element {
       {/* Main Content */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar */}
-        <div style={{ 
-          width: calculatorExpanded ? '450px' : (layersExpanded ? '400px' : (leftPanelExpanded ? '160px' : '50px')), 
-          background: 'white', 
-          borderRight: '1px solid #e5e5e5', 
-          display: 'flex', 
-          flexDirection: 'row', 
+        <div style={{
+          width: calculatorExpanded ? '420px' : (layersExpanded ? '420px' : (comparisonExpanded ? '420px' : (convertExpanded ? '420px' : (leftPanelExpanded ? '160px' : '50px')))),
+          background: 'white',
+          borderRight: '1px solid #e5e5e5',
+          display: 'flex',
+          flexDirection: 'row',
           transition: 'width 0.3s ease',
           position: 'relative'
         }}>
-          {/* Expand/Collapse Toggle */}
-          <button
-            onClick={() => {
-              if (calculatorExpanded) {
-                // If calculator is expanded, collapse it and return to thin default menu
-                setCalculatorExpanded(false);
-                setLeftPanelExpanded(false);
-              } else if (layersExpanded) {
-                // If layers are expanded, collapse them and return to thin default menu
-                setLayersExpanded(false);
-                setLeftPanelExpanded(false);
-              } else {
-                // Normal toggle behavior for left panel
-                setLeftPanelExpanded(!leftPanelExpanded);
-              }
-            }}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              right: '-12px',
-              width: '24px',
-              height: '24px',
-              borderRadius: '50%',
-              background: '#ffffff',
-              border: '2px solid #e5e5e5',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              color: '#6b7280',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              zIndex: 10,
-              transition: 'all 0.2s ease',
-              transform: 'translateY(-50%)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
-              e.currentTarget.style.color = '#374151';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#ffffff';
-              e.currentTarget.style.color = '#6b7280';
-            }}
-            title={leftPanelExpanded ? 'Collapse Panel' : 'Expand Panel'}
-          >
-            {leftPanelExpanded ? '◀' : '▶'}
-          </button>
 
           {/* Main Navigation Section */}
           <div style={{
@@ -1500,10 +1634,74 @@ function App(): React.JSX.Element {
                   Home
                 </span>
               </button>
-            
-              <button style={{ 
-                padding: leftPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '8px', 
+
+              <button
+                onClick={() => {
+                  if (comparisonExpanded) {
+                    // If comparison is expanded, collapse it and return to thin default menu
+                    setComparisonExpanded(false);
+                    setLeftPanelExpanded(false);
+                  } else {
+                    // Close other overlays
+                    setCalculatorExpanded(false);
+                    setLayersExpanded(false);
+                    setConvertExpanded(false);
+
+                    // If comparison is not expanded, expand the panel if needed and show comparison
+                    if (!leftPanelExpanded) {
+                      setLeftPanelExpanded(true);
+                    }
+                    setComparisonExpanded(true);
+                  }
+                }}
+                style={{
+                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  borderRadius: '8px',
+                  background: comparisonExpanded ? '#dbeafe' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '4px',
+                  width: '100%',
+                  textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                  color: comparisonExpanded ? '#1d4ed8' : '#374151'
+                }}
+                title="Compare your land to familiar reference objects"
+                onMouseEnter={(e) => {
+                  if (!comparisonExpanded) {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!comparisonExpanded) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.transform = 'translateY(0px)';
+                  }
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="2" width="9" height="9"></rect>
+                  <rect x="13" y="2" width="9" height="9"></rect>
+                  <rect x="2" y="13" width="9" height="9"></rect>
+                  <rect x="13" y="13" width="9" height="9"></rect>
+                </svg>
+                <span style={{
+                  fontSize: leftPanelExpanded ? '12px' : '10px',
+                  fontWeight: '500',
+                  color: comparisonExpanded ? '#1d4ed8' : '#374151',
+                  lineHeight: '1'
+                }}>
+                  Compare
+                </span>
+              </button>
+
+              <button style={{
+                padding: leftPanelExpanded ? '12px 16px' : '8px',
+                borderRadius: '8px',
                 background: 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
@@ -1537,36 +1735,58 @@ function App(): React.JSX.Element {
                 </span>
               </button>
             
-              <button style={{ 
-                padding: leftPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '8px', 
-                background: 'transparent', 
-                border: 'none', 
-                cursor: 'pointer', 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '4px',
-                width: '100%',
-                textAlign: 'center',
-                transition: 'all 0.2s ease',
-                color: '#374151'
-              }} 
-              title="Unit Converter"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.transform = 'translateY(0px)';
-              }}
+              <button
+                onClick={() => {
+                  if (convertExpanded) {
+                    setConvertExpanded(false);
+                    setLeftPanelExpanded(false);
+                  } else {
+                    // Close other overlays
+                    setCalculatorExpanded(false);
+                    setLayersExpanded(false);
+                    setComparisonExpanded(false);
+
+                    // If convert is not expanded, expand the panel if needed and show convert
+                    if (!leftPanelExpanded) {
+                      setLeftPanelExpanded(true);
+                    }
+                    setConvertExpanded(true);
+                  }
+                }}
+                style={{
+                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  borderRadius: '8px',
+                  background: convertExpanded ? '#dbeafe' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '4px',
+                  width: '100%',
+                  textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                  color: '#374151'
+                }}
+                title="Unit Converter"
+                onMouseEnter={(e) => {
+                  if (!convertExpanded) {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!convertExpanded) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.transform = 'translateY(0px)';
+                  }
+                }}
               >
                 <Icon name="unitConverter" size={20} color="#000000" />
-                <span style={{ 
-                  fontSize: leftPanelExpanded ? '12px' : '10px', 
-                  fontWeight: '500', 
-                  color: '#374151',
+                <span style={{
+                  fontSize: leftPanelExpanded ? '12px' : '10px',
+                  fontWeight: '500',
+                  color: convertExpanded ? '#1d4ed8' : '#374151',
                   lineHeight: '1'
                 }}>
                   Convert
@@ -1615,6 +1835,11 @@ function App(): React.JSX.Element {
                     setCalculatorExpanded(false);
                     setLeftPanelExpanded(false);
                   } else {
+                    // Close other overlays
+                    setLayersExpanded(false);
+                    setComparisonExpanded(false);
+                    setConvertExpanded(false);
+
                     if (!leftPanelExpanded) {
                       setLeftPanelExpanded(true);
                     }
@@ -1668,6 +1893,11 @@ function App(): React.JSX.Element {
                   setLayersExpanded(false);
                   setLeftPanelExpanded(false);
                 } else {
+                  // Close other overlays
+                  setCalculatorExpanded(false);
+                  setComparisonExpanded(false);
+                  setConvertExpanded(false);
+
                   // If layers are not expanded, expand the panel if needed and show layers
                   if (!leftPanelExpanded) {
                     setLeftPanelExpanded(true);
@@ -1720,15 +1950,20 @@ function App(): React.JSX.Element {
           {/* Calculator Expansion Panel - Inline */}
           {calculatorExpanded && (
             <div style={{
-              width: '400px',
+              width: '420px',
               background: 'white',
               borderLeft: '1px solid #e2e8f0',
               overflowY: 'auto',
-              maxHeight: '100vh',
-              padding: '16px'
+              maxHeight: '100vh'
             }}>
               <UIErrorBoundary componentName="CalculatorDemo" showMinimalError={true}>
-                <CalculatorDemo />
+                <CalculatorDemo
+                  inline={true}
+                  onClose={() => {
+                    setCalculatorExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                />
               </UIErrorBoundary>
             </div>
           )}
@@ -1736,19 +1971,64 @@ function App(): React.JSX.Element {
           {/* Layers Expansion Panel - Inline */}
           {layersExpanded && (
             <div style={{
-              width: '350px',
+              width: '420px',
               background: 'white',
               borderLeft: '1px solid #e2e8f0',
               overflowY: 'auto',
               maxHeight: '100vh'
             }}>
               <UIErrorBoundary componentName="LayerPanel" showMinimalError={true}>
-                <LayerPanel 
-                  isOpen={true} 
+                <LayerPanel
+                  isOpen={true}
+                  inline={true}
                   onClose={() => {
                     setLayersExpanded(false);
                     setLeftPanelExpanded(false);
-                  }} 
+                  }}
+                />
+              </UIErrorBoundary>
+            </div>
+          )}
+
+          {/* Comparison Expansion Panel - Inline */}
+          {comparisonExpanded && (
+            <div style={{
+              width: '420px',
+              background: 'white',
+              borderLeft: '1px solid #e2e8f0',
+              overflowY: 'auto',
+              maxHeight: '100vh'
+            }}>
+              <UIErrorBoundary componentName="ComparisonPanel" showMinimalError={true}>
+                <ComparisonPanel
+                  expanded={true}
+                  onToggle={() => {
+                    setComparisonExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                  inline={true}
+                />
+              </UIErrorBoundary>
+            </div>
+          )}
+
+          {/* Convert Expansion Panel - Inline */}
+          {convertExpanded && (
+            <div style={{
+              width: '420px',
+              background: 'white',
+              borderLeft: '1px solid #e2e8f0',
+              overflowY: 'auto',
+              maxHeight: '100vh'
+            }}>
+              <UIErrorBoundary componentName="ConvertPanel" showMinimalError={true}>
+                <ConvertPanel
+                  expanded={true}
+                  onToggle={() => {
+                    setConvertExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                  inline={true}
                 />
               </UIErrorBoundary>
             </div>
@@ -1772,11 +2052,12 @@ function App(): React.JSX.Element {
             cursor: activeTool !== 'select' ? (isNearPolylineStart && activeTool === 'polyline' ? 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair' : 'crosshair') : 'default'
           }}>
             <SceneErrorBoundary>
-              <SceneManager 
+              <SceneManager
                 onCoordinateChange={handleCoordinateChange}
                 onCameraChange={handleCameraChange}
                 onDimensionChange={handleDimensionChange}
                 onPolylineStartProximity={handlePolylineStartProximity}
+                hideDimensions={insertAreaModalOpen || addAreaModalOpen || presets.presetsModal.isOpen}
                 settings={{
                   gridSize: 100,
                   gridDivisions: 50,
@@ -1789,10 +2070,24 @@ function App(): React.JSX.Element {
                   minDistance: 0.1,
                   maxDistance: Infinity
                 }}
-              />
+                ref={sceneManagerRef}
+              >
+                {/* Reference objects for visual comparison */}
+                <ReferenceObjectRenderer
+                  visibleObjectIds={Array.from(comparison.visibleObjects)}
+                  userLandBounds={ObjectPositioner.createBoundsFromShapes(shapes)}
+                  opacity={0.6}
+                />
+              </SceneManager>
             </SceneErrorBoundary>
           </div>
-          
+
+          {/* Measurement overlay for dimension labels */}
+          <MeasurementOverlay
+            camera={sceneManagerRef.current?.camera}
+            canvas={sceneManagerRef.current?.canvas}
+          />
+
           {/* Status overlay - shows active tool and current measurements */}
           <div style={{ 
             position: 'absolute', 
@@ -1946,21 +2241,75 @@ function App(): React.JSX.Element {
         {propertiesExpanded && (
           <div style={{
             width: '240px',
-            background: '#f8fafc',
+            background: 'white',
             borderLeft: '1px solid #e5e5e5',
             borderRight: '1px solid #e5e5e5',
-            padding: '16px',
             overflowY: 'auto',
-            height: '100%'
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
           }}>
-            <h3 style={{
-              margin: '0 0 16px 0',
-              fontSize: '16px',
-              fontWeight: '600',
-              color: '#1f2937'
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '16px 20px',
+              borderBottom: '1px solid #e5e7eb',
+              backgroundColor: '#fafafa',
+              flexShrink: 0
             }}>
-              Properties Panel
-            </h3>
+              <h3 style={{
+                margin: 0,
+                fontSize: '16px',
+                fontWeight: 700,
+                color: '#1f2937',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{
+                  color: '#6b7280',
+                  flexShrink: 0
+                }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <path d="M9 3v18"></path>
+                  <path d="M9 9h12"></path>
+                  <path d="M9 15h12"></path>
+                </svg>
+                Properties
+              </h3>
+              <button
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  transition: 'all 200ms ease',
+                  lineHeight: 1,
+                  fontWeight: 300
+                }}
+                onClick={() => {
+                  setPropertiesExpanded(false);
+                  setRightPanelExpanded(false);
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                title="Collapse properties panel"
+              >
+                ▶
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, padding: '16px' }}>
             <div style={{
               background: '#ffffff',
               borderRadius: '8px',
@@ -2023,6 +2372,7 @@ function App(): React.JSX.Element {
                 </div>
               </div>
             </div>
+            </div>
           </div>
         )}
 
@@ -2036,50 +2386,6 @@ function App(): React.JSX.Element {
           transition: 'width 0.3s ease',
           position: 'relative'
         }}>
-          {/* Expand/Collapse Toggle */}
-          <button
-            onClick={() => {
-              if (propertiesExpanded) {
-                // If properties are expanded, collapse them and return to thin default menu
-                setPropertiesExpanded(false);
-                setRightPanelExpanded(false);
-              } else {
-                // Normal toggle behavior for right panel
-                setRightPanelExpanded(!rightPanelExpanded);
-              }
-            }}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '-12px',
-              width: '24px',
-              height: '24px',
-              borderRadius: '50%',
-              background: '#ffffff',
-              border: '2px solid #e5e5e5',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              color: '#6b7280',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              zIndex: 10,
-              transition: 'all 0.2s ease',
-              transform: 'translateY(-50%)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
-              e.currentTarget.style.color = '#374151';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#ffffff';
-              e.currentTarget.style.color = '#6b7280';
-            }}
-            title={rightPanelExpanded ? 'Collapse Panel' : 'Expand Panel'}
-          >
-            {rightPanelExpanded ? '▶' : '◀'}
-          </button>
 
           <div style={{ 
             padding: '16px 0', 
@@ -2276,6 +2582,21 @@ function App(): React.JSX.Element {
         isOpen={insertAreaModalOpen}
         onClose={() => setInsertAreaModalOpen(false)}
         onSubmit={handleInsertArea}
+      />
+
+      {/* Add Area Modal */}
+      <AddAreaModal
+        isOpen={addAreaModalOpen}
+        onClose={closeAddAreaModal}
+      />
+
+      <PresetsModal
+        isOpen={presets.presetsModal.isOpen}
+        onClose={closePresetsModal}
+        onSelectPreset={createShapeFromPreset}
+        onCustomizePreset={customizePreset}
+        customPresets={presets.customPresets}
+        recentPresets={presets.recentPresets}
       />
     </div>
   );
