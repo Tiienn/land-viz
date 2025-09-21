@@ -1,11 +1,12 @@
-import React, { Suspense, useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { Suspense, useRef, useCallback } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { Environment } from '@react-three/drei';
 // Removed Vector3 import to avoid type conflicts
 import CameraController, { type CameraControllerRef } from './CameraController';
 import DrawingCanvas from './DrawingCanvas';
 import DrawingFeedback from './DrawingFeedback';
 import ShapeRenderer from './ShapeRenderer';
+import MeasurementRenderer from './MeasurementRenderer';
 import InfiniteGrid from './GridBackground';
 import BackgroundManager from './BackgroundManager';
 import { SnapIndicator } from './SnapIndicator';
@@ -19,6 +20,8 @@ import { useAppStore } from '@/store/useAppStore';
 
 export interface SceneManagerRef {
   cameraController: React.RefObject<CameraControllerRef | null>;
+  camera: any;
+  canvas: HTMLCanvasElement | null;
 }
 
 interface SceneManagerProps {
@@ -28,6 +31,7 @@ interface SceneManagerProps {
   onClick?: (x: number, y: number, z: number) => void;
   onCameraChange?: (position: Point3D, target: Point3D) => void;
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
+  hideDimensions?: boolean;
   onDimensionChange?: (dimensions: {
     width?: number;
     height?: number;
@@ -53,16 +57,32 @@ const defaultSettings: SceneSettings = {
 
 interface SceneContentProps extends SceneManagerProps {
   cameraControllerRef: React.RefObject<CameraControllerRef | null>;
+  onCameraCanvasReady?: (camera: any, canvas: HTMLCanvasElement) => void;
 }
 
-const SceneContent: React.FC<SceneContentProps> = ({ 
-  children, 
-  settings, 
+// Helper component to capture camera and canvas from useThree
+const CameraCanvasCapture: React.FC<{ onReady?: (camera: any, canvas: HTMLCanvasElement) => void }> = ({ onReady }) => {
+  const { camera, gl } = useThree();
+
+  React.useEffect(() => {
+    if (onReady && camera && gl.domElement) {
+      onReady(camera, gl.domElement);
+    }
+  }, [camera, gl.domElement, onReady]);
+
+  return null;
+};
+
+const SceneContent: React.FC<SceneContentProps> = ({
+  children,
+  settings,
   onCameraChange,
   onCoordinateChange,
   onDimensionChange,
   onPolylineStartProximity,
-  cameraControllerRef
+  cameraControllerRef,
+  onCameraCanvasReady,
+  hideDimensions = false
 }) => {
   const finalSettings = { ...defaultSettings, ...settings };
   const alignmentGuides = useAppStore(state => state.drawing.alignment?.activeGuides || []);
@@ -73,6 +93,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
   return (
     <>
+      <CameraCanvasCapture onReady={onCameraCanvasReady} />
       <ambientLight intensity={0.4} color="#ffffff" />
       <directionalLight
         position={[10, 20, 8]}
@@ -123,7 +144,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       <DrawingFeedback elevation={0.05} onDimensionChange={onDimensionChange} onPolylineStartProximity={onPolylineStartProximity} />
 
-      <ShapeRenderer elevation={0.01} />
+      <ShapeRenderer elevation={0.01} hideDimensions={hideDimensions} />
+
+      {/* Measurement visualization */}
+      <MeasurementRenderer elevation={0.03} />
 
       {/* Resize handles for selected shapes */}
       <ResizableShapeControls elevation={0.02} />
@@ -159,12 +183,21 @@ const SceneContent: React.FC<SceneContentProps> = ({
 };
 
 export const SceneManager = React.forwardRef<SceneManagerRef, SceneManagerProps>((props, ref) => {
-  const { settings } = props;
+  const { settings, hideDimensions = false } = props;
   const cameraControllerRef = useRef<CameraControllerRef>(null);
+  const cameraRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const finalSettings = { ...defaultSettings, ...settings };
+
+  const handleCameraCanvasReady = useCallback((camera: any, canvas: HTMLCanvasElement) => {
+    cameraRef.current = camera;
+    canvasRef.current = canvas;
+  }, []);
 
   React.useImperativeHandle(ref, () => ({
     cameraController: cameraControllerRef,
+    camera: cameraRef.current,
+    canvas: canvasRef.current,
   }));
 
   return (
@@ -190,7 +223,7 @@ export const SceneManager = React.forwardRef<SceneManagerRef, SceneManagerProps>
         dpr={[1, 2]}
       >
         <Suspense fallback={null}>
-          <SceneContent {...props} cameraControllerRef={cameraControllerRef} />
+          <SceneContent {...props} cameraControllerRef={cameraControllerRef} onCameraCanvasReady={handleCameraCanvasReady} />
         </Suspense>
       </Canvas>
     </div>

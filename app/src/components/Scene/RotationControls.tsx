@@ -61,8 +61,10 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   const shapes = useAppStore(state => state.shapes);
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const selectedShapeId = useAppStore(state => state.selectedShapeId);
+  const originalRotation = useAppStore(state => state.drawing.originalRotation);
   const enterRotateMode = useAppStore(state => state.enterRotateMode);
   const rotateShape = useAppStore(state => state.rotateShape);
+  const rotateShapeLive = useAppStore(state => state.rotateShapeLive);
   
   // Get global drag state to handle shape dragging transforms
   const globalDragState = useAppStore(state => state.dragState);
@@ -81,7 +83,6 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     isDragging: false,
     startAngle: 0,
     startMouseAngle: 0,
-    originalRotation: 0,
     pointerId: null as number | null
   });
   
@@ -101,61 +102,64 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     if (drawing.isRotateMode && drawing.rotatingShapeId) {
       return shapes.find(shape => shape.id === drawing.rotatingShapeId) || null;
     }
-    
+
     // Show rotation handle for selected shape (when not in edit mode)
-    // Allow rotation handles to show even if just finished drawing
+    // Allow rotation handles to show even if just finished drawing or in resize mode
     if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
       return shapes.find(shape => shape.id === selectedShapeId) || null;
     }
-    
+
     return null;
   }, [shapes, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing, shapes.length]);
 
-  // Calculate rotation handle position with transforms applied
+  // Calculate rotation handle position and rotation center
   const rotationHandlePosition = useMemo(() => {
     if (!targetShape) return null;
-    
-    // Apply the same transform logic as ShapeRenderer
-    let renderPoints = targetShape.points;
+
+    // Calculate the ORIGINAL center (without any rotation applied) for rotation center
+    let originalPoints = targetShape.points;
     if (targetShape.type === 'rectangle' && targetShape.points.length === 2) {
       // Convert 2-point format to 4-point format for center calculation
       const [topLeft, bottomRight] = targetShape.points;
-      renderPoints = [
+      originalPoints = [
         { x: topLeft.x, y: topLeft.y },      // Top left
         { x: bottomRight.x, y: topLeft.y },  // Top right
         { x: bottomRight.x, y: bottomRight.y }, // Bottom right
         { x: topLeft.x, y: bottomRight.y }   // Bottom left
       ];
     }
-    
-    // SIMPLIFIED: Apply transforms in correct order: rotate first, then drag
-    let transformedPoints = renderPoints;
-    
+
+    // Calculate original center without any transformations
+    const originalCenter = calculateShapeCenter({...targetShape, points: originalPoints});
+
+    // Calculate display position (with transforms) for handle positioning
+    let transformedPoints = originalPoints;
+
     // Apply drag offset if shape is being dragged
     const isBeingDragged = globalDragState.isDragging && globalDragState.draggedShapeId === targetShape.id;
     if (isBeingDragged && globalDragState.startPosition && globalDragState.currentPosition) {
       const offsetX = globalDragState.currentPosition.x - globalDragState.startPosition.x;
       const offsetY = globalDragState.currentPosition.y - globalDragState.startPosition.y;
-      
+
       // First apply rotation to original points (if any)
-      let rotatedPoints = renderPoints;
+      let rotatedPoints = originalPoints;
       if (targetShape.rotation && targetShape.rotation.angle !== 0) {
         const { angle, center } = targetShape.rotation;
         const angleRadians = (angle * Math.PI) / 180;
         const cos = Math.cos(angleRadians);
         const sin = Math.sin(angleRadians);
-        
-        rotatedPoints = renderPoints.map(point => {
+
+        rotatedPoints = originalPoints.map(point => {
           const dx = point.x - center.x;
           const dy = point.y - center.y;
-          
+
           return {
             x: center.x + (dx * cos - dy * sin),
             y: center.y + (dx * sin + dy * cos)
           };
         });
       }
-      
+
       // Then apply drag offset to rotated points
       transformedPoints = rotatedPoints.map(point => ({
         x: point.x + offsetX,
@@ -168,29 +172,30 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
         const angleRadians = (angle * Math.PI) / 180;
         const cos = Math.cos(angleRadians);
         const sin = Math.sin(angleRadians);
-        
-        transformedPoints = renderPoints.map(point => {
+
+        transformedPoints = originalPoints.map(point => {
           const dx = point.x - center.x;
           const dy = point.y - center.y;
-          
+
           return {
             x: center.x + (dx * cos - dy * sin),
             y: center.y + (dx * sin + dy * cos)
           };
         });
       } else {
-        transformedPoints = renderPoints;
+        transformedPoints = originalPoints;
       }
     }
-    
-    const center = calculateShapeCenter({...targetShape, points: transformedPoints});
-    
+
+    const displayCenter = calculateShapeCenter({...targetShape, points: transformedPoints});
+
     // Position handle below the shape and area text
     const handleOffset = 4.0; // Distance below shape center (increased to clear area text)
     return {
-      x: center.x,
-      y: center.y + handleOffset,
-      center: center
+      x: displayCenter.x,
+      y: displayCenter.y + handleOffset,
+      center: originalCenter, // Use original center for rotation calculations
+      displayCenter: displayCenter // Use display center for visual positioning
     };
   }, [targetShape, globalDragState]);
 
@@ -219,9 +224,11 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       // Calculate rotation angle relative to start
       let rotationAngle = currentMouseAngle - dragState.current.startMouseAngle;
       rotationAngle = normalizeAngle(rotationAngle);
-      
+
       // Apply snapping if Shift is pressed - snap to nearest 45-degree increment
-      const finalAngle = dragState.current.originalRotation + rotationAngle;
+      // Use the original rotation from the store (captured when rotation started)
+      const originalAngle = originalRotation?.angle || 0;
+      const finalAngle = originalAngle + rotationAngle;
       let angleToUse = finalAngle;
       
       // Use ref for immediate shift state (not stale closure)
@@ -235,29 +242,34 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
         angleToUse = normalizeAngle(angleToUse);
       }
       
-      // Update the display angle and apply to shape
+      // Update the display angle and apply to shape (live preview)
       setCurrentAngle(angleToUse);
-      rotateShape(targetShape.id, angleToUse, rotationHandlePosition.center);
+      rotateShapeLive(targetShape.id, angleToUse, rotationHandlePosition.center);
     }
-  }, [targetShape, rotationHandlePosition, gl.domElement, camera, raycaster, groundPlane, isShiftPressed, rotateShape]);
+  }, [targetShape, rotationHandlePosition, gl.domElement, camera, raycaster, groundPlane, isShiftPressed, rotateShapeLive]);
 
   const handlePointerUp = useCallback((event: PointerEvent) => {
-    if (dragState.current.isDragging && 
+    if (dragState.current.isDragging &&
         (dragState.current.pointerId === null || event.pointerId === dragState.current.pointerId)) {
-      
+
+      // Commit final rotation to history (if we have a valid target and position)
+      if (targetShape && rotationHandlePosition) {
+        rotateShape(targetShape.id, currentAngle, rotationHandlePosition.center);
+      }
+
       // Clean up drag state
       dragState.current.isDragging = false;
       dragState.current.pointerId = null;
-      
+
       setIsRotating(false);
       setCursorOverride(null);
-      
+
       // Remove event listeners
       document.removeEventListener('pointermove', handlePointerMove, true);
       document.removeEventListener('pointerup', handlePointerUp, true);
       document.removeEventListener('pointercancel', handlePointerUp, true);
     }
-  }, [handlePointerMove]);
+  }, [handlePointerMove, targetShape, rotationHandlePosition, currentAngle, rotateShape]);
 
   // Keyboard event handlers for Shift key
   useEffect(() => {
@@ -284,6 +296,50 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     };
   }, [isShiftPressed]);
 
+  // Separate function to initialize rotation interaction (MUST be before early return)
+  const initializeRotation = useCallback((eventData: { clientX: number, clientY: number, pointerId: number, currentTarget: any }) => {
+    // Enter rotation mode if not already in it
+    if (!drawing.isRotateMode) {
+      enterRotateMode(targetShape.id);
+    }
+
+    setIsRotating(true);
+
+    // Calculate initial angles using stored event data
+    const rect = gl.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2();
+    mouse.x = ((eventData.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((eventData.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersection = new THREE.Vector3();
+
+    if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+      const mousePoint: Point2D = { x: intersection.x, y: intersection.z };
+      const mouseAngle = calculateAngle(rotationHandlePosition.center, mousePoint);
+
+      // Set up drag state
+      dragState.current.isDragging = true;
+      dragState.current.startMouseAngle = mouseAngle;
+      dragState.current.pointerId = eventData.pointerId;
+
+      // Use the original rotation from the store
+      const initialAngle = originalRotation?.angle || 0;
+      setCurrentAngle(initialAngle);
+      setCursorOverride('grab');
+
+      // Capture pointer (safely check if target still exists)
+      if (eventData.currentTarget && eventData.currentTarget.setPointerCapture) {
+        eventData.currentTarget.setPointerCapture(eventData.pointerId);
+      }
+
+      // Add global listeners
+      document.addEventListener('pointermove', handlePointerMove, true);
+      document.addEventListener('pointerup', handlePointerUp, true);
+      document.addEventListener('pointercancel', handlePointerUp, true);
+    }
+  }, [targetShape, drawing.isRotateMode, enterRotateMode, gl.domElement, camera, raycaster, groundPlane, rotationHandlePosition, originalRotation, handlePointerMove, handlePointerUp]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -298,44 +354,42 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
   const handleRotationStart = (event: any) => {
     event.stopPropagation();
-    
-    // Enter rotation mode if not already in it
-    if (!drawing.isRotateMode) {
-      enterRotateMode(targetShape.id);
-    }
-    
-    setIsRotating(true);
-    
-    // Calculate initial angles
-    const rect = gl.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2();
-    mouse.x = ((event.nativeEvent.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.nativeEvent.clientY - rect.top) / rect.height) * 2 + 1;
+    event.preventDefault();
 
-    raycaster.setFromCamera(mouse, camera);
-    const intersection = new THREE.Vector3();
-    
-    if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
-      const mousePoint: Point2D = { x: intersection.x, y: intersection.z };
-      const mouseAngle = calculateAngle(rotationHandlePosition.center, mousePoint);
-      
-      // Set up drag state
-      dragState.current.isDragging = true;
-      dragState.current.startMouseAngle = mouseAngle;
-      dragState.current.originalRotation = targetShape.rotation?.angle || 0;
-      dragState.current.pointerId = event.nativeEvent.pointerId;
-      
-      setCurrentAngle(dragState.current.originalRotation);
-      setCursorOverride('grab');
-      
-      // Capture pointer
-      event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
-      
-      // Add global listeners
-      document.addEventListener('pointermove', handlePointerMove, true);
-      document.addEventListener('pointerup', handlePointerUp, true);
-      document.addEventListener('pointercancel', handlePointerUp, true);
+    // For React events, we need to access the native event for stopImmediatePropagation
+    if (event.nativeEvent && event.nativeEvent.stopImmediatePropagation) {
+      event.nativeEvent.stopImmediatePropagation();
     }
+
+    // Defensive check: Ensure targetShape exists
+    if (!targetShape) {
+      console.warn('Rotation handle clicked but targetShape is null');
+      return;
+    }
+
+    // Store event data before potential timeout (React events get cleaned up)
+    const eventData = {
+      clientX: event.nativeEvent.clientX,
+      clientY: event.nativeEvent.clientY,
+      pointerId: event.nativeEvent.pointerId,
+      currentTarget: event.currentTarget
+    };
+
+    // CRITICAL: Force exit from resize mode with proper state clearing
+    if (drawing.isResizeMode) {
+      console.log('Rotation handle clicked - forcing exit from resize mode');
+      const { exitResizeMode } = useAppStore.getState();
+      exitResizeMode();
+
+      // Add 1-frame delay to ensure state propagation, then initialize rotation
+      setTimeout(() => {
+        initializeRotation(eventData);
+      }, 16);
+      return; // Exit early and let timeout handle rotation start
+    }
+
+    // Normal case: directly initialize rotation
+    initializeRotation(eventData);
   };
 
   return (
@@ -382,7 +436,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       {/* Angle Display - Show during rotation */}
       {isRotating && (
         <Html
-          position={[rotationHandlePosition.center.x, elevation + 0.8, rotationHandlePosition.center.y]}
+          position={[rotationHandlePosition.displayCenter.x, elevation + 0.8, rotationHandlePosition.displayCenter.y]}
           center
           sprite
           occlude={false}

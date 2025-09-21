@@ -26,8 +26,9 @@ The application features a **Canva-inspired modern UI** with professional CAD fu
 - **📏 Instant Calculations** - Real-time area, perimeter, and dimension measurements
 - **🔧 Expandable Panels** - Collapsible/expandable left and right sidebars with smooth animations
 - **🎛️ Professional Ribbon** - Clean tool grouping with SVG icons and visual separators
-- **🔄 Unit Conversion** - Seamlessly switch between m², ft², acres, and hectares
-- **⚡ Visual Comparisons** - See your land compared to familiar objects
+- **🔄 Comprehensive Unit Conversion** - 12 area units including historical French/British measurements (perches, arpent)
+- **⚡ Visual Comparisons** - Compare your land to 16+ familiar objects (sports fields, buildings, landmarks)
+- **📊 Smart Analysis** - Instantly see "25 houses fit in your land" with visual progress bars
 - **✏️ Polyline Drawing** - Advanced polyline tool with real-time dotted preview line
 - **🔧 Professional Controls** - Windows-style resize handles and CAD-style rotation system
 - **🎯 State Management** - Robust state isolation preventing visual corruption between shapes

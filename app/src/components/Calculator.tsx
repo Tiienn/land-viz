@@ -113,7 +113,7 @@ export const Calculator: React.FC = () => {
             operation: null,
             waitingForNewValue: true,
           };
-        } catch (error) {
+        } catch {
           return {
             display: 'Error',
             previousValue: null,

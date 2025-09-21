@@ -260,7 +260,7 @@ export function ConversionInput({
     return null;
   };
 
-  const allUnits: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'sqmi'];
+  const allUnits: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'sqmi', 'toise', 'perches', 'perches-mauritius', 'arpent-na', 'arpent-paris', 'arpent-mauritius'];
   const currentUnitConfig = UNIT_CONFIGS[unit];
 
   return (

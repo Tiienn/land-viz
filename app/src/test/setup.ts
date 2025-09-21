@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
-import type { ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 
 // Mock ResizeObserver
 Object.defineProperty(window, 'ResizeObserver', {
@@ -112,7 +112,6 @@ vi.mock('three', async () => {
 // Mock React Three Fiber
 vi.mock('@react-three/fiber', () => ({
   Canvas: vi.fn((props: { children?: ReactNode } & Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'canvas', ...props }, props.children);
   }),
   useThree: vi.fn(() => ({
@@ -144,35 +143,28 @@ vi.mock('@react-three/fiber', () => ({
 // Mock React Three Drei
 vi.mock('@react-three/drei', () => ({
   OrbitControls: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'orbit-controls', ...props });
   }),
   Grid: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'grid', ...props });
   }),
   Environment: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'environment', ...props });
   }),
   Text: vi.fn((props: { children?: ReactNode } & Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'text', ...props }, props.children);
   }),
   Html: vi.fn((props: { children?: ReactNode } & Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'html', ...props }, props.children);
   }),
   Sphere: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'sphere', ...props });
   }),
   Box: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react');
     return React.createElement('div', { 'data-testid': 'box', ...props });
   }),
   Line: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react');
+    // React is available globally
     return React.createElement('div', { 'data-testid': 'line', ...props });
   }),
 }));

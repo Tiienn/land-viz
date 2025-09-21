@@ -201,7 +201,7 @@ class ErrorReportingService {
           ...(context ? { context: JSON.parse(context) } : {})
         };
       }
-    } catch (e) {
+    } catch {
       // Ignore storage errors
     }
 
@@ -291,7 +291,7 @@ class ErrorReportingService {
         if ('reportError' in window && error.stack) {
           const syntheticError = new Error(error.message);
           syntheticError.stack = error.stack;
-          (window as any).reportError(syntheticError);
+          (window as { reportError?: (error: Error) => void }).reportError?.(syntheticError);
         }
       });
     } catch (e) {

@@ -6,6 +6,66 @@ import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { logger } from '@/utils/logger';
 
+// Minimum rectangle constraints to prevent degenerate shapes
+const MIN_RECTANGLE_AREA = 10; // 10 m² minimum area
+const MIN_DIMENSION = 1.0; // 1m minimum width or height
+
+// Utility function to validate rectangle dimensions and enforce minimums
+const validateAndEnforceMinimumRectangle = (points: Point2D[], originalPoints: Point2D[]): Point2D[] => {
+  if (points.length !== 2) return originalPoints;
+
+  const [p1, p2] = points;
+  let width = Math.abs(p2.x - p1.x);
+  let height = Math.abs(p2.y - p1.y);
+  const area = width * height;
+
+  // Handle completely degenerate case (both points are the same)
+  if (width === 0 && height === 0) {
+    // Create a square with minimum area centered on the point
+    const sideLength = Math.sqrt(MIN_RECTANGLE_AREA);
+    const halfSide = sideLength / 2;
+    const centerX = p1.x;
+    const centerY = p1.y;
+
+    return [
+      { x: centerX - halfSide, y: centerY - halfSide },
+      { x: centerX + halfSide, y: centerY + halfSide }
+    ];
+  }
+
+  // Check if current dimensions meet minimums
+  const needsEnforcement = width < MIN_DIMENSION || height < MIN_DIMENSION || area < MIN_RECTANGLE_AREA;
+
+  if (!needsEnforcement) {
+    return points; // Valid rectangle, return as-is
+  }
+
+  // Enforce minimum dimensions while preserving aspect ratio where possible
+  if (area > 0 && area < MIN_RECTANGLE_AREA) {
+    // Scale up to meet minimum area while preserving aspect ratio
+    const scaleFactor = Math.sqrt(MIN_RECTANGLE_AREA / area);
+    width *= scaleFactor;
+    height *= scaleFactor;
+  }
+
+  // Ensure individual dimensions meet minimums
+  width = Math.max(width, MIN_DIMENSION);
+  height = Math.max(height, MIN_DIMENSION);
+
+  // Calculate center point
+  const centerX = (p1.x + p2.x) / 2;
+  const centerY = (p1.y + p2.y) / 2;
+
+  // Create new rectangle centered on the same point
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+
+  return [
+    { x: centerX - halfWidth, y: centerY - halfHeight },
+    { x: centerX + halfWidth, y: centerY + halfHeight }
+  ];
+};
+
 interface ResizableShapeControlsProps {
   elevation?: number;
 }
@@ -41,6 +101,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   const setMaintainAspectRatio = useAppStore(state => state.setMaintainAspectRatio);
   const resizeShape = useAppStore(state => state.resizeShape);
   const resizeShapeLive = useAppStore(state => state.resizeShapeLive);
+  const exitResizeMode = useAppStore(state => state.exitResizeMode);
   const saveToHistory = useAppStore(state => state.saveToHistory);
   
   // Get global drag state to handle shape dragging transforms
@@ -488,64 +549,66 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         // Calculate aspect ratio from original rectangle
         const originalWidth = Math.abs(corners[1].x - corners[0].x);
         const originalHeight = Math.abs(corners[2].y - corners[1].y);
-        const aspectRatio = originalWidth / originalHeight;
-        
-        // Calculate current dimensions relative to opposite corner
-        const deltaX = newPoint.x - oppositeCorner.x;
-        const deltaY = newPoint.y - oppositeCorner.y;
-        
-        // Use the larger dimension change to determine the constraining dimension
-        const absDeltaX = Math.abs(deltaX);
-        const absDeltaY = Math.abs(deltaY);
-        
-        let finalWidth, finalHeight;
-        
-        // Choose the dimension that gives us the larger rectangle to avoid jumping
-        if (absDeltaX / aspectRatio > absDeltaY) {
-          // Width-driven resize
-          finalWidth = absDeltaX;
-          finalHeight = finalWidth / aspectRatio;
+
+        // Prevent division by zero
+        if (originalWidth < 0.001 || originalHeight < 0.001) {
+          logger.warn('⚠️ Original rectangle too small for aspect ratio, falling back to free resize');
+          // Fall through to free resize logic below
         } else {
-          // Height-driven resize  
-          finalHeight = absDeltaY;
-          finalWidth = finalHeight * aspectRatio;
+          const aspectRatio = originalWidth / originalHeight;
+
+          // Calculate current dimensions relative to opposite corner
+          const currentWidth = Math.abs(newPoint.x - oppositeCorner.x);
+          const currentHeight = Math.abs(newPoint.y - oppositeCorner.y);
+
+          // Determine which dimension should drive the resize based on user intention
+          // Use the dimension that changed more from the original to determine intent
+          let finalWidth, finalHeight;
+
+          if (currentWidth / originalWidth > currentHeight / originalHeight) {
+            // Width changed more, so width drives the resize
+            finalWidth = Math.max(currentWidth, MIN_DIMENSION);
+            finalHeight = Math.max(finalWidth / aspectRatio, MIN_DIMENSION);
+          } else {
+            // Height changed more, so height drives the resize
+            finalHeight = Math.max(currentHeight, MIN_DIMENSION);
+            finalWidth = Math.max(finalHeight * aspectRatio, MIN_DIMENSION);
+          }
+
+          // Determine the signs based on the drag direction
+          const signX = newPoint.x >= oppositeCorner.x ? 1 : -1;
+          const signY = newPoint.y >= oppositeCorner.y ? 1 : -1;
+
+          // Calculate the new corner position
+          const newCornerX = oppositeCorner.x + (finalWidth * signX);
+          const newCornerY = oppositeCorner.y + (finalHeight * signY);
+
+          // Create the final rectangle bounds
+          const finalMinX = Math.min(oppositeCorner.x, newCornerX);
+          const finalMaxX = Math.max(oppositeCorner.x, newCornerX);
+          const finalMinY = Math.min(oppositeCorner.y, newCornerY);
+          const finalMaxY = Math.max(oppositeCorner.y, newCornerY);
+
+          const aspectRatioResult = [
+            { x: finalMinX, y: finalMinY },
+            { x: finalMaxX, y: finalMaxY }
+          ];
+
+          // Apply minimum area enforcement
+          return validateAndEnforceMinimumRectangle(aspectRatioResult, originalPoints);
         }
-        
-        // Apply the signs from the original deltas
-        const signX = Math.sign(deltaX);
-        const signY = Math.sign(deltaY);
-        
-        const newCornerX = oppositeCorner.x + (finalWidth * signX);
-        const newCornerY = oppositeCorner.y + (finalHeight * signY);
-        
-        // Return 2-point format with proper ordering
-        const finalMinX = Math.min(oppositeCorner.x, newCornerX);
-        const finalMaxX = Math.max(oppositeCorner.x, newCornerX);
-        const finalMinY = Math.min(oppositeCorner.y, newCornerY);
-        const finalMaxY = Math.max(oppositeCorner.y, newCornerY);
-        
-        return [
-          { x: finalMinX, y: finalMinY },
-          { x: finalMaxX, y: finalMaxY }
-        ];
       }
       
-      // Validate bounds before returning
-      const deltaX = maxX - minX;
-      const deltaY = maxY - minY;
-
-      if (deltaX < 0.001 || deltaY < 0.001) {
-        logger.warn('⚠️ Degenerate rectangle bounds detected in resize:', { deltaX, deltaY });
-        return originalPoints; // Return original points if result is degenerate
-      }
-
-      // Return new rectangle bounds in 2-point format (preserving rectangle shape)
-      const result = [
+      // Free resize (no aspect ratio constraint)
+      const freeResizeResult = [
         { x: minX, y: minY },  // Top left
         { x: maxX, y: maxY }   // Bottom right
       ];
-      logger.log('✅ Rectangle resize returning validated 2-point format:', JSON.stringify(result));
-      return result;
+
+      // Apply minimum area and dimension enforcement
+      const validatedResult = validateAndEnforceMinimumRectangle(freeResizeResult, originalPoints);
+      logger.log('✅ Rectangle resize returning validated 2-point format:', JSON.stringify(validatedResult));
+      return validatedResult;
     } else {
       // Edge resizing - constrain to single dimension
       const newCorners = [...corners];
@@ -570,21 +633,16 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       const minY = Math.min(newCorners[0].y, newCorners[1].y, newCorners[2].y, newCorners[3].y);
       const maxY = Math.max(newCorners[0].y, newCorners[1].y, newCorners[2].y, newCorners[3].y);
 
-      // Validate edge resize result bounds
-      const edgeDeltaX = maxX - minX;
-      const edgeDeltaY = maxY - minY;
-
-      if (edgeDeltaX < 0.001 || edgeDeltaY < 0.001) {
-        logger.warn('⚠️ Degenerate rectangle bounds detected in edge resize:', { edgeDeltaX, edgeDeltaY });
-        return originalPoints; // Return original points if result is degenerate
-      }
-
+      // Edge resize result
       const edgeResult = [
         { x: minX, y: minY },  // Top left
         { x: maxX, y: maxY }   // Bottom right
       ];
-      logger.log('✅ Edge resize returning validated 2-point format:', JSON.stringify(edgeResult));
-      return edgeResult;
+
+      // Apply minimum area and dimension enforcement
+      const validatedEdgeResult = validateAndEnforceMinimumRectangle(edgeResult, originalPoints);
+      logger.log('✅ Edge resize returning validated 2-point format:', JSON.stringify(validatedEdgeResult));
+      return validatedEdgeResult;
     }
   }, [maintainRectangleAspectRatio]);
 
@@ -697,7 +755,6 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       dragState.current.lastValidResizePoints = [...validPoints];
 
       // Use validated points for live resize
-      console.log('🔄 POINTER MOVE - Setting liveResizePoints:', JSON.stringify(validPoints));
       resizeShapeLive(resizingShape.id, validPoints);
     }
   }, [camera, gl.domElement, raycaster, resizingShape, setMaintainAspectRatio, resizeShapeLive, groundPlane, calculateRectangleResize, calculateCircleResize, calculateEllipseResize]);
@@ -706,32 +763,20 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     // CRITICAL FIX: Prevent duplicate pointer up events
     if (!dragState.current.isDragging ||
         (dragState.current.pointerId !== null && event.pointerId !== dragState.current.pointerId)) {
-      console.log('🚫 POINTER UP - Ignoring duplicate/invalid event');
       return;
     }
 
     // CRITICAL FIX: Capture live resize points IMMEDIATELY before resizeShape() clears them
-    console.log('🔍 PRE-CAPTURE DEBUG - drawing.liveResizePoints:', drawing.liveResizePoints ? JSON.stringify(drawing.liveResizePoints) : 'null');
     const capturedLivePoints = drawing.liveResizePoints ? [...drawing.liveResizePoints] : null;
 
     // ENHANCED: Robust final resize commit with comprehensive fallback logic
     if (resizingShape) {
       let finalPoints = null;
 
-      // DEBUG: Log current state at pointer up
-      console.log('🔍 POINTER UP DEBUG - Current state:', {
-        resizingShapeId: resizingShape.id,
-        currentShapePoints: JSON.stringify(resizingShape.points),
-        capturedLivePointsExist: !!capturedLivePoints,
-        capturedLivePointsLength: capturedLivePoints?.length || 0,
-        capturedLivePoints: capturedLivePoints ? JSON.stringify(capturedLivePoints) : 'null'
-      });
 
       // Priority 1: Use stored drag state points (most reliable)
       if (dragState.current.lastValidResizePoints && dragState.current.lastValidResizePoints.length >= 2) {
         finalPoints = [...dragState.current.lastValidResizePoints];
-        console.log('🎯 Using stored drag state resize points for final commit:', JSON.stringify(finalPoints));
-        logger.log('✅ Using stored drag state resize points for final commit:', JSON.stringify(finalPoints));
       }
       // Priority 2: Fallback to captured live resize points if drag state fails
       else if (capturedLivePoints && Array.isArray(capturedLivePoints) && capturedLivePoints.length >= 2) {
@@ -743,8 +788,6 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
 
         if (validLivePoints.length >= 2) {
           finalPoints = validLivePoints;
-          console.log('🎯 Using validated CAPTURED live resize points for final commit:', JSON.stringify(finalPoints));
-          logger.log('✅ Using validated CAPTURED live resize points for final commit:', JSON.stringify(finalPoints));
         }
       }
 
@@ -770,7 +813,6 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
               currentPoint,
               event.shiftKey
             );
-            logger.log('✅ Calculated final points from current mouse position:', JSON.stringify(finalPoints));
           }
         }
       }
@@ -793,16 +835,10 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       // ATOMIC COMMIT: Ensure the resize is committed atomically
       if (finalPoints && finalPoints.length >= 2) {
         try {
-          console.log('🔒 FINAL COMMIT - Committing final points:', JSON.stringify(finalPoints));
-          logger.log('🔒 Atomic resize commit for shape:', resizingShape.id);
           resizeShape(resizingShape.id, finalPoints);
-          console.log('✅ FINAL COMMIT - resizeShape() called successfully');
         } catch (error) {
-          console.error('❌ FINAL COMMIT - Failed:', error);
           logger.error('❌ Failed to commit final resize:', error);
         }
-      } else {
-        console.error('❌ FINAL COMMIT - No valid finalPoints:', finalPoints);
       }
     } else {
       logger.error('❌ No resizing shape available for final commit');
@@ -816,7 +852,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     // Reset cursor and other states
     setCursorOverride(null);
     setMaintainAspectRatio(false);
-  }, [handlePointerMove, setMaintainAspectRatio, resizingShape, resizeShape, gl.domElement, camera, raycaster, groundPlane, calculateRectangleResize]);
+
+    // CRITICAL FIX: Exit resize mode after successful completion
+    // This allows user to immediately switch to rotation mode
+    exitResizeMode();
+  }, [handlePointerMove, setMaintainAspectRatio, resizingShape, resizeShape, exitResizeMode, gl.domElement, camera, raycaster, groundPlane, calculateRectangleResize]);
 
 
   // Cleanup on unmount

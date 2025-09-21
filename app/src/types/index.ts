@@ -45,7 +45,7 @@ export interface Shape {
 export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline';
 
 // Drawing tool types
-export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate';
+export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate' | 'measure';
 
 export interface DrawingState {
   activeTool: DrawingTool;
@@ -69,6 +69,7 @@ export interface DrawingState {
   rotatingShapeId: string | null;
   rotationStartAngle: number;
   rotationCenter: Point2D | null;
+  originalRotation: ShapeRotation | null;
   // Enhanced snapping and guides system
   snapping: {
     /** Current snap configuration */
@@ -102,10 +103,92 @@ export interface DrawingState {
     /** Enhanced grid configuration */
     config: GridConfig;
   };
+  // Measurement state (only available in 'measure' mode)
+  measurement: MeasurementState;
+}
+
+// ================================
+// MEASUREMENT SYSTEM TYPES
+// ================================
+
+/**
+ * Individual measurement point with position and metadata
+ */
+export interface MeasurementPoint {
+  /** Unique identifier for the measurement point */
+  id: string;
+  /** 2D position of the measurement point */
+  position: Point2D;
+  /** Associated snap point for precision (if any) */
+  snapPoint?: SnapPoint;
+  /** When this point was created */
+  timestamp: Date;
+}
+
+/**
+ * Complete measurement between two points
+ */
+export interface Measurement {
+  /** Unique identifier for the measurement */
+  id: string;
+  /** Starting point of the measurement */
+  startPoint: MeasurementPoint;
+  /** Ending point of the measurement */
+  endPoint: MeasurementPoint;
+  /** Calculated distance between points */
+  distance: number;
+  /** Unit of measurement */
+  unit: 'metric' | 'imperial' | 'toise';
+  /** When this measurement was created */
+  created: Date;
+  /** Whether this measurement is visible in the scene */
+  visible: boolean;
+  /** Optional label for the measurement */
+  label?: string;
+}
+
+/**
+ * Current state of the measurement system
+ */
+export interface MeasurementState {
+  /** Whether measurement tool is currently active */
+  isActive: boolean;
+  /** Whether user is currently in the process of measuring */
+  isMeasuring: boolean;
+  /** First point of current measurement (if measuring) */
+  startPoint: MeasurementPoint | null;
+  /** Preview end point position (live during measurement) */
+  previewEndPoint: Point2D | null;
+  /** Array of all completed measurements */
+  measurements: Measurement[];
+  /** ID of currently selected measurement (if any) */
+  selectedMeasurementId: string | null;
+  /** Whether measurements are visible in the scene */
+  showMeasurements: boolean;
+  /** Current unit preference for new measurements */
+  unit: 'metric' | 'imperial' | 'toise';
 }
 
 // Area unit types for Insert Area feature
-export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm';
+export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm' | 'toise' | 'perches' | 'perches-mauritius' | 'arpent-na' | 'arpent-paris' | 'arpent-mauritius';
+
+// ================================
+// VISUAL COMPARISON TOOL TYPES
+// ================================
+
+// Re-export reference object types
+export type {
+  ReferenceObject,
+  ReferenceCategory,
+  ObjectDimensions,
+  ObjectGeometry,
+  ObjectMaterial,
+  ObjectMetadata,
+  ComparisonState,
+  ComparisonCalculations,
+  ObjectComparison,
+  BoundingBox
+} from './referenceObjects';
 
 export interface AreaValidation {
   isValid: boolean;
@@ -113,11 +196,67 @@ export interface AreaValidation {
   numValue?: number;
 }
 
+// Add Area Feature Types
+export interface AddAreaConfig {
+  area: number;
+  unit: AreaUnit;
+  shapeType: 'square' | 'rectangle' | 'circle';
+  aspectRatio?: number;
+}
+
+export interface AddAreaValidation {
+  isValid: boolean;
+  errors: string[];
+}
+
+export interface AddAreaModalState {
+  isOpen: boolean;
+  config: Partial<AddAreaConfig>;
+  validation: AddAreaValidation;
+  isLoading: boolean;
+}
+
+// Area Presets Feature Types
+export type PresetCategory = 'residential' | 'commercial' | 'agricultural' | 'mixed' | 'custom';
+
+export interface AreaPreset {
+  id: string;
+  name: string;
+  area: number;
+  unit: AreaUnit;
+  shapeType: 'square' | 'rectangle' | 'circle';
+  aspectRatio?: number;
+  description: string;
+  category: PresetCategory;
+  isCustom?: boolean;
+  created?: Date;
+  lastUsed?: Date;
+}
+
+export interface PresetsModalState {
+  isOpen: boolean;
+  selectedCategory: PresetCategory;
+  searchQuery: string;
+  selectedPreset: string | null;
+  isLoading: boolean;
+}
+
+export interface PresetsState {
+  // Modal state
+  presetsModal: PresetsModalState;
+
+  // Preset data
+  defaultPresets: AreaPreset[];
+  customPresets: AreaPreset[];
+  recentPresets: string[]; // Preset IDs
+  favoritePresets: string[]; // Preset IDs
+}
+
 // Measurement types
 export interface Measurements {
   area: number;
   perimeter: number;
-  units: 'metric' | 'imperial';
+  units: 'metric' | 'imperial' | 'toise';
 }
 
 // Application state
@@ -131,6 +270,10 @@ export interface AppState {
   drawing: DrawingState;
   measurements: Record<string, Measurements>;
   history: HistoryState;
+  renderTrigger: number; // Forces immediate re-renders for geometry updates
+  presets: import('./presets').PresetsState; // Area presets state
+  comparison: import('./referenceObjects').ComparisonState; // Visual comparison tool state
+  conversion: import('./conversion').ConversionState; // Unit conversion tool state
 }
 
 export interface DragState {
@@ -358,7 +501,7 @@ export interface RulerConfig {
   /** Show vertical ruler */
   showVertical: boolean;
   /** Units for ruler measurements */
-  units: 'metric' | 'imperial';
+  units: 'metric' | 'imperial' | 'toise';
   /** Ruler styling */
   style: {
     /** Background color */

@@ -8,17 +8,17 @@ param(
     [string]$Type = "completion"
 )
 
-# Play sound based on type
+# Play sound based on type using rundll32 (more reliable)
 if ($Type -eq "permission") {
-    [System.Media.SystemSounds]::Question.Play()
+    rundll32 user32.dll,MessageBeep 48  # Question sound
 } else {
     switch ($Sound) {
-        "Asterisk" { [System.Media.SystemSounds]::Asterisk.Play() }
-        "Beep" { [System.Media.SystemSounds]::Beep.Play() }
-        "Exclamation" { [System.Media.SystemSounds]::Exclamation.Play() }
-        "Hand" { [System.Media.SystemSounds]::Hand.Play() }
-        "Question" { [System.Media.SystemSounds]::Question.Play() }
-        default { [System.Media.SystemSounds]::Asterisk.Play() }
+        "Asterisk" { rundll32 user32.dll,MessageBeep 64 }      # Asterisk
+        "Beep" { rundll32 user32.dll,MessageBeep 0 }           # Default beep
+        "Exclamation" { rundll32 user32.dll,MessageBeep 48 }   # Exclamation
+        "Hand" { rundll32 user32.dll,MessageBeep 16 }          # Critical stop
+        "Question" { rundll32 user32.dll,MessageBeep 32 }      # Question
+        default { rundll32 user32.dll,MessageBeep 64 }         # Default asterisk
     }
 }
 

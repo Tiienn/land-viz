@@ -4,41 +4,41 @@
  */
 
 interface Logger {
-  log: (...args: any[]) => void;
-  info: (...args: any[]) => void;
-  warn: (...args: any[]) => void;
-  error: (...args: any[]) => void;
-  debug: (...args: any[]) => void;
+  log: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+  debug: (...args: unknown[]) => void;
 }
 
 const isDevelopment = import.meta.env.DEV;
 const enableVerboseLogging = false; // Set to true to see detailed geometry/transform logs
 
 export const logger: Logger = {
-  log: (...args: any[]) => {
+  log: (...args: unknown[]) => {
     if (isDevelopment && enableVerboseLogging) {
       console.log(...args);
     }
   },
-  
-  info: (...args: any[]) => {
+
+  info: (...args: unknown[]) => {
     if (isDevelopment) {
       console.log(...args);
     }
   },
-  
-  warn: (...args: any[]) => {
+
+  warn: (...args: unknown[]) => {
     if (isDevelopment) {
       console.warn(...args);
     }
   },
-  
-  error: (...args: any[]) => {
+
+  error: (...args: unknown[]) => {
     // Always log errors, even in production
     console.error(...args);
   },
-  
-  debug: (...args: any[]) => {
+
+  debug: (...args: unknown[]) => {
     if (isDevelopment) {
       console.debug(...args);
     }

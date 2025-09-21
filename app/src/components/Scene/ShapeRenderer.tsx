@@ -14,6 +14,7 @@ import type { Shape, Point2D } from '@/types';
 
 interface ShapeRendererProps {
   elevation?: number;
+  hideDimensions?: boolean;
 }
 
 // Removed createFreshRectangleGeometry - now using consistent GeometryCache for all shapes
@@ -144,7 +145,7 @@ const applyRotationTransform = (points: Point2D[], rotation?: { angle: number; c
   });
 };
 
-const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
+const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDimensions = false }) => {
   const { camera, gl, raycaster } = useThree();
   const groundPlane = useRef(new Plane(new Vector3(0, 1, 0), 0));
   
@@ -157,6 +158,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
   const dragState = useAppStore(state => state.dragState);
   const showDimensions = useAppStore(state => state.drawing.showDimensions);
   const activeTool = useAppStore(state => state.drawing.activeTool);
+  const renderTrigger = useAppStore(state => state.renderTrigger);
   const selectShape = useAppStore(state => state.selectShape);
   const hoverShape = useAppStore(state => state.hoverShape);
   const startDragging = useAppStore(state => state.startDragging);
@@ -452,42 +454,41 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       // Get the transformed points for this shape (includes rotation and dragging)
       const transform = shapeTransforms.find(t => t.id === shape.id);
       const pointsForGeometry = transform ? transform.points : shape.points;
-      
+
       logger.log(`🌍 Processing ${shape.type} ${shape.id}:`, {
         originalPoints: shape.points?.length || 0,
         transformedPoints: pointsForGeometry?.length || 0,
         hasTransform: !!transform
       });
-      
+
+      // Check if shape is being resized
+      const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
+      const hasLiveResizePoints = drawing.liveResizePoints && drawing.liveResizePoints.length >= 2;
+
       // CRITICAL FIX: Enhanced geometry creation with validation
       let geometry = null;
       if (pointsForGeometry && pointsForGeometry.length >= 2) {
-        const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
         const isBeingEdited = drawing.isEditMode && drawing.editingShapeId === shape.id;
-        const needsFreshGeometry = isBeingResized || isBeingEdited;
-        
+        // Use fresh geometry when actually have live resize points or in edit mode
+        const needsFreshGeometry = (isBeingResized && hasLiveResizePoints) || isBeingEdited;
+
         logger.log(`🌍 Shape ${shape.id} status:`, {
           isBeingResized,
+          hasLiveResizePoints,
           isBeingEdited,
           needsFreshGeometry,
           pointsLength: pointsForGeometry.length
         });
-        
+
         if (needsFreshGeometry) {
           // ENHANCED: Use specialized live resize geometry for better rendering
-          logger.log('🔥 LIVE MODE:', isBeingResized ? 'RESIZE' : 'EDIT', '- Creating geometry for', shape.id);
+          logger.log('🔥 LIVE MODE:', hasLiveResizePoints ? 'RESIZE' : 'EDIT', '- Creating geometry for', shape.id);
 
           try {
             // CRITICAL: Use specialized method for live resize to prevent diagonal line artifacts
-            if (isBeingResized && shape.type === 'rectangle') {
-              if (drawing.liveResizePoints && drawing.liveResizePoints.length >= 2) {
-                logger.log('🎯 Using specialized live resize geometry for', shape.id, 'with', drawing.liveResizePoints.length, 'live points');
-                geometry = GeometryCache.getLiveResizeGeometry(shape, drawing.liveResizePoints, elevation);
-              } else {
-                logger.log('🎯 Using live resize geometry with transformed points for', shape.id);
-                // Still use live resize method but with transformed points to ensure proper geometry creation
-                geometry = GeometryCache.getLiveResizeGeometry(shape, pointsForGeometry, elevation);
-              }
+            if (hasLiveResizePoints && shape.type === 'rectangle') {
+              logger.log('🎯 Using specialized live resize geometry for', shape.id, 'with', drawing.liveResizePoints.length, 'live points');
+              geometry = GeometryCache.getLiveResizeGeometry(shape, drawing.liveResizePoints, elevation);
             } else if (shape.type === 'rectangle') {
               // Standard fresh geometry for non-live operations
               console.log('🏗️ Creating FRESH rectangle geometry for', shape.id, 'with points:', JSON.stringify(pointsForGeometry));
@@ -513,29 +514,12 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
           }
         } else {
           // CACHED GEOMETRY: Normal case - use cache with preserved timestamp
-          console.log('🗜️ Using CACHED geometry for', shape.id, 'type:', shape.type, 'with points:', JSON.stringify(pointsForGeometry));
 
           // CRITICAL FIX: Ensure rectangles are in 4-point format for cache
-          let cachePoints = pointsForGeometry;
-          if (shape.type === 'rectangle' && pointsForGeometry.length === 2) {
-            const [p1, p2] = pointsForGeometry;
-            const minX = Math.min(p1.x, p2.x);
-            const maxX = Math.max(p1.x, p2.x);
-            const minY = Math.min(p1.y, p2.y);
-            const maxY = Math.max(p1.y, p2.y);
-
-            cachePoints = [
-              { x: minX, y: minY }, // Top-left
-              { x: maxX, y: minY }, // Top-right
-              { x: maxX, y: maxY }, // Bottom-right
-              { x: minX, y: maxY }  // Bottom-left
-            ];
-            console.log('🔄 Converted 2-point rectangle to 4-point for cache:', JSON.stringify(cachePoints));
-          }
-
+          // Let GeometryCache handle 2-point to 4-point conversion consistently
           geometry = GeometryCache.getGeometry({
             ...shape,
-            points: cachePoints,
+            points: pointsForGeometry,
             modified: shape.modified  // Preserve original timestamp for cache logic
           }, elevation);
           logger.log(`🗜️ Cached geometry used for ${shape.id}`);
@@ -555,7 +539,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       };
     });
   }, [
-    visibleShapes.map(s => `${s.id}_${s.type}_${JSON.stringify(s.points)}_${s.rotation?.angle || 0}_${s.modified?.getTime?.() || 0}`).join('|'), 
+    visibleShapes.map(s => `${s.id}_${s.type}_${JSON.stringify(s.points)}_${s.rotation?.angle || 0}_${s.modified?.getTime?.() || 0}`).join('|'),
     shapeTransforms.map(t => `${t.id}_${JSON.stringify(t.points)}`).join('|'),
     elevation,
     forceRefresh,
@@ -563,7 +547,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     drawing.editingShapeId,
     drawing.isResizeMode,
     drawing.resizingShapeId,
-    drawing.liveResizePoints // Add this to dependencies for proper updates
+    drawing.liveResizePoints, // Add this to dependencies for proper updates
+    renderTrigger // Force re-render when explicitly triggered
   ]);
   
   
@@ -679,7 +664,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         // Enter resize mode after selection for immediate productivity - force resize mode for all shapes
         setTimeout(() => {
           const currentDrawing = useAppStore.getState().drawing;
-          if (!currentDrawing.isEditMode && currentDrawing.activeTool === 'select') {
+          // CRITICAL: Only enter resize mode if not transitioning to rotation mode
+          if (!currentDrawing.isEditMode &&
+              !currentDrawing.isRotateMode &&
+              !currentDrawing.isResizeMode &&
+              currentDrawing.activeTool === 'select') {
             enterResizeMode(shapeId);
           }
         }, 50); // Longer timeout to ensure state updates properly
@@ -727,7 +716,12 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
     if (activeTool !== 'select' || selectedShapeId !== shapeId) {
       return; // Only allow dragging selected shapes in select mode
     }
-    
+
+    // CRITICAL: Prevent shape dragging during rotation mode
+    if (drawing.isRotateMode) {
+      return; // Don't allow shape movement when rotation handle is being used
+    }
+
     // Allow shape dragging even in resize mode - resize handles will handle their own events
     // The shape mesh itself should be draggable while resize handles take priority when clicked directly
     
@@ -764,7 +758,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
       document.addEventListener('pointermove', handleGlobalPointerMove);
       document.addEventListener('pointerup', handleGlobalPointerUp);
     }
-  }, [activeTool, selectedShapeId, getWorldPosition, startDragging, updateDragPosition, finishDragging, drawing.isResizeMode, drawing.resizingShapeId]);
+  }, [activeTool, selectedShapeId, getWorldPosition, startDragging, updateDragPosition, finishDragging, drawing.isResizeMode, drawing.resizingShapeId, drawing.isRotateMode]);
 
 
 
@@ -785,27 +779,32 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
         return null;
       }
 
-      // Ensure rectangle points are in the correct format for rendering
-      let renderPoints = shape.points;
-      if (shape.type === 'rectangle' && shape.points.length === 2) {
-        const [topLeft, bottomRight] = shape.points;
-        renderPoints = [
-          { x: topLeft.x, y: topLeft.y },
-          { x: bottomRight.x, y: topLeft.y },
-          { x: bottomRight.x, y: bottomRight.y },
-          { x: topLeft.x, y: bottomRight.y }
-        ];
-      }
+      // Get transformed points and ensure rectangles are in 4-point format for outline rendering
+      let transformedPoints = transform.points;
 
-      const transformedPoints = transform.points;
+      // CRITICAL FIX: Convert 2-point rectangles to 4-point format for proper outline rendering
+      if (shape.type === 'rectangle' && transformedPoints.length === 2) {
+        const [topLeft, bottomRight] = transformedPoints;
+        transformedPoints = [
+          { x: topLeft.x, y: topLeft.y },      // Top left
+          { x: bottomRight.x, y: topLeft.y },  // Top right
+          { x: bottomRight.x, y: bottomRight.y }, // Bottom right
+          { x: topLeft.x, y: bottomRight.y }   // Bottom left
+        ];
+        logger.log(`🔧 Converted 2-point rectangle to 4-point for outline rendering:`, {
+          shapeId: shape.id,
+          original: transform.points,
+          converted: transformedPoints
+        });
+      }
       let points3D = convertPointsWithElevation(transformedPoints, shape.layerId);
 
       // Close the shape for certain types
-      const shouldCloseShape = 
-        shape.type === 'rectangle' || 
-        shape.type === 'polygon' || 
+      const shouldCloseShape =
+        shape.type === 'rectangle' ||
+        shape.type === 'polygon' ||
         shape.type === 'circle' ||
-        (shape.type === 'polyline' && renderPoints.length > 2);
+        (shape.type === 'polyline' && transformedPoints.length > 2);
         
       if (shouldCloseShape && points3D.length > 2) {
         const firstPoint = points3D[0];
@@ -872,8 +871,9 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
           )}
           
           {/* Dimensions */}
-          {shape.visible && showDimensions && (
+          {shape.visible && showDimensions && !hideDimensions && (
             <ShapeDimensions
+              key={`${shape.id}-${JSON.stringify(transformedPoints)}-${shape.modified?.getTime() || 0}-${renderTrigger}`}
               shape={{...shape, points: transformedPoints}}
               elevation={elevation}
               isSelected={isSelected}
@@ -886,12 +886,13 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01 }) => {
   }, [
     visibleShapes,
     shapeGeometries,
-    shapeTransforms, 
+    shapeTransforms,
     shapeMaterials,
     selectedShapeId,
     hoveredShapeId,
     activeTool,
     showDimensions,
+    hideDimensions,
     layerElevations,
     elevation,
     drawing.isResizeMode,

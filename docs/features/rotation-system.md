@@ -399,7 +399,31 @@ describe('RotationControls Component', () => {
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: December 1, 2025  
-**Status**: Complete and Production Ready  
+---
+
+## 🐛 Recent Bug Fixes
+
+### September 17, 2025 - Rotation Jumping Fix
+
+**Issue**: Shapes would jump to unexpected positions when rotation was completed.
+
+**Root Cause**: The rotation center was being calculated using already-transformed points, causing the center to shift during rotation operations.
+
+**Solution**: Major refactor of `RotationControls.tsx` (lines 115-200):
+- Separated `originalCenter` (for rotation calculations) from `displayCenter` (for visual positioning)
+- Rotation calculations now always use the original shape geometry
+- Visual positioning uses transformed coordinates for accurate handle placement
+- Fixed angle display positioning to use `displayCenter` for proper visual alignment
+
+**Files Modified**:
+- `RotationControls.tsx` - Core rotation center calculation logic
+- Updated rotation handle positioning and angle display placement
+
+**Testing**: Comprehensive browser automation testing confirmed smooth rotation without position jumping.
+
+---
+
+**Version**: 1.1.0
+**Last Updated**: September 17, 2025
+**Status**: Complete and Production Ready (Critical Bug Fixed)
 **Authors**: Land Visualizer Development Team

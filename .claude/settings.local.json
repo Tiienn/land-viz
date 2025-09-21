@@ -1,7 +1,53 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/Tien/Documents/ShareX/Screenshots/2025-09/**)"
+      "Bash(rm:*)",
+      "Bash(powershell:*)",
+      "Bash(git checkout:*)",
+      "Bash(npx @chongdashu/cc-statusline@latest init)",
+      "Bash(printf \"Y\\n\\n\")",
+      "Read(//c/Users/Tien/.claude/**)",
+      "Bash(cc-statusline preview:*)",
+      "Bash(npx @chongdashu/cc-statusline@latest preview:*)",
+      "Bash(chmod:*)",
+      "Bash(bash:*)",
+      "Bash(cc-statusline:*)",
+      "Bash(npx @chongdashu/cc-statusline@latest status:*)",
+      "Bash(npx @chongdashu/cc-statusline@latest:*)",
+      "Bash(dir:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm test:*)",
+      "Bash(curl:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(grep:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_drag",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_handle_dialog",
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(timeout 10 npm run dev)",
+      "Bash(find:*)",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_press_key",
+      "Bash(mkdir:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "WebSearch",
+      "Bash(timeout 5 npm run dev)",
+      "Bash(timeout:*)",
+      "mcp__playwright__browser_resize",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "mcp__playwright__browser_select_option",
+      "WebFetch(domain:m.convert-me.com)",
+      "WebFetch(domain:en.wikipedia.org)"
     ],
     "deny": [],
     "ask": []
@@ -13,32 +59,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Tien\\Documents\\land-viz\\.claude\\scripts\\claude-notification-simple.ps1\" -Message \"Claude has finished the task!\" -Title \"✅ Claude Done\" -Sound \"Asterisk\" -Type \"completion\""
-          }
-        ]
-      }
-    ],
-    "Start": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Tien\\Documents\\land-viz\\.claude\\scripts\\claude-notification-simple.ps1\" -Message \"Claude is requesting permission! Check Cursor for details.\" -Title \"🔐 Permission Request\" -Sound \"Question\" -Type \"permission\""
-          }
-        ]
-      }
-    ],
-    "ToolUse": [
-      {
-        "matcher": "compact|toggle|expand|collapse",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Tien\\Documents\\land-viz\\.claude\\scripts\\compact-notification.ps1\" -Message \"Compact mode operation completed!\" -Title \"📱 Compact Done\" -Sound \"Beep\" -Operation \"toggle\""
+            "command": "powershell -ExecutionPolicy Bypass -Command \"rundll32 user32.dll,MessageBeep 64; Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('Claude has finished the task!', 'Claude Done', 'OK', 'Information')\""
           }
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash .claude/statusline.sh"
   }
 }

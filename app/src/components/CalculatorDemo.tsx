@@ -2,7 +2,48 @@ import React from 'react';
 import { Calculator } from './Calculator';
 import { Card } from './UI/Card';
 
-export const CalculatorDemo: React.FC = () => {
+interface CalculatorDemoProps {
+  inline?: boolean;
+  onClose?: () => void;
+}
+
+export const CalculatorDemo: React.FC<CalculatorDemoProps> = ({ inline = false, onClose }) => {
+  if (inline) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={headerStyles.header}>
+          <h3 style={headerStyles.title}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={headerStyles.titleIcon}>
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            Calculator
+          </h3>
+          <button
+            style={headerStyles.closeButton}
+            onClick={onClose}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f3f4f6';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            title="Collapse calculator panel"
+          >
+            ◀
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+          <Calculator />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
       <div className="max-w-4xl mx-auto">
@@ -115,5 +156,46 @@ function App() {
       </div>
     </div>
   );
+};
+
+// Header styles matching ComparisonPanel
+const headerStyles = {
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: '#fafafa',
+    flexShrink: 0
+  },
+
+  title: {
+    margin: 0,
+    fontSize: '16px',
+    fontWeight: 700,
+    color: '#1f2937',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+
+  titleIcon: {
+    color: '#6b7280',
+    flexShrink: 0
+  },
+
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    fontSize: '24px',
+    cursor: 'pointer',
+    color: '#6b7280',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    transition: 'all 200ms ease',
+    lineHeight: 1,
+    fontWeight: 300
+  }
 };
 

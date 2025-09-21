@@ -5,15 +5,20 @@
 ## Phase 1 Complete - Professional 3D Land Visualization Tool
 
 ✅ **Complete Features:**
-- Modern Canva-inspired UI with expandable panels
-- Professional ribbon with SVG icons and tool grouping  
+- Modern Canva-inspired UI with **unified inline panel system**
+- Professional ribbon with SVG icons and tool grouping
 - Full Three.js/React Three Fiber 3D scene
 - Drawing tools: Rectangle, circle, polyline (with imaginary line)
+- **Measurement tool: Point-to-point distance measurement with precision**
+- **Visual Comparison Tool: Compare land size to 16+ reference objects (inline panel)**
+- **Comprehensive Unit Conversion: 12 area units including historical French/British measurements**
+- **Unified Sidebar Architecture: All features use inline panels for consistency**
 - Shape editing with draggable sphere corners
 - Professional resize/rotation with angle snapping
 - Custom camera controls (right-orbit, middle-pan)
 - Green grass grid with unified snapping system
 - Nunito Sans typography, production security headers
+- Mobile-responsive panels with touch-optimized UI
 
 ## Design Philosophy
 Modern visual design inspired by Canva: clean typography, smooth 200ms transitions, 8-12px border radius, maintaining full CAD precision and professional functionality.
@@ -151,7 +156,7 @@ npm run dev     # Development server (http://localhost:5173)
 
 ### Main Components
 - `App.tsx` - Main application with ribbon toolbar and 3D scene container
-- `SceneManager.tsx` - 3D scene setup with lighting and canvas configuration
+- `SceneManager.tsx` - 3D scene setup with lighting and canvas configuration (with camera/canvas refs)
 - `BackgroundManager.tsx` - Dynamic scene background management based on grid state
 - `CameraController.tsx` - Professional orbital controls (left-click disabled, middle pan, right orbit)
 - `GridBackground.tsx` - Infinite green grass grid with custom canvas texture
@@ -160,23 +165,43 @@ npm run dev     # Development server (http://localhost:5173)
 - `EditableShapeControls.tsx` - Interactive sphere corners for shape editing
 - `ResizableShapeControls.tsx` - Professional resize handles with Windows-style cursors
 - `RotationControls.tsx` - Professional rotation handles with angle snapping and live preview
+- `MeasurementRenderer.tsx` - 3D measurement lines and spheres for point-to-point measurements
+- `MeasurementOverlay.tsx` - HTML overlay for distance labels with 3D-to-2D projection
 
 ### State Management
 - `useAppStore.ts` - Zustand store for drawing state and shapes
-- Drawing tools: select, rectangle, polyline, circle, rotate
+- Drawing tools: select, rectangle, polyline, circle, rotate, **measure**
+- Measurement state management with start/end points, distance calculations, and unit conversions
 - Real-time synchronization between UI and 3D scene
 - Rotation metadata storage with shape preservation
 
 ## Recent Major Changes
 **Core Implementation:**
 - Complete UI redesign with inline-styled ribbon interface
+- **Unified Inline Panel System: Standardized all sidebar features for consistency**
 - Full Three.js integration with professional CAD controls
 - Shape editing system with draggable corners and Windows-style resize handles
 - Professional rotation with angle snapping and metadata preservation
+- **Point-to-point measurement system with precision distance calculation**
+
+**Measurement Feature (Latest):**
+- Complete measurement tool implementation with 3D visualization
+- HTML overlay system for distance labels with 3D-to-2D projection
+- Camera and canvas reference system for proper coordinate mapping
+- Integration with existing grid snapping for precision measurements
+- Full measurement state management and tool activation
+
+**Historical Land Units Implementation (September 2025):**
+- **Complete historical land measurement support** with regional accuracy
+- **5 New Units Added:** Perches (British & Mauritius), Arpent (North America, Paris, Mauritius)
+- **Professional conversions** with historically accurate values
+- **Regional variations** properly distinguished (e.g., British vs Mauritius perches)
+- **Comprehensive coverage** for international real estate and historical research
 
 **UI/UX Enhancements:**
 - Canva-inspired visual refresh with SVG icons and smooth animations
-- Expandable panels with horizontal expansion (layers right, properties left)
+- **Unified Inline Panel Architecture: All sidebar features now use consistent inline panels**
+- **Compare Tool Integration: Moved to left sidebar with inline panel behavior**
 - Modern typography system using Nunito Sans font
 - Grid system unification with dynamic background management
 
@@ -194,6 +219,7 @@ npm run dev     # Development server (http://localhost:5173)
 ## Controls Reference
 **Camera:** Right-drag (orbit), middle-drag (pan), wheel (zoom)
 **Drawing:** Left-click to draw/select, ESC to cancel
+**Measuring:** Measure button → click two points for distance measurement
 **Editing:** Edit button → drag sphere corners, Add/Delete corners
 **Resize:** Click shape → drag handles (Shift for aspect ratio)
 **Rotate:** Rotate button → drag handle (Shift for 45° snap)
@@ -212,7 +238,7 @@ npm run dev     # Development server (http://localhost:5173)
 app/src/
 ├── App.tsx                 # Main application
 ├── components/Scene/       # 3D scene components
-│   ├── SceneManager.tsx   # Main 3D canvas wrapper
+│   ├── SceneManager.tsx   # Main 3D canvas wrapper (with camera/canvas refs)
 │   ├── BackgroundManager.tsx # Dynamic background management
 │   ├── CameraController.tsx # Camera controls
 │   ├── GridBackground.tsx  # Infinite grass grid
@@ -220,20 +246,25 @@ app/src/
 │   ├── ShapeRenderer.tsx   # Shape visualization with rotation transforms
 │   ├── EditableShapeControls.tsx # Shape editing with sphere corners
 │   ├── ResizableShapeControls.tsx # Professional resize handles
-│   └── RotationControls.tsx # Professional rotation handles with snapping
+│   ├── RotationControls.tsx # Professional rotation handles with snapping
+│   └── MeasurementRenderer.tsx # 3D measurement lines and spheres
+├── components/
+│   └── MeasurementOverlay.tsx # HTML overlay for distance labels
 ├── store/
-│   └── useAppStore.ts     # State management
-├── types/                 # TypeScript definitions
+│   └── useAppStore.ts     # State management (includes measurement state)
+├── types/                 # TypeScript definitions (includes measurement types)
 └── utils/                 # Utility functions
-    └── logger.ts          # Environment-based logging system
+    ├── logger.ts          # Environment-based logging system
+    └── measurementUtils.ts # Distance calculations and formatting
 ```
 
 ## Next Development Areas
-- Advanced measurement tools and annotations
+- Advanced measurement features (angle measurement, area measurement)
 - Export functionality (Excel, DXF, etc.)
 - Layer management system
 - Property boundary import/export
 - Terrain elevation tools
+- Measurement history and management UI
 
 ---
 
@@ -244,6 +275,7 @@ The foundation is solid! You have a fully functional 3D land visualization tool 
 - Professional ribbon UI that matches the reference design
 - Complete 3D scene with natural grass ground and blue sky
 - All drawing tools working (rectangle, circle, polyline)
+- **Point-to-point measurement tool** with precision distance calculation and HTML labels
 - **Complete shape editing system** with draggable sphere corners
 - **Professional rotation system** with contextual handles and angle snapping
 - **Edit mode toggle** - Enter/Exit Edit mode for selected shapes
@@ -341,9 +373,17 @@ const colors = {
 
 **System:** Grid button unification, background management, state synchronization, security headers, production logging, state corruption fixes, debug cleanup
 
-### Latest Technical Fixes
+### Latest Technical Fixes (September 2025)
+**Layer Ordering:** Fixed UI display order in `LayerPanel.tsx:366` - new layers now appear above Main Layer in UI
+**Polyline Rendering:** Fixed `ReferenceError: renderPoints is not defined` in `ShapeRenderer.tsx:798` - corrected variable reference
+**Rotation Jumping:** Major fix in `RotationControls.tsx` - separated rotation center calculation from display positioning to prevent shape jumping during rotation
 **State Corruption:** Fixed liveResizePoints persistence across selections in `useAppStore.ts`
-**Tool Switching:** Enhanced state cleanup when switching tools to prevent visual corruption  
+**Tool Switching:** Enhanced state cleanup when switching tools to prevent visual corruption
 **Imaginary Line:** Fixed polyline type mapping in `DrawingFeedback.tsx`
 **Debug Cleanup:** Removed debug messages while preserving logging infrastructure
+
+### Bug Fix Details
+1. **Layer UI Order**: Modified `LayerPanel.tsx` line 366 to use `.slice().reverse()` for proper visual hierarchy
+2. **Polyline Crash**: Fixed undefined variable `renderPoints` → `transformedPoints` in shape rendering logic
+3. **Rotation System**: Completely refactored rotation center calculation to use original shape geometry for rotation while maintaining visual positioning accuracy
 

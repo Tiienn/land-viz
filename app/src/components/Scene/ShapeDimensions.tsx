@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Html } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
+import { useAppStore } from '@/store/useAppStore';
 import { precisionCalculator } from '@/services/precisionCalculations';
 import type { Shape } from '@/types';
 
@@ -11,13 +12,14 @@ interface ShapeDimensionsProps {
   isResizeMode?: boolean;
 }
 
-const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({ 
-  shape, 
-  elevation = 0.01, 
+const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
+  shape,
+  elevation = 0.01,
   isSelected = false,
   isResizeMode = false
 }) => {
   const { camera } = useThree();
+  const renderTrigger = useAppStore(state => state.renderTrigger);
   
   // Calculate scale factor based on camera distance for consistent sizing
   const scaleInfo = useMemo(() => {
@@ -267,7 +269,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         </div>
       </Html>
     );
-  }, [shape, elevation, isSelected, isResizeMode, scaleInfo]);
+  }, [shape, shape.points, shape.modified, elevation, isSelected, isResizeMode, scaleInfo, renderTrigger]);
 
   return (
     <group>

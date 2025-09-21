@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
+import type { Shape } from '@/types';
 
 interface LayerPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  inline?: boolean;
 }
 
-const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
+const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false }) => {
   const layers = useAppStore(state => state.layers);
   const shapes = useAppStore(state => state.shapes);
   const activeLayerId = useAppStore(state => state.activeLayerId);
-  const createLayer = useAppStore(state => state.createLayer);
+  // const createLayer = useAppStore(state => state.createLayer);
   const updateLayer = useAppStore(state => state.updateLayer);
   const deleteLayer = useAppStore(state => state.deleteLayer);
   const setActiveLayer = useAppStore(state => state.setActiveLayer);
@@ -92,7 +94,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
     if (!shape || !layer) return { type: 'Empty', dimensions: 'm × m', area: '0 m²' };
     
     // Calculate dimensions directly from shape points
-    const calculateDimensions = (shape: any) => {
+    const calculateDimensions = (shape: Shape) => {
       if (!shape.points || shape.points.length === 0) {
         return { dimensions: 'm × m', area: '0 m²' };
       }
@@ -170,12 +172,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleToggleLayerLock = (layerId: string) => {
-    const layer = layers.find(l => l.id === layerId);
-    if (layer) {
-      updateLayer(layerId, { locked: !layer.locked });
-    }
-  };
+  // const handleToggleLayerLock = (layerId: string) => {
+  //   const layer = layers.find(l => l.id === layerId);
+  //   if (layer) {
+  //     updateLayer(layerId, { locked: !layer.locked });
+  //   }
+  // };
 
   const handleLayerNameEdit = (layerId: string, newName: string) => {
     if (newName.trim()) {
@@ -270,12 +272,40 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
   return (
     <div style={{
       width: '100%',
-      height: '100vh',
+      height: inline ? '100%' : '100vh',
       backgroundColor: 'white',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden'
     }}>
+
+      {/* Header */}
+      {inline && (
+        <div style={headerStyles.header}>
+          <h3 style={headerStyles.title}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={headerStyles.titleIcon}>
+              <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+              <path d="M2 8h20"></path>
+              <path d="M6 12h8"></path>
+              <path d="M6 16h6"></path>
+            </svg>
+            Layers
+          </h3>
+          <button
+            style={headerStyles.closeButton}
+            onClick={onClose}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f3f4f6';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            title="Collapse layers panel"
+          >
+            ◀
+          </button>
+        </div>
+      )}
 
       {/* Search Box */}
       <div style={{
@@ -361,10 +391,10 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
       </div>
 
       {/* Layer List */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {filteredLayers.map(layer => {
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {filteredLayers.slice().reverse().map(layer => {
           const isActive = layer.id === activeLayerId;
-          const shapeCount = getLayerShapeCount(layer.id);
+          // const shapeCount = getLayerShapeCount(layer.id);
           const isEditing = editingLayer === layer.id;
           const shapeInfo = getLayerShapeInfo(layer.id);
 
@@ -931,12 +961,11 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
 
         {filteredLayers.length === 0 && (
           <div style={{
-            padding: '32px 20px',
+            padding: '12px 20px',
             textAlign: 'center',
             color: '#6b7280',
             fontSize: '14px'
           }}>
-            <div style={{ fontSize: '32px', marginBottom: '8px', opacity: 0.5 }}>📄</div>
             <div style={{ marginBottom: '4px' }}>No layers found</div>
             <div style={{ fontSize: '12px' }}>
               {searchTerm ? 'Try a different search term' : 'Draw your first shape to create a layer'}
@@ -947,11 +976,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
 
       {/* Layer Statistics */}
       <div style={{
-        padding: '16px 20px',
+        padding: '12px 16px',
         borderTop: '1px solid #e5e7eb',
         background: '#f9fafb',
         fontSize: '12px',
-        color: '#6b7280'
+        color: '#6b7280',
+        flexShrink: 0
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
           <span>Total Layers:</span>
@@ -970,6 +1000,47 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose }) => {
       </div>
     </div>
   );
+};
+
+// Header styles matching ComparisonPanel
+const headerStyles = {
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: '#fafafa',
+    flexShrink: 0
+  },
+
+  title: {
+    margin: 0,
+    fontSize: '16px',
+    fontWeight: 700,
+    color: '#1f2937',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+
+  titleIcon: {
+    color: '#6b7280',
+    flexShrink: 0
+  },
+
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    fontSize: '24px',
+    cursor: 'pointer',
+    color: '#6b7280',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    transition: 'all 200ms ease',
+    lineHeight: 1,
+    fontWeight: 300
+  }
 };
 
 export default LayerPanel;

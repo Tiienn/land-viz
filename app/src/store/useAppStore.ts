@@ -1,13 +1,18 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { precisionCalculator, type PrecisionMeasurement } from '@/services/precisionCalculations';
-import { booleanOperationEngine, type BooleanResult, type SubdivisionSettings } from '@/services/booleanOperations';
-import { professionalExportEngine, type ExportOptions, type ExportResult } from '@/services/professionalExport';
-import { alignmentService } from '@/services/alignmentService';
-import { GeometryCache } from '@/utils/GeometryCache';
-import { logger } from '@/utils/logger';
-import { convertToSquareMeters, calculateSquareDimensions, getUnitLabel } from '@/utils/areaCalculations';
-import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide, AreaUnit } from '@/types';
+import { precisionCalculator, type PrecisionMeasurement } from '../services/precisionCalculations';
+import { booleanOperationEngine, type BooleanResult, type SubdivisionSettings } from '../services/booleanOperations';
+import { professionalExportEngine, type ExportOptions, type ExportResult } from '../services/professionalExport';
+import { alignmentService } from '../services/alignmentService';
+import { GeometryCache } from '../utils/GeometryCache';
+import { logger } from '../utils/logger';
+import { convertToSquareMeters, calculateGridAwareDimensions, getUnitLabel, calculateSmartGridPosition, generateShapeFromArea } from '../utils/areaCalculations';
+import { MeasurementUtils, MEASUREMENT_CONSTANTS } from '../utils/measurementUtils';
+import { defaultAreaPresets } from '../data/areaPresets';
+import { loadCustomPresets, saveCustomPresets } from '../utils/presetStorage';
+import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState } from '../types';
+import type { AreaPreset, PresetsState, PresetCategory } from '../types/presets';
+import type { ConversionActions } from '../types/conversion';
 
 interface AppStore extends AppState {
   // Layer actions
@@ -26,6 +31,7 @@ interface AppStore extends AppState {
   toggleSnapToGrid: () => void;
   setGridSize: (size: number) => void;
   toggleShowDimensions: () => void;
+  triggerRender: () => void;
   startDrawing: () => void;
   removeLastPoint: () => void;
   finishDrawing: () => void;
@@ -39,6 +45,26 @@ interface AppStore extends AppState {
   hoverShape: (id: string | null) => void;
   duplicateShape: (id: string) => void;
   createShapeFromArea: (area: number, unit: AreaUnit) => void;
+
+  // Add Area Modal Actions
+  addAreaModalOpen: boolean;
+  openAddAreaModal: () => void;
+  closeAddAreaModal: () => void;
+  createAreaShapeAdvanced: (config: AddAreaConfig) => void;
+
+  // Presets Modal Actions
+  openPresetsModal: () => void;
+  closePresetsModal: () => void;
+  setSelectedCategory: (category: PresetCategory) => void;
+  setSearchQuery: (query: string) => void;
+  selectPreset: (presetId: string | null) => void;
+  createShapeFromPreset: (preset: AreaPreset) => void;
+  customizePreset: (preset: AreaPreset) => void;
+  saveCustomPreset: (preset: Omit<AreaPreset, 'id' | 'isCustom' | 'created'>) => void;
+  deleteCustomPreset: (presetId: string) => void;
+  addToRecentPresets: (presetId: string) => void;
+  toggleFavoritePreset: (presetId: string) => void;
+  loadCustomPresetsFromStorage: () => void;
 
   // Drag actions
   startDragging: (shapeId: string, startPosition: Point2D) => void;
@@ -73,7 +99,22 @@ interface AppStore extends AppState {
   // Rotation mode actions (only available in 'select' mode)
   enterRotateMode: (shapeId: string) => void;
   exitRotateMode: () => void;
+  rotateShapeLive: (shapeId: string, angle: number, center: Point2D) => void;
   rotateShape: (shapeId: string, angle: number, center: Point2D) => void;
+
+  // Measurement actions (only available in 'measure' mode)
+  activateMeasurementTool: () => void;
+  deactivateMeasurementTool: () => void;
+  startMeasurement: (point: Point2D, snapPoint?: SnapPoint) => void;
+  updateMeasurementPreview: (point: Point2D) => void;
+  completeMeasurement: (point: Point2D, snapPoint?: SnapPoint) => void;
+  cancelMeasurement: () => void;
+  toggleMeasurementVisibility: (id: string) => void;
+  deleteMeasurement: (id: string) => void;
+  clearAllMeasurements: () => void;
+  selectMeasurement: (id: string | null) => void;
+  setMeasurementUnit: (unit: 'metric' | 'imperial' | 'toise') => void;
+  toggleMeasurementDisplay: () => void;
 
   // History actions
   undo: () => void;
@@ -117,6 +158,21 @@ interface AppStore extends AppState {
   updateSnapPoints: (snapPoints: SnapPoint[], activeSnapPoint?: SnapPoint | null) => void;
   updateAlignmentGuides: (guides: AlignmentGuide[], draggingShapeId?: string | null) => void;
   clearAlignmentGuides: () => void;
+
+  // Visual Comparison Tool actions
+  toggleComparisonPanel: () => void;
+  toggleObjectVisibility: (objectId: string) => void;
+  setComparisonSearch: (query: string) => void;
+  setComparisonCategory: (category: import('../types/referenceObjects').ReferenceCategory | 'all') => void;
+  calculateComparisons: () => Promise<void>;
+  resetComparison: () => void;
+
+  // Unit Conversion Tool actions
+  toggleConvertPanel: () => void;
+  setInputValue: (value: string) => void;
+  setInputUnit: (unit: AreaUnit) => void;
+  clearConversion: () => void;
+  setInputError: (error: string | null) => void;
 }
 
 const generateId = (): string => {
@@ -145,6 +201,7 @@ const getDefaultDrawingState = () => ({
   rotatingShapeId: null,
   rotationStartAngle: 0,
   rotationCenter: null,
+  originalRotation: null,
   // Enhanced snapping and guides system
   snapping: {
     config: {
@@ -247,6 +304,17 @@ const getDefaultDrawingState = () => ({
         fadeAtZoom: true
       }
     }
+  },
+  // Measurement system state
+  measurement: {
+    isActive: false,
+    isMeasuring: false,
+    startPoint: null,
+    previewEndPoint: null,
+    measurements: [],
+    selectedMeasurementId: null,
+    showMeasurements: true,
+    unit: MEASUREMENT_CONSTANTS.DEFAULT_UNIT
   }
 });
 
@@ -309,6 +377,34 @@ const createInitialState = (): AppState => {
       present: '',
       future: [],
     },
+    renderTrigger: 0,
+    presets: {
+      presetsModal: {
+        isOpen: false,
+        selectedCategory: 'residential' as PresetCategory,
+        searchQuery: '',
+        selectedPreset: null,
+        isLoading: false,
+      },
+      defaultPresets: defaultAreaPresets,
+      customPresets: loadCustomPresets(),
+      recentPresets: [],
+      favoritePresets: [],
+    },
+    comparison: {
+      panelExpanded: false,
+      visibleObjects: new Set(),
+      searchQuery: '',
+      selectedCategory: 'all',
+      calculations: null,
+    },
+    conversion: {
+      convertPanelExpanded: false,
+      currentInputValue: '',
+      currentInputUnit: 'sqm',
+      lastValidValue: null,
+      inputError: null,
+    },
   };
   
   // Set the present state to JSON representation of the base state
@@ -321,6 +417,12 @@ const createInitialState = (): AppState => {
     activeLayerId: baseState.activeLayerId,
     drawing: baseState.drawing,
     measurements: baseState.measurements,
+    presets: baseState.presets,
+    comparison: {
+      ...baseState.comparison,
+      visibleObjects: Array.from(baseState.comparison.visibleObjects) // Convert Set to Array for JSON serialization
+    },
+    conversion: baseState.conversion,
   });
   
   return baseState;
@@ -332,6 +434,9 @@ export const useAppStore = create<AppStore>()(
   devtools(
     (set, get) => ({
       ...initialState,
+
+      // Add Area Modal State
+      addAreaModalOpen: false,
 
       // Layer actions
       createLayer: (name: string) => {
@@ -591,6 +696,17 @@ export const useAppStore = create<AppStore>()(
         );
       },
 
+      // Force immediate render trigger for geometry updates
+      triggerRender: () => {
+        set(
+          state => ({
+            renderTrigger: state.renderTrigger + 1,
+          }),
+          false,
+          'triggerRender',
+        );
+      },
+
       startDrawing: () => {
         set(
           state => {
@@ -817,28 +933,31 @@ export const useAppStore = create<AppStore>()(
       createShapeFromArea: (area: number, unit: AreaUnit) => {
         get().saveToHistory(); // Save state before modifying shape
 
-        // Convert and calculate
+        // Convert area and calculate exact dimensions (Smart Grid Positioning)
         const areaInSqM = convertToSquareMeters(area, unit);
-        const { width, height } = calculateSquareDimensions(areaInSqM);
+        const state = get();
+        const { width, height } = calculateGridAwareDimensions(
+          areaInSqM,
+          state.drawing.gridSize,
+          state.drawing.snapToGrid
+        );
 
-        // Create rectangle at center
-        const center = { x: 0, y: 0 };
-        const points = [
+        // Use Smart Grid Positioning to find optimal center
+        const smartPosition = calculateSmartGridPosition(
+          width,
+          height,
+          state.drawing.gridSize,
+          state.drawing.snapToGrid
+        );
+
+        // Create rectangle with exact dimensions at smart center position
+        const center = smartPosition.center;
+        const finalPoints = [
           { x: center.x - width/2, y: center.y - height/2 },
           { x: center.x + width/2, y: center.y - height/2 },
           { x: center.x + width/2, y: center.y + height/2 },
           { x: center.x - width/2, y: center.y + height/2 }
         ];
-
-        const state = get();
-
-        // Apply grid snapping if enabled
-        const finalPoints = state.drawing.snapToGrid
-          ? points.map(p => ({
-              x: Math.round(p.x / state.drawing.gridSize) * state.drawing.gridSize,
-              y: Math.round(p.y / state.drawing.gridSize) * state.drawing.gridSize
-            }))
-          : points;
 
         // Find the default land area shape (main square)
         const defaultShapeId = 'default-land-area';
@@ -867,6 +986,13 @@ export const useAppStore = create<AppStore>()(
             false,
             'createShapeFromArea',
           );
+
+          // Invalidate geometry cache for visual update
+          const updatedShape = get().shapes.find(shape => shape.id === defaultShapeId);
+          if (updatedShape) {
+            GeometryCache.invalidateShape(updatedShape);
+            get().triggerRender(); // Force immediate re-render
+          }
         } else {
           // If default shape doesn't exist, replace the first shape or create a new one
           if (state.shapes.length > 0) {
@@ -894,6 +1020,13 @@ export const useAppStore = create<AppStore>()(
               false,
               'createShapeFromArea',
             );
+
+            // Invalidate geometry cache for visual update
+            const updatedShape = get().shapes.find(shape => shape.id === firstShapeId);
+            if (updatedShape) {
+              GeometryCache.invalidateShape(updatedShape);
+              get().triggerRender(); // Force immediate re-render
+            }
           } else {
             // No shapes exist, create a new one
             const newShape: Shape = {
@@ -920,7 +1053,327 @@ export const useAppStore = create<AppStore>()(
               false,
               'createShapeFromArea',
             );
+
+            // Invalidate geometry cache for visual update
+            GeometryCache.invalidateShape(newShape);
+            get().triggerRender(); // Force immediate re-render
           }
+        }
+      },
+
+      // Add Area Modal Actions
+      openAddAreaModal: () => {
+        set(state => ({
+          ...state,
+          addAreaModalOpen: true
+        }), false, 'openAddAreaModal');
+      },
+
+      closeAddAreaModal: () => {
+        set(state => ({
+          ...state,
+          addAreaModalOpen: false
+        }), false, 'closeAddAreaModal');
+      },
+
+      createAreaShapeAdvanced: (config: AddAreaConfig) => {
+        try {
+          const { area, unit, shapeType, aspectRatio } = config;
+
+          // Generate shape points using enhanced utilities
+          const points = generateShapeFromArea(area, unit, shapeType, {
+            aspectRatio,
+            position: { x: 0, y: 0 }, // Scene center
+            useGridAlignment: get().drawing.snapToGrid
+          });
+
+          // Create layer with descriptive name
+          const layerName = `Area: ${area} ${getUnitLabel(unit)}`;
+          const newLayer: Layer = {
+            id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: layerName,
+            visible: true,
+            locked: false,
+            color: '#22C55E', // Green for area shapes
+            opacity: 1,
+            created: new Date(),
+            modified: new Date()
+          };
+
+          // Create shape with proper type mapping
+          const shapeTypeMap: Record<string, ShapeType> = {
+            'square': 'rectangle',
+            'rectangle': 'rectangle',
+            'circle': 'circle'
+          };
+
+          const newShape: Shape = {
+            id: `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: `${shapeType.charAt(0).toUpperCase() + shapeType.slice(1)} - ${area} ${getUnitLabel(unit)}`,
+            points,
+            type: shapeTypeMap[shapeType],
+            color: newLayer.color,
+            visible: true,
+            layerId: newLayer.id,
+            created: new Date(),
+            modified: new Date()
+          };
+
+          // Update store with batched changes for performance
+          set(state => ({
+            ...state,
+            layers: [...state.layers, newLayer],
+            shapes: [...state.shapes, newShape],
+            activeLayerId: newLayer.id,
+            selectedShapeId: newShape.id,
+            addAreaModalOpen: false
+          }), false, 'createAreaShapeAdvanced');
+
+          // Save to history using existing action
+          get().saveToHistory();
+
+          // Trigger render for immediate visual feedback
+          get().triggerRender();
+
+          // Invalidate geometry cache for new shape
+          GeometryCache.invalidateShape(newShape);
+
+          logger.log('Area shape created successfully', {
+            area,
+            unit,
+            shapeType: shapeType,
+            layerId: newLayer.id,
+            shapeId: newShape.id
+          });
+
+        } catch (error) {
+          logger.error('Failed to create area shape', error);
+          throw error;
+        }
+      },
+
+      // Presets Modal Actions
+      openPresetsModal: () => {
+        set(state => ({
+          presets: {
+            ...state.presets,
+            presetsModal: {
+              ...state.presets.presetsModal,
+              isOpen: true
+            }
+          }
+        }), false, 'openPresetsModal');
+      },
+
+      closePresetsModal: () => {
+        set(state => ({
+          presets: {
+            ...state.presets,
+            presetsModal: {
+              ...state.presets.presetsModal,
+              isOpen: false,
+              selectedPreset: null
+            }
+          }
+        }), false, 'closePresetsModal');
+      },
+
+      setSelectedCategory: (category: PresetCategory) => {
+        set(state => ({
+          presets: {
+            ...state.presets,
+            presetsModal: {
+              ...state.presets.presetsModal,
+              selectedCategory: category,
+              selectedPreset: null
+            }
+          }
+        }), false, 'setSelectedCategory');
+      },
+
+      setSearchQuery: (query: string) => {
+        set(state => ({
+          presets: {
+            ...state.presets,
+            presetsModal: {
+              ...state.presets.presetsModal,
+              searchQuery: query,
+              selectedPreset: null
+            }
+          }
+        }), false, 'setSearchQuery');
+      },
+
+      selectPreset: (presetId: string | null) => {
+        set(state => ({
+          presets: {
+            ...state.presets,
+            presetsModal: {
+              ...state.presets.presetsModal,
+              selectedPreset: presetId
+            }
+          }
+        }), false, 'selectPreset');
+      },
+
+      createShapeFromPreset: (preset: AreaPreset) => {
+        try {
+          // Convert preset to AddAreaConfig
+          const config: AddAreaConfig = {
+            area: preset.area,
+            unit: preset.unit,
+            shapeType: preset.shapeType,
+            aspectRatio: preset.aspectRatio
+          };
+
+          // Use existing createAreaShapeAdvanced action
+          get().createAreaShapeAdvanced(config);
+
+          // Update recent presets
+          get().addToRecentPresets(preset.id);
+
+          // Close presets modal
+          get().closePresetsModal();
+
+          logger.log('Shape created from preset', { presetId: preset.id, preset });
+
+        } catch (error) {
+          logger.error('Failed to create shape from preset', error);
+          throw error;
+        }
+      },
+
+      customizePreset: (preset: AreaPreset) => {
+        try {
+          // Pre-fill AddArea modal with preset values
+          const config: AddAreaConfig = {
+            area: preset.area,
+            unit: preset.unit,
+            shapeType: preset.shapeType,
+            aspectRatio: preset.aspectRatio
+          };
+
+          // Close presets modal
+          get().closePresetsModal();
+
+          // Open AddArea modal with preset values
+          get().openAddAreaModal();
+
+          // Update recent presets
+          get().addToRecentPresets(preset.id);
+
+          logger.log('Customizing preset', { presetId: preset.id });
+
+        } catch (error) {
+          logger.error('Failed to customize preset', error);
+          throw error;
+        }
+      },
+
+      saveCustomPreset: (preset: Omit<AreaPreset, 'id' | 'isCustom' | 'created'>) => {
+        try {
+          const customPreset: AreaPreset = {
+            ...preset,
+            id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            isCustom: true,
+            created: new Date(),
+            category: 'custom'
+          };
+
+          set(state => ({
+            presets: {
+              ...state.presets,
+              customPresets: [...state.presets.customPresets, customPreset]
+            }
+          }), false, 'saveCustomPreset');
+
+          // Persist to localStorage
+          const customPresets = [...get().presets.customPresets, customPreset];
+          const success = saveCustomPresets(customPresets);
+          if (!success) {
+            logger.error('Failed to persist custom preset to localStorage');
+          }
+
+          logger.log('Custom preset saved', { presetId: customPreset.id });
+
+        } catch (error) {
+          logger.error('Failed to save custom preset', error);
+          throw error;
+        }
+      },
+
+      deleteCustomPreset: (presetId: string) => {
+        try {
+          set(state => ({
+            presets: {
+              ...state.presets,
+              customPresets: state.presets.customPresets.filter(p => p.id !== presetId),
+              recentPresets: state.presets.recentPresets.filter(id => id !== presetId),
+              favoritePresets: state.presets.favoritePresets.filter(id => id !== presetId)
+            }
+          }), false, 'deleteCustomPreset');
+
+          // Update localStorage
+          const customPresets = get().presets.customPresets.filter(p => p.id !== presetId);
+          const success = saveCustomPresets(customPresets);
+          if (!success) {
+            logger.error('Failed to update localStorage after preset deletion');
+          }
+
+          logger.log('Custom preset deleted', { presetId });
+
+        } catch (error) {
+          logger.error('Failed to delete custom preset', error);
+          throw error;
+        }
+      },
+
+      addToRecentPresets: (presetId: string) => {
+        set(state => {
+          const filtered = state.presets.recentPresets.filter(id => id !== presetId);
+          const updated = [presetId, ...filtered].slice(0, 5); // Keep only last 5
+
+          return {
+            presets: {
+              ...state.presets,
+              recentPresets: updated
+            }
+          };
+        }, false, 'addToRecentPresets');
+      },
+
+      toggleFavoritePreset: (presetId: string) => {
+        set(state => {
+          const isFavorite = state.presets.favoritePresets.includes(presetId);
+          const updated = isFavorite
+            ? state.presets.favoritePresets.filter(id => id !== presetId)
+            : [...state.presets.favoritePresets, presetId];
+
+          return {
+            presets: {
+              ...state.presets,
+              favoritePresets: updated
+            }
+          };
+        }, false, 'toggleFavoritePreset');
+      },
+
+      loadCustomPresetsFromStorage: () => {
+        try {
+          const customPresets = loadCustomPresets();
+          set(state => ({
+            presets: {
+              ...state.presets,
+              customPresets
+            }
+          }), false, 'loadCustomPresetsFromStorage');
+
+          logger.log('Custom presets reloaded from storage', {
+            count: customPresets.length
+          });
+
+        } catch (error) {
+          logger.error('Failed to reload custom presets from storage', error);
         }
       },
 
@@ -1005,6 +1458,7 @@ export const useAppStore = create<AppStore>()(
                 rotatingShapeId: null,
                 rotationStartAngle: 0,
                 rotationCenter: null,
+                originalRotation: null,
               },
             }),
             false,
@@ -1032,6 +1486,7 @@ export const useAppStore = create<AppStore>()(
                 rotatingShapeId: prevState.drawing.rotatingShapeId !== id ? null : prevState.drawing.rotatingShapeId,
                 rotationStartAngle: prevState.drawing.rotatingShapeId !== id ? 0 : prevState.drawing.rotationStartAngle,
                 rotationCenter: prevState.drawing.rotatingShapeId !== id ? null : prevState.drawing.rotationCenter,
+                originalRotation: prevState.drawing.rotatingShapeId !== id ? null : prevState.drawing.originalRotation,
               }
             }),
             false,
@@ -1338,9 +1793,18 @@ export const useAppStore = create<AppStore>()(
           
           // Validate and fix shape integrity after undo
           if (previousState.shapes) {
-            previousState.shapes = previousState.shapes.map((shape: Shape) => 
+            previousState.shapes = previousState.shapes.map((shape: Shape) =>
               get().validateShapeIntegrity(shape)
             );
+          }
+
+          // Restore Date objects in layers
+          if (previousState.layers) {
+            previousState.layers = previousState.layers.map((layer: Layer) => ({
+              ...layer,
+              created: typeof layer.created === 'string' ? new Date(layer.created) : layer.created,
+              modified: typeof layer.modified === 'string' ? new Date(layer.modified) : layer.modified,
+            }));
           }
           
           // Preserve current UI settings that shouldn't be affected by undo
@@ -1394,9 +1858,18 @@ export const useAppStore = create<AppStore>()(
           
           // Validate and fix shape integrity after redo
           if (nextState.shapes) {
-            nextState.shapes = nextState.shapes.map((shape: Shape) => 
+            nextState.shapes = nextState.shapes.map((shape: Shape) =>
               get().validateShapeIntegrity(shape)
             );
+          }
+
+          // Restore Date objects in layers
+          if (nextState.layers) {
+            nextState.layers = nextState.layers.map((layer: Layer) => ({
+              ...layer,
+              created: typeof layer.created === 'string' ? new Date(layer.created) : layer.created,
+              modified: typeof layer.modified === 'string' ? new Date(layer.modified) : layer.modified,
+            }));
           }
           
           // Preserve current UI settings that shouldn't be affected by redo
@@ -1445,25 +1918,34 @@ export const useAppStore = create<AppStore>()(
           return shape;
         }
 
+        // Restore Date objects that were serialized to strings during JSON operations
+        const validatedShape = { ...shape };
+        if (typeof shape.created === 'string') {
+          validatedShape.created = new Date(shape.created);
+        }
+        if (typeof shape.modified === 'string') {
+          validatedShape.modified = new Date(shape.modified);
+        }
+
         // Handle rectangles - ensure they have the correct structure
-        if (shape.type === 'rectangle') {
+        if (validatedShape.type === 'rectangle') {
           // If rectangle has 4 points, ensure they form a proper rectangle
-          if (shape.points.length === 4) {
+          if (validatedShape.points.length === 4) {
             // Check if the rectangle is properly closed (4 distinct corners)
-            const points = shape.points;
-            
+            const points = validatedShape.points;
+
             // Ensure we have a proper rectangle structure
             // Rectangle should have: top-left, top-right, bottom-right, bottom-left
             const validRectangle = {
-              ...shape,
+              ...validatedShape,
               points: points.slice(0, 4) // Keep only first 4 points if there are more
             };
             return validRectangle;
-          } else if (shape.points.length === 2) {
+          } else if (validatedShape.points.length === 2) {
             // Convert 2-point format to 4-point format for consistency
-            const [topLeft, bottomRight] = shape.points;
+            const [topLeft, bottomRight] = validatedShape.points;
             return {
-              ...shape,
+              ...validatedShape,
               points: [
                 { x: topLeft.x, y: topLeft.y },      // Top left
                 { x: bottomRight.x, y: topLeft.y },  // Top right
@@ -1475,19 +1957,19 @@ export const useAppStore = create<AppStore>()(
         }
         
         // Handle polylines and polygons - preserve their structure
-        if (shape.type === 'polygon' || shape.type === 'polyline') {
+        if (validatedShape.type === 'polygon' || validatedShape.type === 'polyline') {
           // Don't modify the points - they should be preserved as-is
           // The closing behavior is handled at render time, not storage time
-          return shape;
+          return validatedShape;
         }
-        
+
         // Handle circles - ensure they have proper structure
-        if (shape.type === 'circle' && shape.points.length > 2) {
+        if (validatedShape.type === 'circle' && validatedShape.points.length > 2) {
           // Circles should maintain their generated points structure
-          return shape;
+          return validatedShape;
         }
-        
-        return shape;
+
+        return validatedShape;
       },
 
       // Save state to history (internal helper)
@@ -1770,6 +2252,9 @@ export const useAppStore = create<AppStore>()(
       },
 
       exitResizeMode: () => {
+        const currentState = get();
+        const wasResizingShapeId = currentState.drawing.resizingShapeId;
+
         set(
           state => ({
             drawing: {
@@ -1785,6 +2270,11 @@ export const useAppStore = create<AppStore>()(
           false,
           'exitResizeMode',
         );
+
+        // Ensure the shape remains selected after resize
+        if (wasResizingShapeId && currentState.selectedShapeId !== wasResizingShapeId) {
+          get().selectShape(wasResizingShapeId);
+        }
       },
 
       setResizeHandle: (handleType: 'corner' | 'edge', handleIndex: number) => {
@@ -1862,12 +2352,8 @@ export const useAppStore = create<AppStore>()(
         const currentState = get();
 
         // CRITICAL VALIDATION: Only proceed if this shape is actively being resized
+        // Silent return to avoid console spam from timing issues when resize mode exits
         if (!currentState.drawing.isResizeMode || currentState.drawing.resizingShapeId !== shapeId) {
-          logger.warn('⚠️ Live resize aborted - invalid state:', {
-            shapeId,
-            isResizeMode: currentState.drawing.isResizeMode,
-            resizingShapeId: currentState.drawing.resizingShapeId
-          });
           return;
         }
 
@@ -1962,6 +2448,25 @@ export const useAppStore = create<AppStore>()(
 
       // Rotation mode actions
       enterRotateMode: (shapeId: string) => {
+        // Save state to history BEFORE entering rotate mode
+        // This captures the state the user started from
+        get().saveToHistory();
+
+        // Defensive programming: Ensure we exit resize mode if currently active
+        const currentState = get();
+        if (currentState.drawing.isResizeMode) {
+          get().exitResizeMode();
+        }
+
+        // CRITICAL: Cancel any ongoing drag operations when entering rotation mode
+        if (currentState.dragState.isDragging) {
+          get().cancelDragging();
+        }
+
+        // Capture the current rotation state of the shape being rotated
+        const currentShape = get().shapes.find(shape => shape.id === shapeId);
+        const originalRotation = currentShape?.rotation || { angle: 0, center: { x: 0, y: 0 } };
+
         set(
           state => ({
             drawing: {
@@ -1970,6 +2475,7 @@ export const useAppStore = create<AppStore>()(
               rotatingShapeId: shapeId,
               rotationStartAngle: 0,
               rotationCenter: null,
+              originalRotation: originalRotation,
               // Exit other modes when entering rotation
               isEditMode: false,
               editingShapeId: null,
@@ -1996,6 +2502,7 @@ export const useAppStore = create<AppStore>()(
               rotatingShapeId: null,
               rotationStartAngle: 0,
               rotationCenter: null,
+              originalRotation: null,
             },
           }),
           false,
@@ -2003,13 +2510,45 @@ export const useAppStore = create<AppStore>()(
         );
       },
 
-      rotateShape: (shapeId: string, angle: number, center: Point2D) => {
+      // Live rotation (for real-time updates without history pollution)
+      rotateShapeLive: (shapeId: string, angle: number, center: Point2D) => {
         // Invalidate geometry cache for the shape being rotated
         const existingShape = get().shapes.find(shape => shape.id === shapeId);
         if (existingShape) {
           GeometryCache.invalidateShape(existingShape);
         }
-        
+
+        // The angle parameter is already the final absolute angle we want to apply
+        // (calculated from original rotation + delta in RotationControls)
+        set(
+          state => ({
+            shapes: state.shapes.map(shape => {
+              if (shape.id === shapeId) {
+                return {
+                  ...shape,
+                  rotation: { angle, center },
+                  modified: new Date(),
+                };
+              }
+              return shape;
+            }),
+          }),
+          false,
+          'rotateShapeLive',
+        );
+      },
+
+      rotateShape: (shapeId: string, angle: number, center: Point2D) => {
+        // No need to save to history here - it was already saved in enterRotateMode
+        // Just apply the final rotation
+
+        // Invalidate geometry cache for the shape being rotated
+        const existingShape = get().shapes.find(shape => shape.id === shapeId);
+        if (existingShape) {
+          GeometryCache.invalidateShape(existingShape);
+        }
+
+        // Apply the final rotation
         set(
           state => ({
             shapes: state.shapes.map(shape => {
@@ -2025,6 +2564,251 @@ export const useAppStore = create<AppStore>()(
           }),
           false,
           'rotateShape',
+        );
+      },
+
+      // Measurement actions
+      activateMeasurementTool: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              activeTool: 'measure',
+              measurement: {
+                ...state.drawing.measurement,
+                isActive: true
+              }
+            }
+          }),
+          false,
+          'activateMeasurementTool'
+        );
+      },
+
+      deactivateMeasurementTool: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                isActive: false,
+                isMeasuring: false,
+                startPoint: null,
+                previewEndPoint: null
+              }
+            }
+          }),
+          false,
+          'deactivateMeasurementTool'
+        );
+      },
+
+      startMeasurement: (point: Point2D, snapPoint?: SnapPoint) => {
+        const measurementPoint = MeasurementUtils.createMeasurementPoint(point, snapPoint);
+
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                isMeasuring: true,
+                startPoint: measurementPoint,
+                previewEndPoint: null
+              }
+            }
+          }),
+          false,
+          'startMeasurement'
+        );
+      },
+
+      updateMeasurementPreview: (point: Point2D) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                previewEndPoint: point
+              }
+            }
+          }),
+          false,
+          'updateMeasurementPreview'
+        );
+      },
+
+      completeMeasurement: (point: Point2D, snapPoint?: SnapPoint) => {
+        const state = get();
+        const startPoint = state.drawing.measurement.startPoint;
+
+        if (!startPoint) {
+          logger.warn('Cannot complete measurement: no start point');
+          return;
+        }
+
+        // Validate measurement points
+        const validation = MeasurementUtils.validateMeasurementPoints(startPoint.position, point);
+        if (!validation.isValid) {
+          logger.warn(`Cannot complete measurement: ${validation.error}`);
+          return;
+        }
+
+        const endPoint = MeasurementUtils.createMeasurementPoint(point, snapPoint);
+        const measurement = MeasurementUtils.createMeasurement(
+          startPoint,
+          endPoint,
+          state.drawing.measurement.unit
+        );
+
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                isMeasuring: false,
+                startPoint: null,
+                previewEndPoint: null,
+                measurements: [...state.drawing.measurement.measurements, measurement],
+                selectedMeasurementId: measurement.id
+              }
+            }
+          }),
+          false,
+          'completeMeasurement'
+        );
+
+        // Save to history after completing measurement
+        get().saveToHistory();
+      },
+
+      cancelMeasurement: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                isMeasuring: false,
+                startPoint: null,
+                previewEndPoint: null
+              }
+            }
+          }),
+          false,
+          'cancelMeasurement'
+        );
+      },
+
+      toggleMeasurementVisibility: (id: string) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                measurements: state.drawing.measurement.measurements.map(m =>
+                  m.id === id ? { ...m, visible: !m.visible } : m
+                )
+              }
+            }
+          }),
+          false,
+          'toggleMeasurementVisibility'
+        );
+      },
+
+      deleteMeasurement: (id: string) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                measurements: state.drawing.measurement.measurements.filter(m => m.id !== id),
+                selectedMeasurementId: state.drawing.measurement.selectedMeasurementId === id ? null : state.drawing.measurement.selectedMeasurementId
+              }
+            }
+          }),
+          false,
+          'deleteMeasurement'
+        );
+
+        // Save to history after deleting measurement
+        get().saveToHistory();
+      },
+
+      clearAllMeasurements: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                measurements: [],
+                selectedMeasurementId: null,
+                isMeasuring: false,
+                startPoint: null,
+                previewEndPoint: null
+              }
+            }
+          }),
+          false,
+          'clearAllMeasurements'
+        );
+
+        // Save to history after clearing all measurements
+        get().saveToHistory();
+      },
+
+      selectMeasurement: (id: string | null) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                selectedMeasurementId: id
+              }
+            }
+          }),
+          false,
+          'selectMeasurement'
+        );
+      },
+
+      setMeasurementUnit: (unit: 'metric' | 'imperial' | 'toise') => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                unit
+              }
+            }
+          }),
+          false,
+          'setMeasurementUnit'
+        );
+      },
+
+      toggleMeasurementDisplay: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              measurement: {
+                ...state.drawing.measurement,
+                showMeasurements: !state.drawing.measurement.showMeasurements
+              }
+            }
+          }),
+          false,
+          'toggleMeasurementDisplay'
         );
       },
 
@@ -2280,6 +3064,7 @@ export const useAppStore = create<AppStore>()(
               rotatingShapeId: null,
               rotationStartAngle: 0,
               rotationCenter: null,
+              originalRotation: null,
               activeTool: 'select' // Reset to select tool
             },
             // Clear selections and hover states
@@ -2361,6 +3146,197 @@ export const useAppStore = create<AppStore>()(
           }),
           false,
           'clearAlignmentGuides'
+        );
+      },
+
+      // Visual Comparison Tool actions
+      toggleComparisonPanel: () => {
+        set(
+          state => ({
+            comparison: {
+              ...state.comparison,
+              panelExpanded: !state.comparison.panelExpanded
+            }
+          }),
+          false,
+          'toggleComparisonPanel'
+        );
+      },
+
+      toggleObjectVisibility: (objectId: string) => {
+        set(
+          state => {
+            const newVisibleObjects = new Set(state.comparison.visibleObjects);
+            if (newVisibleObjects.has(objectId)) {
+              newVisibleObjects.delete(objectId);
+            } else {
+              newVisibleObjects.add(objectId);
+            }
+
+            return {
+              comparison: {
+                ...state.comparison,
+                visibleObjects: newVisibleObjects
+              }
+            };
+          },
+          false,
+          'toggleObjectVisibility'
+        );
+
+        // Trigger calculations after visibility change
+        setTimeout(() => get().calculateComparisons(), 0);
+      },
+
+      setComparisonSearch: (query: string) => {
+        set(
+          state => ({
+            comparison: {
+              ...state.comparison,
+              searchQuery: query
+            }
+          }),
+          false,
+          'setComparisonSearch'
+        );
+      },
+
+      setComparisonCategory: (category: import('../types/referenceObjects').ReferenceCategory | 'all') => {
+        set(
+          state => ({
+            comparison: {
+              ...state.comparison,
+              selectedCategory: category
+            }
+          }),
+          false,
+          'setComparisonCategory'
+        );
+      },
+
+      calculateComparisons: async () => {
+        const state = get();
+        const { shapes, comparison } = state;
+
+        // Don't calculate if no objects visible
+        if (comparison.visibleObjects.size === 0) {
+          set(
+            state => ({
+              comparison: {
+                ...state.comparison,
+                calculations: null
+              }
+            }),
+            false,
+            'calculateComparisons'
+          );
+          return;
+        }
+
+        // Import calculation utility
+        const { ComparisonCalculator } = await import('../utils/comparisonCalculations');
+        const { REFERENCE_OBJECTS } = await import('../data/referenceObjects');
+
+        const visibleReferenceObjects = Array.from(comparison.visibleObjects)
+          .map(id => REFERENCE_OBJECTS.find(obj => obj.id === id))
+          .filter(Boolean);
+
+        const calculations = ComparisonCalculator.calculate(shapes, visibleReferenceObjects);
+
+        set(
+          state => ({
+            comparison: {
+              ...state.comparison,
+              calculations
+            }
+          }),
+          false,
+          'calculateComparisons'
+        );
+      },
+
+      resetComparison: () => {
+        set(
+          state => ({
+            comparison: {
+              panelExpanded: false,
+              visibleObjects: new Set(),
+              searchQuery: '',
+              selectedCategory: 'all',
+              calculations: null
+            }
+          }),
+          false,
+          'resetComparison'
+        );
+      },
+
+      // Unit Conversion Tool actions
+      toggleConvertPanel: () => {
+        set(
+          state => ({
+            conversion: {
+              ...state.conversion,
+              convertPanelExpanded: !state.conversion.convertPanelExpanded
+            }
+          }),
+          false,
+          'toggleConvertPanel'
+        );
+      },
+
+      setInputValue: (value: string) => {
+        set(
+          state => ({
+            conversion: {
+              ...state.conversion,
+              currentInputValue: value,
+              inputError: null // Clear error when value changes
+            }
+          }),
+          false,
+          'setInputValue'
+        );
+      },
+
+      setInputUnit: (unit: AreaUnit) => {
+        set(
+          state => ({
+            conversion: {
+              ...state.conversion,
+              currentInputUnit: unit
+            }
+          }),
+          false,
+          'setInputUnit'
+        );
+      },
+
+      clearConversion: () => {
+        set(
+          state => ({
+            conversion: {
+              ...state.conversion,
+              currentInputValue: '',
+              lastValidValue: null,
+              inputError: null
+            }
+          }),
+          false,
+          'clearConversion'
+        );
+      },
+
+      setInputError: (error: string | null) => {
+        set(
+          state => ({
+            conversion: {
+              ...state.conversion,
+              inputError: error
+            }
+          }),
+          false,
+          'setInputError'
         );
       },
     }),

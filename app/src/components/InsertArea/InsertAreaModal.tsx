@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { AreaUnit, AreaValidation } from '../../types';
-import { validateAreaInput, getUnitLabel } from '../../utils/areaCalculations';
+import { validateAreaInput, getUnitLabel, analyzeGridSnapImpact, type GridSnapImpact } from '../../utils/areaCalculations';
+import { useAppStore } from '../../store/useAppStore';
 
 interface InsertAreaModalProps {
   isOpen: boolean;
@@ -8,13 +9,17 @@ interface InsertAreaModalProps {
   onSubmit: (area: number, unit: AreaUnit) => void;
 }
 
-const UNITS: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm'];
+const UNITS: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'toise', 'perches', 'perches-mauritius', 'arpent-na', 'arpent-paris', 'arpent-mauritius'];
 
 const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const [areaValue, setAreaValue] = useState('');
   const [selectedUnit, setSelectedUnit] = useState<AreaUnit>('sqm');
   const [validation, setValidation] = useState<AreaValidation>({ isValid: true });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [gridSnapImpact, setGridSnapImpact] = useState<GridSnapImpact | null>(null);
+
+  // Get grid settings from store
+  const { drawing } = useAppStore();
 
   // Reset form when modal opens
   useEffect(() => {
@@ -23,6 +28,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
       setSelectedUnit('sqm');
       setValidation({ isValid: true });
       setIsSubmitting(false);
+      setGridSnapImpact(null);
     }
   }, [isOpen]);
 
@@ -34,6 +40,21 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
       setValidation({ isValid: true });
     }
   }, [areaValue]);
+
+  // Analyze grid snapping impact in real-time
+  useEffect(() => {
+    if (areaValue.trim() && validation.isValid && validation.numValue) {
+      const impact = analyzeGridSnapImpact(
+        validation.numValue,
+        selectedUnit,
+        drawing.gridSize,
+        drawing.snapToGrid
+      );
+      setGridSnapImpact(impact);
+    } else {
+      setGridSnapImpact(null);
+    }
+  }, [areaValue, selectedUnit, validation, drawing.gridSize, drawing.snapToGrid]);
 
   // Handle form submission
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
@@ -82,7 +103,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 1000
+        zIndex: 999999
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -228,6 +249,59 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
             </div>
           </div>
         </form>
+
+        {/* Grid Snapping Warning */}
+        {gridSnapImpact?.hasSignificantImpact && (
+          <div
+            style={{
+              backgroundColor: gridSnapImpact.recommendDisableSnapping ? '#FEF2F2' : '#FEF3C7',
+              border: `1px solid ${gridSnapImpact.recommendDisableSnapping ? '#FECACA' : '#FCD34D'}`,
+              borderRadius: '8px',
+              padding: '12px',
+              margin: '16px 0',
+              fontSize: '13px',
+              fontFamily: '"Nunito Sans", system-ui, sans-serif'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <span style={{
+                fontSize: '16px',
+                color: gridSnapImpact.recommendDisableSnapping ? '#EF4444' : '#F59E0B'
+              }}>
+                {gridSnapImpact.recommendDisableSnapping ? '⚠️' : 'ℹ️'}
+              </span>
+              <div style={{ flex: 1 }}>
+                <p style={{
+                  margin: '0 0 4px 0',
+                  fontWeight: '500',
+                  color: gridSnapImpact.recommendDisableSnapping ? '#991B1B' : '#92400E'
+                }}>
+                  Grid Snapping Impact
+                </p>
+                <p style={{
+                  margin: '0 0 8px 0',
+                  color: gridSnapImpact.recommendDisableSnapping ? '#7F1D1D' : '#78350F',
+                  lineHeight: '1.4'
+                }}>
+                  Grid snapping will {gridSnapImpact.areaLoss > 0 ? 'reduce' : 'increase'} your area by{' '}
+                  <strong>{Math.abs(gridSnapImpact.areaLoss).toFixed(0)} m²</strong>{' '}
+                  ({gridSnapImpact.percentageChange.toFixed(1)}%).
+                  Final area: <strong>{gridSnapImpact.snappedArea.toFixed(0)} m²</strong>
+                </p>
+                {gridSnapImpact.recommendDisableSnapping && (
+                  <p style={{
+                    margin: '0',
+                    fontSize: '12px',
+                    color: '#7F1D1D',
+                    fontStyle: 'italic'
+                  }}>
+                    Consider disabling grid snapping in Properties panel for precise area.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>

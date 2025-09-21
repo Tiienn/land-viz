@@ -162,13 +162,23 @@ User Input → Validation → Precision Mode Check
 | Accuracy | ±0.01% | ±1% | 🔴 Pending Chili3D |
 | Bundle Size | <5MB | 3.2MB | 🟢 Good |
 
-### Recent Updates (January 2025)
+### Recent Updates (September 2025)
 | Feature | Status | Notes |
 |---------|--------|-------|
+| Layer UI Ordering Fix | ✅ Complete | New layers now display above Main Layer in UI hierarchy |
+| Polyline Rendering Crash Fix | ✅ Complete | Fixed ReferenceError: renderPoints is not defined |
+| Rotation Jumping Fix | ✅ Complete | Major refactor - shapes no longer jump during rotation |
 | State Corruption Fix | ✅ Complete | Fixed liveResizePoints leaking causing gray polylines |
 | Tool Switching Enhancement | ✅ Complete | Clean state transitions prevent visual corruption |
 | Imaginary Line Feature | ✅ Complete | Polyline drawing with dotted cursor preview |
 | Debug Console Cleanup | ✅ Complete | Production-ready logging with clean output |
+
+### Critical Bug Fixes (September 17, 2025)
+| File | Line | Issue | Fix |
+|------|------|-------|-----|
+| LayerPanel.tsx | 366 | Layer ordering inverted | Added `.slice().reverse()` for correct UI hierarchy |
+| ShapeRenderer.tsx | 798 | Undefined variable crash | Changed `renderPoints` to `transformedPoints` |
+| RotationControls.tsx | 115-200 | Shape jumping during rotation | Separated rotation center from display positioning |
 
 ---
 

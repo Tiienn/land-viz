@@ -35,7 +35,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const currentShape = useAppStore(state => state.drawing.currentShape);
   const shapes = useAppStore(state => state.shapes);
   const snapConfig = useAppStore(state => state.drawing.snapping?.config);
-  
+
+  // Measurement state selectors
+  const isMeasuring = useAppStore(state => state.drawing.measurement.isMeasuring);
+
   const startDrawing = useAppStore(state => state.startDrawing);
   const addPoint = useAppStore(state => state.addPoint);
   const finishDrawing = useAppStore(state => state.finishDrawing);
@@ -43,6 +46,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const selectShape = useAppStore(state => state.selectShape);
   const hoverShape = useAppStore(state => state.hoverShape);
   const exitRotateMode = useAppStore(state => state.exitRotateMode);
+
+  // Measurement actions
+  const startMeasurement = useAppStore(state => state.startMeasurement);
+  const updateMeasurementPreview = useAppStore(state => state.updateMeasurementPreview);
+  const completeMeasurement = useAppStore(state => state.completeMeasurement);
+  const cancelMeasurement = useAppStore(state => state.cancelMeasurement);
   
   // Get the entire store for updating state
   const store = useAppStore;
@@ -165,14 +174,14 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
     const worldPos = getWorldPosition(event);
-    
+
     if (worldPos) {
       const rect = gl.domElement.getBoundingClientRect();
       const screenPos: Point2D = {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
       };
-      
+
       const worldPos2D: Point2D = {
         x: worldPos.x,
         y: worldPos.z, // Using Z as Y for 2D mapping
@@ -181,12 +190,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       // Use optimized snap detection and alignment detection for better performance
       const snappedPos = performSnapDetection(worldPos2D);
       performAlignmentDetection(snappedPos);
-      
+
+      // Handle measurement preview when measuring
+      if (activeTool === 'measure' && isMeasuring) {
+        updateMeasurementPreview(snappedPos);
+      }
+
       if (onCoordinateChange) {
         onCoordinateChange(worldPos2D, screenPos);
       }
     }
-  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection]);
+  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, isMeasuring, updateMeasurementPreview]);
 
   const handlePointerLeave = useCallback(() => {
     // Clear hover state when mouse leaves the drawing area
@@ -230,7 +244,26 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       y: worldPos.z, // Using Z as Y for 2D mapping
     };
 
+    // Apply snapping for precise measurements
+    const snappedPos = performSnapDetection(point2D);
+
     switch (activeTool) {
+      case 'measure':
+        // Get fresh state from store directly to avoid stale selector issues
+        const currentState = useAppStore.getState();
+        const currentlyMeasuring = currentState.drawing.measurement.isMeasuring;
+
+        if (!currentlyMeasuring) {
+          // Start measurement - use snapped position for precision
+          const snapPoint = snapGrid.current.findNearestSnapPoint(snappedPos, snapConfig?.distance || 5);
+          startMeasurement(snappedPos, snapPoint || undefined);
+        } else {
+          // Complete measurement - use snapped position for precision
+          const snapPoint = snapGrid.current.findNearestSnapPoint(snappedPos, snapConfig?.distance || 5);
+          completeMeasurement(snappedPos, snapPoint || undefined);
+        }
+        break;
+
       case 'polyline': // Multi-point line drawing
         if (!isDrawing) {
           startDrawing();
@@ -242,18 +275,18 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             const distance = Math.sqrt(
               Math.pow(point2D.x - firstPoint.x, 2) + Math.pow(point2D.y - firstPoint.y, 2)
             );
-            
+
             const closeThreshold = gridSize * 2.0; // Same threshold as cursor change
             if (distance < closeThreshold) {
               finishDrawing();
               return;
             }
           }
-          
+
           addPoint(point2D);
         }
         break;
-        
+
       case 'rectangle':
         if (!isDrawing) {
           startDrawing();
@@ -267,7 +300,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           finishDrawing();
         }
         break;
-        
+
       case 'circle':
         if (!isDrawing) {
           startDrawing();
@@ -277,11 +310,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           const radius = Math.sqrt(
             Math.pow(point2D.x - center.x, 2) + Math.pow(point2D.y - center.y, 2)
           );
-          
+
           // Generate circle points with adaptive segment count for performance
           const circlePoints: Point2D[] = [];
           const segments = Math.max(16, Math.min(64, Math.floor(radius * 2))); // Adaptive segments
-          
+
           for (let i = 0; i <= segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
             circlePoints.push({
@@ -289,7 +322,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               y: center.y + Math.sin(angle) * radius,
             });
           }
-          
+
           // Replace center with circle points
           currentShape.points = circlePoints;
           finishDrawing();
@@ -318,8 +351,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     event.nativeEvent.preventDefault();
     if (isDrawing) {
       cancelDrawing();
+    } else if (isMeasuring) {
+      cancelMeasurement();
     }
-  }, [isDrawing, cancelDrawing]);
+  }, [isDrawing, cancelDrawing, isMeasuring, cancelMeasurement]);
 
   // Cleanup on component unmount
   useEffect(() => {
