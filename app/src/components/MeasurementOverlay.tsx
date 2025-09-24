@@ -92,13 +92,11 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({ camera, 
       setLabelPositions(positions);
     };
 
-    const animationId = requestAnimationFrame(function animate() {
-      updatePositions();
-      requestAnimationFrame(animate);
-    });
+    // Only update positions once, not in an animation loop
+    updatePositions();
 
     return () => {
-      cancelAnimationFrame(animationId);
+      // No cleanup needed since we're not using requestAnimationFrame
     };
   }, [camera, canvas, measurements, showMeasurements, selectedMeasurementId, unit, isMeasuring, startPoint, previewEndPoint]);
 

@@ -17,8 +17,7 @@ import { ConvertPanel } from './components/ConvertPanel';
 import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer';
 import { ObjectPositioner } from './utils/objectPositioning';
 // import PropertiesPanel from './components/PropertiesPanel';
-// import AlignmentControls from './components/ui/AlignmentControls';
-import useAlignmentKeyboard from './hooks/useAlignmentKeyboard';
+import AlignmentControls from './components/UI/AlignmentControls';
 import Icon from './components/Icon';
 import logger from './utils/logger';
 import type { Point2D, AreaUnit } from './types';
@@ -64,6 +63,7 @@ function App(): React.JSX.Element {
   const [insertAreaModalOpen, setInsertAreaModalOpen] = useState(false);
   const [comparisonExpanded, setComparisonExpanded] = useState(false);
   const [convertExpanded, setConvertExpanded] = useState(false);
+  const [tidyUpExpanded, setTidyUpExpanded] = useState(false);
 
   // Connect to the 3D scene store
   const {
@@ -117,11 +117,6 @@ function App(): React.JSX.Element {
     // enterResizeMode
   } = useAppStore();
 
-  // Initialize alignment keyboard shortcuts
-  useAlignmentKeyboard({
-    enabled: true,
-    preventDefaults: true
-  });
 
   // Sync local state with store state when store changes
   useEffect(() => {
@@ -1244,65 +1239,48 @@ function App(): React.JSX.Element {
                     <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
                     <circle cx="20" cy="12" r="2" fill="currentColor"></circle>
                   </svg>
-                  <span style={{ marginTop: '2px' }}>Shapes</span>
+                  <span style={{ marginTop: '2px' }}>Snap</span>
                 </button>
                 
-                <button 
+                <button
                   onClick={() => {
-                    // Toggle alignment guides
-                    const currentState = useAppStore.getState();
-                    const alignmentEnabled = currentState.drawing.alignment?.config?.enabled ?? true;
-                    
-                    useAppStore.setState(state => ({
-                      ...state,
-                      drawing: {
-                        ...state.drawing,
-                        alignment: {
-                          ...state.drawing.alignment,
-                          config: {
-                            ...state.drawing.alignment?.config,
-                            enabled: !alignmentEnabled
-                          }
-                        }
-                      }
-                    }));
+                    // Show alignment status - our new system is always active
+                    alert('✨ Smart Align is active!\n\nCanva-style alignment guides will appear automatically when you drag shapes near each other:\n\n• Purple dashed lines for edge & center alignment\n• Purple badges showing spacing distances\n• No configuration needed - just drag and align!');
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 8px', 
-                    borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '6px 8px',
+                    borderRadius: '4px',
+                    minWidth: '60px',
+                    height: '60px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    background: drawing.alignment?.config?.enabled ? '#fce7f3' : '#ffffff',
-                    color: drawing.alignment?.config?.enabled ? '#831843' : '#000000',
+                    background: '#f0f9ff',
+                    color: '#1e40af',
                     transition: 'all 0.2s ease',
                     fontSize: '10px',
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
-                    if (!drawing.alignment?.config?.enabled) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
+                    e.currentTarget.style.background = '#dbeafe';
+                    e.currentTarget.style.borderColor = '#3b82f6';
                   }}
                   onMouseLeave={(e) => {
-                    if (!drawing.alignment?.config?.enabled) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
+                    e.currentTarget.style.background = '#f0f9ff';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
                   }}
-                  title="Toggle Alignment Guides (Canva-style)"
+                  title="Smart Align - Canva-style alignment system (Always Active)"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="3" x2="12" y2="21" strokeDasharray="2 2"></line>
-                    <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="2 2"></line>
-                    <rect x="8" y="8" width="8" height="8"></rect>
+                    <rect x="6" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
+                    <rect x="14" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
+                    <line x1="8" y1="3" x2="8" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
+                    <line x1="16" y1="3" x2="16" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
+                    <circle cx="12" cy="14" r="2" fill="#8B5CF6" opacity="0.8"></circle>
                   </svg>
-                  <span style={{ marginTop: '2px' }}>Align</span>
+                  <span style={{ marginTop: '2px' }}>Smart Align</span>
                 </button>
               </div>
             </div>
@@ -1574,7 +1552,7 @@ function App(): React.JSX.Element {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar */}
         <div style={{
-          width: calculatorExpanded ? '420px' : (layersExpanded ? '420px' : (comparisonExpanded ? '420px' : (convertExpanded ? '420px' : (leftPanelExpanded ? '160px' : '50px')))),
+          width: calculatorExpanded ? '420px' : (layersExpanded ? '420px' : (comparisonExpanded ? '420px' : (convertExpanded ? '420px' : (tidyUpExpanded ? '420px' : (leftPanelExpanded ? '160px' : '50px'))))),
           background: 'white',
           borderRight: '1px solid #e5e5e5',
           display: 'flex',
@@ -1646,6 +1624,7 @@ function App(): React.JSX.Element {
                     setCalculatorExpanded(false);
                     setLayersExpanded(false);
                     setConvertExpanded(false);
+                    setAlignmentExpanded(false);
 
                     // If comparison is not expanded, expand the panel if needed and show comparison
                     if (!leftPanelExpanded) {
@@ -1745,6 +1724,7 @@ function App(): React.JSX.Element {
                     setCalculatorExpanded(false);
                     setLayersExpanded(false);
                     setComparisonExpanded(false);
+                    setAlignmentExpanded(false);
 
                     // If convert is not expanded, expand the panel if needed and show convert
                     if (!leftPanelExpanded) {
@@ -1839,6 +1819,7 @@ function App(): React.JSX.Element {
                     setLayersExpanded(false);
                     setComparisonExpanded(false);
                     setConvertExpanded(false);
+                    setAlignmentExpanded(false);
 
                     if (!leftPanelExpanded) {
                       setLeftPanelExpanded(true);
@@ -1897,6 +1878,7 @@ function App(): React.JSX.Element {
                   setCalculatorExpanded(false);
                   setComparisonExpanded(false);
                   setConvertExpanded(false);
+                  setAlignmentExpanded(false);
 
                   // If layers are not expanded, expand the panel if needed and show layers
                   if (!leftPanelExpanded) {
@@ -1944,6 +1926,74 @@ function App(): React.JSX.Element {
                 Layers
               </span>
             </button>
+            </div>
+
+            {/* TidyUp Button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  setTidyUpExpanded(!tidyUpExpanded);
+                  setLeftPanelExpanded(true);
+
+                  // Close other panels
+                  setCalculatorExpanded(false);
+                  setLayersExpanded(false);
+                  setConvertExpanded(false);
+                  setComparisonExpanded(false);
+                }}
+                style={{
+                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  background: tidyUpExpanded
+                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                    : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: leftPanelExpanded ? 'row' : 'column',
+                  alignItems: 'center',
+                  gap: leftPanelExpanded ? '12px' : '4px',
+                  minHeight: '48px',
+                  minWidth: leftPanelExpanded ? '140px' : '48px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s ease',
+                  color: tidyUpExpanded ? 'white' : '#059669'
+                }}
+                title="TidyUp - Organize and distribute shapes automatically"
+                onMouseEnter={(e) => {
+                  if (!tidyUpExpanded) {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!tidyUpExpanded) {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+                  }
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="6" height="6" rx="1"/>
+                  <rect x="15" y="3" width="6" height="6" rx="1"/>
+                  <rect x="3" y="15" width="6" height="6" rx="1"/>
+                  <rect x="15" y="15" width="6" height="6" rx="1"/>
+                  <path d="M9 12h6" strokeDasharray="2 2" strokeWidth="1"/>
+                  <path d="M12 9v6" strokeDasharray="2 2" strokeWidth="1"/>
+                </svg>
+                {leftPanelExpanded && (
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    color: tidyUpExpanded ? 'white' : '#059669',
+                    lineHeight: '1'
+                  }}>
+                    TidyUp
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -2033,6 +2083,29 @@ function App(): React.JSX.Element {
               </UIErrorBoundary>
             </div>
           )}
+
+          {/* TidyUp Expansion Panel - Inline */}
+          {tidyUpExpanded && (
+            <div style={{
+              width: '420px',
+              background: 'white',
+              borderLeft: '1px solid #e2e8f0',
+              overflowY: 'auto',
+              maxHeight: '100vh'
+            }}>
+              <UIErrorBoundary componentName="AlignmentControls" showMinimalError={true}>
+                <AlignmentControls
+                  expanded={true}
+                  onToggle={() => {
+                    setTidyUpExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                  inline={true}
+                />
+              </UIErrorBoundary>
+            </div>
+          )}
+
         </div>
 
         {/* Central 3D Canvas */}
@@ -2571,11 +2644,6 @@ function App(): React.JSX.Element {
         onClose={() => setPropertiesPanelOpen(false)}
       /> */}
 
-      {/* Professional Alignment Controls */}
-      {/* <AlignmentControls
-        compact={false}
-        className="alignment-controls"
-      /> */}
 
       {/* Insert Area Modal */}
       <InsertAreaModal

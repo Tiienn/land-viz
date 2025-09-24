@@ -6,16 +6,8 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  define: {
-    // Only disable console methods in production builds
-    ...(mode === 'production' && {
-      'console.log': 'void 0',
-      'console.warn': 'void 0', 
-      'console.info': 'void 0',
-      'console.debug': 'void 0'
-      // Keep console.error for production error tracking
-    })
-  },
+  // Note: Console methods are handled by logger utility in production
+  // instead of Vite defines to avoid build issues
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -26,6 +18,38 @@ export default defineConfig(({ mode }) => ({
       '@/types': path.resolve(__dirname, './src/types'),
       '@/utils': path.resolve(__dirname, './src/utils'),
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor libraries - core dependencies
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-three': ['three', '@react-three/fiber', '@react-three/drei'],
+          'vendor-ui': ['zustand'],
+
+          // Feature-based chunks for better code splitting
+          'feature-reference-objects': [
+            './src/data/referenceObjects',
+            './src/components/ComparisonPanel/ComparisonPanel',
+            './src/components/ComparisonPanel/ObjectList',
+            './src/components/ComparisonPanel/MobileComparisonPanel',
+            './src/utils/comparisonCalculations'
+          ],
+          'feature-geometry': [
+            './src/utils/GeometryCache',
+            './src/geometries/EiffelTowerGeometry',
+            './src/geometries/StatueOfLibertyGeometry'
+          ],
+          'feature-conversion': [
+            './src/services/conversionService',
+            './src/utils/conversionUtils',
+            './src/components/ConvertPanel/ConvertPanel'
+          ]
+        }
+      }
+    },
+    chunkSizeWarningLimit: 500 // Target 500KB chunks max
   },
   test: {
     globals: true,

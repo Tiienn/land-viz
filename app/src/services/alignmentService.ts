@@ -45,7 +45,7 @@ export interface AlignmentConfig {
 
 export class AlignmentService {
   private boundsCache = new Map<string, ShapeBounds>();
-  private alignmentThreshold = 5; // Default 5px threshold
+  private alignmentThreshold = 15; // Default 15px threshold for easier detection
   
   /**
    * Calculate bounds for a shape
@@ -76,13 +76,14 @@ export class AlignmentService {
     const bounds: ShapeBounds = {
       left: minX,
       right: maxX,
-      top: maxY,
-      bottom: minY,
+      top: minY,     // In 3D scene, smaller Y is "top" (screen coordinates)
+      bottom: maxY,  // In 3D scene, larger Y is "bottom" (screen coordinates)
       centerX: (minX + maxX) / 2,
       centerY: (minY + maxY) / 2,
       width: maxX - minX,
       height: maxY - minY
     };
+
 
     this.boundsCache.set(cacheKey, bounds);
     return bounds;
@@ -143,11 +144,25 @@ export class AlignmentService {
   }
 
   /**
-   * Get shape center point
+   * Get shape center point (without using bounds to avoid circular dependency)
    */
   private getShapeCenter(shape: Shape): Point2D {
-    const bounds = this.calculateShapeBounds(shape);
-    return { x: bounds.centerX, y: bounds.centerY };
+    const points = this.getShapePoints(shape);
+
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+
+    for (const point of points) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    }
+
+    return {
+      x: (minX + maxX) / 2,
+      y: (minY + maxY) / 2
+    };
   }
 
   /**
@@ -229,12 +244,14 @@ export class AlignmentService {
     // Vertical center alignment
     const vDiff = Math.abs(movingBounds.centerX - targetBounds.centerX);
     if (vDiff <= config.alignmentThreshold) {
+      // Create a consistent line that extends beyond both shapes
+      const extendDistance = 20; // Extend 20 units beyond shapes
       guides.push({
         id: `center_v_${movingShape.id}_${targetShape.id}`,
         type: 'vertical',
         position: targetBounds.centerX,
-        start: { x: targetBounds.centerX, y: Math.min(movingBounds.bottom, targetBounds.bottom) },
-        end: { x: targetBounds.centerX, y: Math.max(movingBounds.top, targetBounds.top) },
+        start: { x: targetBounds.centerX, y: Math.min(movingBounds.bottom, targetBounds.bottom) - extendDistance },
+        end: { x: targetBounds.centerX, y: Math.max(movingBounds.top, targetBounds.top) + extendDistance },
         sourceShapeId: movingShape.id,
         targetShapeIds: [targetShape.id],
         alignmentType: 'center',
@@ -248,12 +265,14 @@ export class AlignmentService {
     // Horizontal center alignment
     const hDiff = Math.abs(movingBounds.centerY - targetBounds.centerY);
     if (hDiff <= config.alignmentThreshold) {
+      // Create a consistent line that extends beyond both shapes
+      const extendDistance = 20; // Extend 20 units beyond shapes
       guides.push({
         id: `center_h_${movingShape.id}_${targetShape.id}`,
         type: 'horizontal',
         position: targetBounds.centerY,
-        start: { x: Math.min(movingBounds.left, targetBounds.left), y: targetBounds.centerY },
-        end: { x: Math.max(movingBounds.right, targetBounds.right), y: targetBounds.centerY },
+        start: { x: Math.min(movingBounds.left, targetBounds.left) - extendDistance, y: targetBounds.centerY },
+        end: { x: Math.max(movingBounds.right, targetBounds.right) + extendDistance, y: targetBounds.centerY },
         sourceShapeId: movingShape.id,
         targetShapeIds: [targetShape.id],
         alignmentType: 'center',
@@ -282,12 +301,14 @@ export class AlignmentService {
     // Left edge alignments
     const leftDiff = Math.abs(movingBounds.left - targetBounds.left);
     if (leftDiff <= config.alignmentThreshold) {
+      // Create a consistent line that extends beyond both shapes
+      const extendDistance = 20; // Extend 20 units beyond shapes
       guides.push({
         id: `edge_left_${movingShape.id}_${targetShape.id}`,
         type: 'vertical',
         position: targetBounds.left,
-        start: { x: targetBounds.left, y: Math.min(movingBounds.bottom, targetBounds.bottom) },
-        end: { x: targetBounds.left, y: Math.max(movingBounds.top, targetBounds.top) },
+        start: { x: targetBounds.left, y: Math.min(movingBounds.bottom, targetBounds.bottom) - extendDistance },
+        end: { x: targetBounds.left, y: Math.max(movingBounds.top, targetBounds.top) + extendDistance },
         sourceShapeId: movingShape.id,
         targetShapeIds: [targetShape.id],
         alignmentType: 'edge-start',
@@ -301,12 +322,14 @@ export class AlignmentService {
     // Right edge alignments
     const rightDiff = Math.abs(movingBounds.right - targetBounds.right);
     if (rightDiff <= config.alignmentThreshold) {
+      // Create a consistent line that extends beyond both shapes
+      const extendDistance = 20; // Extend 20 units beyond shapes
       guides.push({
         id: `edge_right_${movingShape.id}_${targetShape.id}`,
         type: 'vertical',
         position: targetBounds.right,
-        start: { x: targetBounds.right, y: Math.min(movingBounds.bottom, targetBounds.bottom) },
-        end: { x: targetBounds.right, y: Math.max(movingBounds.top, targetBounds.top) },
+        start: { x: targetBounds.right, y: Math.min(movingBounds.bottom, targetBounds.bottom) - extendDistance },
+        end: { x: targetBounds.right, y: Math.max(movingBounds.top, targetBounds.top) + extendDistance },
         sourceShapeId: movingShape.id,
         targetShapeIds: [targetShape.id],
         alignmentType: 'edge-end',
@@ -320,12 +343,14 @@ export class AlignmentService {
     // Top edge alignments
     const topDiff = Math.abs(movingBounds.top - targetBounds.top);
     if (topDiff <= config.alignmentThreshold) {
+      // Create a consistent line that extends beyond both shapes
+      const extendDistance = 20; // Extend 20 units beyond shapes
       guides.push({
         id: `edge_top_${movingShape.id}_${targetShape.id}`,
         type: 'horizontal',
         position: targetBounds.top,
-        start: { x: Math.min(movingBounds.left, targetBounds.left), y: targetBounds.top },
-        end: { x: Math.max(movingBounds.right, targetBounds.right), y: targetBounds.top },
+        start: { x: Math.min(movingBounds.left, targetBounds.left) - extendDistance, y: targetBounds.top },
+        end: { x: Math.max(movingBounds.right, targetBounds.right) + extendDistance, y: targetBounds.top },
         sourceShapeId: movingShape.id,
         targetShapeIds: [targetShape.id],
         alignmentType: 'edge-end',
@@ -339,12 +364,14 @@ export class AlignmentService {
     // Bottom edge alignments
     const bottomDiff = Math.abs(movingBounds.bottom - targetBounds.bottom);
     if (bottomDiff <= config.alignmentThreshold) {
+      // Create a consistent line that extends beyond both shapes
+      const extendDistance = 20; // Extend 20 units beyond shapes
       guides.push({
         id: `edge_bottom_${movingShape.id}_${targetShape.id}`,
         type: 'horizontal',
         position: targetBounds.bottom,
-        start: { x: Math.min(movingBounds.left, targetBounds.left), y: targetBounds.bottom },
-        end: { x: Math.max(movingBounds.right, targetBounds.right), y: targetBounds.bottom },
+        start: { x: Math.min(movingBounds.left, targetBounds.left) - extendDistance, y: targetBounds.bottom },
+        end: { x: Math.max(movingBounds.right, targetBounds.right) + extendDistance, y: targetBounds.bottom },
         sourceShapeId: movingShape.id,
         targetShapeIds: [targetShape.id],
         alignmentType: 'edge-start',

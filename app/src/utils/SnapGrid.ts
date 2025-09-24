@@ -37,29 +37,38 @@ export class SnapGrid {
     // Endpoint snapping
     points.forEach((point, index) => {
       snapPoints.push({
+        id: `${shape.id}_endpoint_${index}`,
         position: { x: point.x, y: point.y },
         type: 'endpoint',
+        strength: 1.0,
         shapeId: shape.id,
-        priority: 10,
-        metadata: { pointIndex: index }
+        metadata: { description: `Endpoint ${index + 1}` }
       });
     });
 
     // Midpoint snapping for line segments
-    for (let i = 0; i < points.length - 1; i++) {
+    // For closed shapes (rectangle, polygon), include the closing segment
+    const isClosedShape = shape.type === 'rectangle' || shape.type === 'polygon';
+    const segmentCount = isClosedShape ? points.length : points.length - 1;
+
+    for (let i = 0; i < segmentCount; i++) {
       const p1 = points[i];
-      const p2 = points[i + 1];
+      const p2 = points[(i + 1) % points.length]; // Wraps around for closed shapes
       const midpoint = {
         x: (p1.x + p2.x) / 2,
         y: (p1.y + p2.y) / 2
       };
-      
+
       snapPoints.push({
+        id: `${shape.id}_midpoint_${i}`,
         position: midpoint,
         type: 'midpoint',
+        strength: 0.8,
         shapeId: shape.id,
-        priority: 8,
-        metadata: { segmentIndex: i }
+        metadata: {
+          description: `Segment ${i + 1} midpoint`,
+          edgeIndex: i
+        }
       });
     }
 
@@ -67,11 +76,12 @@ export class SnapGrid {
     if (shape.type === 'rectangle' || shape.type === 'circle' || shape.type === 'polygon') {
       const center = this.calculateCenter(points);
       snapPoints.push({
+        id: `${shape.id}_center`,
         position: center,
         type: 'center',
+        strength: 0.7,
         shapeId: shape.id,
-        priority: 6,
-        metadata: { isCenter: true }
+        metadata: { description: 'Shape center' }
       });
     }
 
@@ -84,11 +94,12 @@ export class SnapGrid {
       if (Math.abs(snapPoint.position.x - gridX) < 0.1 && 
           Math.abs(snapPoint.position.y - gridZ) < 0.1) {
         snapPoints.push({
+          id: `grid_${gridX}_${gridZ}`,
           position: { x: gridX, y: gridZ },
           type: 'grid',
+          strength: 0.4,
           shapeId: 'grid',
-          priority: 4,
-          metadata: { gridX, gridZ }
+          metadata: { description: `Grid point (${gridX}, ${gridZ})` }
         });
       }
     });
@@ -173,9 +184,9 @@ export class SnapGrid {
       });
     });
 
-    // Sort snap points by priority within each cell
+    // Sort snap points by strength within each cell
     this.grid.forEach(snapPoints => {
-      snapPoints.sort((a, b) => b.priority - a.priority);
+      snapPoints.sort((a, b) => b.strength - a.strength);
     });
   }
 
@@ -227,21 +238,22 @@ export class SnapGrid {
         if (distance <= radius) {
           foundSnapPoints.push({
             ...snapPoint,
-            metadata: { ...snapPoint.metadata, distance }
-          });
+            // Store distance temporarily for sorting (not part of metadata interface)
+            _distance: distance
+          } as SnapPoint & { _distance: number });
         }
       });
     });
 
-    // Sort by distance and priority
+    // Sort by distance and strength
     return foundSnapPoints.sort((a, b) => {
-      const distanceA = a.metadata?.distance || 0;
-      const distanceB = b.metadata?.distance || 0;
-      
+      const distanceA = (a as any)._distance || 0;
+      const distanceB = (b as any)._distance || 0;
+
       if (Math.abs(distanceA - distanceB) < 0.01) {
-        return b.priority - a.priority; // Higher priority first
+        return b.strength - a.strength; // Higher strength first
       }
-      
+
       return distanceA - distanceB; // Closer distance first
     });
   }

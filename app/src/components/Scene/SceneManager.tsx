@@ -11,7 +11,8 @@ import InfiniteGrid from './GridBackground';
 import BackgroundManager from './BackgroundManager';
 import { SnapIndicator } from './SnapIndicator';
 import { ActiveSnapIndicator } from './ActiveSnapIndicator';
-import AlignmentGuides from './AlignmentGuides';
+// import AlignmentGuides from './AlignmentGuides';
+import SimpleAlignmentGuides from './SimpleAlignmentGuides';
 import DraggableShapes from './DraggableShapes';
 import ResizableShapeControls from './ResizableShapeControls';
 import RulerSystem from './RulerSystem';
@@ -88,6 +89,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const alignmentGuides = useAppStore(state => state.drawing.alignment?.activeGuides || []);
   const alignmentConfig = useAppStore(state => state.drawing.alignment?.config);
 
+  // Use new alignment store - temporarily disabled
+  // const { showGuides } = useAlignmentStore();
+  const showGuides = true; // Default fallback
+
   // Note: Click handling is now done by DrawingCanvas component
   // These callbacks are kept for backward compatibility if needed
 
@@ -156,12 +161,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <SnapIndicator maxDistance={100} />
       <ActiveSnapIndicator />
 
-      {/* Professional Alignment Guides */}
-      <AlignmentGuides 
-        guides={alignmentGuides}
-        visible={alignmentConfig?.enabled && (alignmentConfig?.showCenterGuides || alignmentConfig?.showEdgeGuides || alignmentConfig?.showSpacingGuides)}
-        showLabels={true}
-      />
+      {/* Professional Alignment Guides - New Smart System */}
+      {/* <AlignmentGuides /> */}
+
+      {/* Simple Alignment Guides - Purple dashed lines */}
+      <SimpleAlignmentGuides />
 
       {/* Draggable shapes with alignment guides */}
       <DraggableShapes />

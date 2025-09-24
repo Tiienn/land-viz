@@ -34,6 +34,7 @@ const MeshWithDynamicGeometry: React.FC<{
 }> = ({ shapeId, geometry, position, onClick, onDoubleClick, onPointerDown, onPointerEnter, onPointerLeave, cursor, material }) => {
   const meshRef = useRef<any>();
   const lastGeometryRef = useRef<BufferGeometry | null>(null);
+  const materialRef = useRef<any>();
 
   // CRITICAL FIX: Atomic geometry update with proper validation
   useEffect(() => {
@@ -101,6 +102,15 @@ const MeshWithDynamicGeometry: React.FC<{
     };
   }, []);
 
+  // Add pulsing animation for multi-selected shapes
+  useFrame((state) => {
+    if (material.isMultiSelected && materialRef.current) {
+      const time = state.clock.getElapsedTime();
+      const pulse = 0.7 + 0.3 * Math.sin(time * 3); // Pulse between 0.7 and 1.0
+      materialRef.current.opacity = Math.max(material.opacity * pulse, 0.1);
+    }
+  });
+
   return (
     <mesh
       ref={meshRef}
@@ -114,6 +124,7 @@ const MeshWithDynamicGeometry: React.FC<{
       cursor={cursor}
     >
       <meshBasicMaterial
+        ref={materialRef}
         color={material.fillColor}
         transparent={true}
         opacity={Math.max(material.opacity, 0.1)} // Ensure minimum visibility
@@ -154,12 +165,14 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   const currentShape = useAppStore(state => state.drawing.currentShape);
   const isDrawing = useAppStore(state => state.drawing.isDrawing);
   const selectedShapeId = useAppStore(state => state.selectedShapeId);
+  const selectedShapeIds = useAppStore(state => state.selectedShapeIds);
   const hoveredShapeId = useAppStore(state => state.hoveredShapeId);
   const dragState = useAppStore(state => state.dragState);
   const showDimensions = useAppStore(state => state.drawing.showDimensions);
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const renderTrigger = useAppStore(state => state.renderTrigger);
   const selectShape = useAppStore(state => state.selectShape);
+  const toggleShapeSelection = useAppStore(state => state.toggleShapeSelection);
   const hoverShape = useAppStore(state => state.hoverShape);
   const startDragging = useAppStore(state => state.startDragging);
   const updateDragPosition = useAppStore(state => state.updateDragPosition);
@@ -332,11 +345,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     
     return transforms;
   }, [
-    visibleShapes.map(s => s.id).join('|'),
+    visibleShapes.map(s => `${s.id}_${JSON.stringify(s.points)}`).join('|'),
     dragState.isDragging,
     dragState.draggedShapeId,
     dragState.startPosition?.x,
-    dragState.startPosition?.y, 
+    dragState.startPosition?.y,
     dragState.currentPosition?.x,
     dragState.currentPosition?.y,
     visibleShapes.map(s => s.rotation?.angle || 0).join('|'),
@@ -595,25 +608,62 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   const shapeMaterials = useMemo(() => {
     
     const materials = visibleShapes.map((shape, index) => {
-      const isSelected = shape.id === selectedShapeId;
+      const isPrimarySelected = shape.id === selectedShapeId; // Primary selection (main selection)
+      const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected; // Multi-selected but not primary
+      const isSelected = isPrimarySelected || isMultiSelected; // Any kind of selection
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
       const isDragging = shapeTransforms[index]?.isDragging;
       const isBeingResized = shapeTransforms[index]?.isBeingResized;
       const layer = layers.find(l => l.id === shape.layerId);
       const layerOpacity = layer?.opacity ?? 1;
-      
-      const fillColor = isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color;
-      const opacity = isDragging ? 0.8 * layerOpacity : isSelected ? 0.7 * layerOpacity : isHovered ? 0.6 * layerOpacity : 0.4 * layerOpacity;
-      
-      
+
+      // Enhanced color scheme for multi-selection
+      let fillColor, lineColor, opacity, lineOpacity, lineWidth;
+
+      if (isDragging) {
+        fillColor = "#16A34A";
+        lineColor = "#16A34A";
+        opacity = 0.8 * layerOpacity;
+        lineOpacity = 1 * layerOpacity;
+        lineWidth = 5;
+      } else if (isPrimarySelected) {
+        // Primary selection - bright blue with stronger effect
+        fillColor = "#1D4ED8";
+        lineColor = "#1D4ED8";
+        opacity = 0.7 * layerOpacity;
+        lineOpacity = 1 * layerOpacity;
+        lineWidth = 4;
+      } else if (isMultiSelected) {
+        // Multi-selection - purple/violet with pulsing effect
+        fillColor = "#7C3AED";
+        lineColor = "#7C3AED";
+        opacity = 0.6 * layerOpacity;
+        lineOpacity = 0.95 * layerOpacity;
+        lineWidth = 3;
+      } else if (isHovered) {
+        fillColor = "#3B82F6";
+        lineColor = "#3B82F6";
+        opacity = 0.6 * layerOpacity;
+        lineOpacity = 0.9 * layerOpacity;
+        lineWidth = 3;
+      } else {
+        fillColor = shape.color;
+        lineColor = shape.color;
+        opacity = 0.4 * layerOpacity;
+        lineOpacity = shape.visible ? 0.8 * layerOpacity : 0.3 * layerOpacity;
+        lineWidth = 2;
+      }
+
       return {
         id: shape.id,
         color: new Color(shape.color || '#3B82F6'),
         fillColor,
-        lineColor: isDragging ? "#16A34A" : isSelected ? "#1D4ED8" : isHovered ? "#3B82F6" : shape.color,
+        lineColor,
         opacity,
-        lineOpacity: shape.visible ? (isDragging ? 1 : isSelected ? 1 : isHovered ? 0.9 : 0.8) * layerOpacity : 0.3 * layerOpacity,
-        lineWidth: isDragging ? 5 : isSelected ? 4 : isHovered ? 3 : 2
+        lineOpacity,
+        lineWidth,
+        isPrimarySelected,
+        isMultiSelected
       };
     });
     
@@ -621,6 +671,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   }, [
     visibleShapes.map(s => `${s.id}_${s.color}_${s.visible}`).join('|'),
     selectedShapeId,
+    selectedShapeIds?.join(',') || '',
     hoveredShapeId,
     activeTool,
     layers.map(l => `${l.id}_${l.opacity}`).join('|'),
@@ -651,16 +702,22 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     }
 
     event.stopPropagation();
-    
+
     if (activeTool === 'select') {
-      if (selectedShapeId === shapeId) {
-        // Shape already selected - enter resize mode for quick interaction
-        if (!drawing.isEditMode && !drawing.isResizeMode) {
-          enterResizeMode(shapeId);
-        }
+      // Check if Shift key is pressed for multi-selection
+      if (event.shiftKey) {
+        // Multi-selection mode: toggle shape selection
+        toggleShapeSelection(shapeId);
       } else {
-        // Select the shape first
-        selectShape(shapeId);
+        // Single selection mode
+        if (selectedShapeId === shapeId) {
+          // Shape already selected - enter resize mode for quick interaction
+          if (!drawing.isEditMode && !drawing.isResizeMode) {
+            enterResizeMode(shapeId);
+          }
+        } else {
+          // Select the shape first
+          selectShape(shapeId);
         // Enter resize mode after selection for immediate productivity - force resize mode for all shapes
         setTimeout(() => {
           const currentDrawing = useAppStore.getState().drawing;
@@ -672,6 +729,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
             enterResizeMode(shapeId);
           }
         }, 50); // Longer timeout to ensure state updates properly
+        }
       }
     }
   }, [activeTool, selectShape, selectedShapeId, drawing.isEditMode, drawing.isResizeMode, drawing.isRotateMode, enterResizeMode]);

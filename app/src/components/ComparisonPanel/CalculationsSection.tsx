@@ -138,7 +138,7 @@ function formatTime(date: Date): string {
 
 const styles = {
   calculationsSection: {
-    padding: '16px',
+    padding: '12px',
     backgroundColor: '#f9fafb',
     borderTop: '1px solid #e5e7eb'
   },
@@ -147,7 +147,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: '12px'
+    marginBottom: '8px'
   },
 
   sectionTitle: {
@@ -170,9 +170,9 @@ const styles = {
 
   totalArea: {
     backgroundColor: '#ffffff',
-    borderRadius: '8px',
-    padding: '12px',
-    marginBottom: '16px',
+    borderRadius: '6px',
+    padding: '8px',
+    marginBottom: '10px',
     textAlign: 'center' as const,
     border: '1px solid #e5e7eb'
   },
@@ -195,13 +195,13 @@ const styles = {
   comparisonsList: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '12px'
+    gap: '8px'
   },
 
   comparisonItem: {
     backgroundColor: '#ffffff',
-    borderRadius: '8px',
-    padding: '12px',
+    borderRadius: '6px',
+    padding: '8px',
     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
     border: '1px solid #e5e7eb'
   },
@@ -210,7 +210,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: '8px'
+    marginBottom: '6px'
   },
 
   objectName: {
@@ -229,7 +229,7 @@ const styles = {
   comparisonDetails: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '6px'
+    gap: '4px'
   },
 
   description: {
@@ -263,7 +263,8 @@ const styles = {
     textAlign: 'center' as const,
     color: '#6b7280',
     backgroundColor: '#f9fafb',
-    borderTop: '1px solid #e5e7eb'
+    borderTop: '1px solid #e5e7eb',
+    marginTop: 'auto'
   },
 
   emptyIcon: {

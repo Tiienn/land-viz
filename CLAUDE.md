@@ -13,6 +13,7 @@
 - **Visual Comparison Tool: Compare land size to 16+ reference objects (inline panel)**
 - **Comprehensive Unit Conversion: 12 area units including historical French/British measurements**
 - **Unified Sidebar Architecture: All features use inline panels for consistency**
+- **🎯 Canva-Style Equal Spacing System: Professional alignment with magnetic snapping**
 - Shape editing with draggable sphere corners
 - Professional resize/rotation with angle snapping
 - Custom camera controls (right-orbit, middle-pan)
@@ -144,13 +145,23 @@ When implementing UI features, verify:
 ```bash
 cd app
 npm run dev     # Development server (http://localhost:5173)
+
+# Testing commands
+npm run test:all            # Run all tests
+npm run test:unit           # Unit tests only
+npm run test:integration    # Integration tests
+npm run test:performance    # Performance regression tests
+npm run test:accessibility  # WCAG 2.1 AA compliance tests
+npm run test:coverage       # Generate coverage report
 ```
 
 ## Implementation Architecture
 - **Frontend**: React 18 + TypeScript + Vite
 - **3D Engine**: Three.js + React Three Fiber + Drei
-- **State**: Zustand store for drawing state
+- **State**: Zustand stores (domain-specific: drawing, comparison, conversion, layer, measurement)
 - **Styling**: Inline styles (avoids CSS compilation issues)
+- **Testing**: Vitest + React Testing Library + jest-axe (comprehensive test coverage)
+- **Performance**: Real-time monitoring with budget enforcement
 
 ## Architecture Overview
 
@@ -169,11 +180,20 @@ npm run dev     # Development server (http://localhost:5173)
 - `MeasurementOverlay.tsx` - HTML overlay for distance labels with 3D-to-2D projection
 
 ### State Management
-- `useAppStore.ts` - Zustand store for drawing state and shapes
+**Domain-Specific Stores:**
+- `useDrawingStore.ts` - Drawing tools, shapes, grid, and snapping controls
+- `useComparisonStore.ts` - Reference object comparisons and panel management
+- `useConversionStore.ts` - Unit conversions, history, and favorites
+- `useLayerStore.ts` - Layer management and organization
+- `useMeasurementStore.ts` - Distance measurements and precision tools
+- `store/index.ts` - Combined store exports and type definitions
+
+**Features:**
 - Drawing tools: select, rectangle, polyline, circle, rotate, **measure**
 - Measurement state management with start/end points, distance calculations, and unit conversions
 - Real-time synchronization between UI and 3D scene
 - Rotation metadata storage with shape preservation
+- **Comprehensive testing coverage** for all store operations
 
 ## Recent Major Changes
 **Core Implementation:**
@@ -183,6 +203,15 @@ npm run dev     # Development server (http://localhost:5173)
 - Shape editing system with draggable corners and Windows-style resize handles
 - Professional rotation with angle snapping and metadata preservation
 - **Point-to-point measurement system with precision distance calculation**
+
+**Testing Infrastructure (September 2025):**
+- **Comprehensive Testing Suite**: Unit, integration, performance, and accessibility tests
+- **Vitest + React Testing Library**: Modern testing stack with excellent TypeScript support
+- **Domain-Specific Store Tests**: Complete coverage for drawing, comparison, and conversion stores
+- **Performance Monitoring**: Real-time budget enforcement and regression testing
+- **Error Boundary Testing**: Feature isolation and graceful degradation validation
+- **Accessibility Compliance**: WCAG 2.1 AA compliance verification with jest-axe
+- **GeometryLoader Testing**: Dynamic import system and caching validation
 
 **Measurement Feature (Latest):**
 - Complete measurement tool implementation with 3D visualization
@@ -249,13 +278,35 @@ app/src/
 │   ├── RotationControls.tsx # Professional rotation handles with snapping
 │   └── MeasurementRenderer.tsx # 3D measurement lines and spheres
 ├── components/
-│   └── MeasurementOverlay.tsx # HTML overlay for distance labels
-├── store/
-│   └── useAppStore.ts     # State management (includes measurement state)
-├── types/                 # TypeScript definitions (includes measurement types)
-└── utils/                 # Utility functions
-    ├── logger.ts          # Environment-based logging system
-    └── measurementUtils.ts # Distance calculations and formatting
+│   ├── MeasurementOverlay.tsx # HTML overlay for distance labels
+│   ├── ComparisonPanel/    # Updated comparison panel components
+│   └── ErrorBoundary/      # Feature error boundaries
+│       └── FeatureErrorBoundary.tsx
+├── store/                  # Domain-specific stores
+│   ├── index.ts           # Combined store exports
+│   ├── useDrawingStore.ts # Drawing tools and shapes
+│   ├── useComparisonStore.ts # Reference object comparisons
+│   ├── useConversionStore.ts # Unit conversions
+│   ├── useLayerStore.ts   # Layer management
+│   └── useMeasurementStore.ts # Distance measurements
+├── utils/                 # Utility functions
+│   ├── GeometryLoader.ts  # Dynamic geometry loading with caching
+│   ├── PerformanceMonitor.ts # Real-time performance monitoring
+│   ├── ValidationService.ts # Edge case validation
+│   ├── logger.ts          # Environment-based logging system
+│   └── measurementUtils.ts # Distance calculations and formatting
+├── hooks/                 # Custom React hooks
+│   ├── useCategoryData.ts # Comparison category data
+│   ├── useCategoryIcons.ts # Category icon management
+│   ├── useComparisonCalculator.ts # Comparison calculations
+│   ├── useGeometryCache.ts # Geometry caching
+│   └── useReferenceObjects.ts # Reference object management
+├── __tests__/             # Test files
+│   ├── integration/       # Integration tests
+│   ├── performance/       # Performance tests
+│   └── accessibility/     # Accessibility tests
+├── types/                 # TypeScript definitions
+└── test/                  # Legacy test files
 ```
 
 ## Next Development Areas
@@ -308,14 +359,22 @@ The foundation is solid! You have a fully functional 3D land visualization tool 
 ⚠️ **IMPORTANT**: Use inline styles exclusively - no CSS files or className props.
 
 **Dev Environment:** `cd app && npm run dev` (port 5173), kill node processes if needed: `taskkill /f /im node.exe`
-**Architecture:** Zustand store + Three.js + React Three Fiber + inline styling
+**Testing:** `npm run test:all` - Comprehensive test suite with performance monitoring
+**Architecture:** Domain-specific Zustand stores + Three.js + React Three Fiber + inline styling
 
 ### Key Files
 - `DrawingCanvas.tsx` - Drawing logic
-- `ShapeRenderer.tsx` - Shape visualization 
+- `ShapeRenderer.tsx` - Shape visualization
 - `RotationControls.tsx` - Rotation handling
-- `useAppStore.ts` - State management
+- `store/` - Domain-specific state management
 - `App.tsx` - Main UI
+- **🎯 Equal Spacing System Files (New):**
+  - `services/simpleAlignment.ts` - Core alignment logic and magnetic snapping
+  - `components/Scene/SimpleAlignmentGuides.tsx` - Visual guides and snap indicators
+  - `store/useAppStore.ts` - Enhanced drag system with Phase 4 integration
+  - `EQUAL_SPACING_SYSTEM.md` - Complete implementation documentation
+- `__tests__/` - Comprehensive test coverage
+- `utils/PerformanceMonitor.ts` - Performance budget enforcement
 
 ### Gotchas
 - Use inline styles only (no CSS files)
@@ -374,6 +433,15 @@ const colors = {
 **System:** Grid button unification, background management, state synchronization, security headers, production logging, state corruption fixes, debug cleanup
 
 ### Latest Technical Fixes (September 2025)
+
+**🎯 Canva-Style Equal Spacing System (Phase 4 Complete - September 2025):**
+- **Magnetic Snapping**: Implemented real-time shape positioning for equal distribution
+- **4-Phase Architecture**: Complete alignment system with sequence detection and snap guidance
+- **Visual Feedback**: Purple badges for spacing, green snap indicators, SNAP confirmation
+- **Performance Optimization**: 8-meter threshold with throttled detection (16ms cycles)
+- **Integration Points**: Enhanced `useAppStore.ts`, `simpleAlignment.ts`, `SimpleAlignmentGuides.tsx`
+
+**Previous Fixes:**
 **Layer Ordering:** Fixed UI display order in `LayerPanel.tsx:366` - new layers now appear above Main Layer in UI
 **Polyline Rendering:** Fixed `ReferenceError: renderPoints is not defined` in `ShapeRenderer.tsx:798` - corrected variable reference
 **Rotation Jumping:** Major fix in `RotationControls.tsx` - separated rotation center calculation from display positioning to prevent shape jumping during rotation

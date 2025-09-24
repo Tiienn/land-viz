@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../../store/useAppStore';
-import { AlignmentGuides } from './AlignmentGuides';
+// import { AlignmentGuides } from './AlignmentGuides';
 import type { AlignmentGuide } from '../../services/alignmentService';
 
 

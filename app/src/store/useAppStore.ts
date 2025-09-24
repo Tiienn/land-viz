@@ -4,9 +4,12 @@ import { precisionCalculator, type PrecisionMeasurement } from '../services/prec
 import { booleanOperationEngine, type BooleanResult, type SubdivisionSettings } from '../services/booleanOperations';
 import { professionalExportEngine, type ExportOptions, type ExportResult } from '../services/professionalExport';
 import { alignmentService } from '../services/alignmentService';
+// import { AlignmentGuideService } from '../services/AlignmentGuideService';
+// import { useAlignmentStore } from './useAlignmentStore';
 import { GeometryCache } from '../utils/GeometryCache';
 import { logger } from '../utils/logger';
 import { convertToSquareMeters, calculateGridAwareDimensions, getUnitLabel, calculateSmartGridPosition, generateShapeFromArea } from '../utils/areaCalculations';
+import { SimpleAlignment, type SpacingMeasurement } from '../services/simpleAlignment';
 import { MeasurementUtils, MEASUREMENT_CONSTANTS } from '../utils/measurementUtils';
 import { defaultAreaPresets } from '../data/areaPresets';
 import { loadCustomPresets, saveCustomPresets } from '../utils/presetStorage';
@@ -42,6 +45,9 @@ interface AppStore extends AppState {
   updateShape: (id: string, updates: Partial<Shape>) => void;
   deleteShape: (id: string) => void;
   selectShape: (id: string | null) => void;
+  selectMultipleShapes: (ids: string[]) => void;
+  toggleShapeSelection: (id: string) => void;
+  clearSelection: () => void;
   hoverShape: (id: string | null) => void;
   duplicateShape: (id: string) => void;
   createShapeFromArea: (area: number, unit: AreaUnit) => void;
@@ -157,6 +163,8 @@ interface AppStore extends AppState {
   updateDrawingState: (updates: Partial<DrawingState>) => void;
   updateSnapPoints: (snapPoints: SnapPoint[], activeSnapPoint?: SnapPoint | null) => void;
   updateAlignmentGuides: (guides: AlignmentGuide[], draggingShapeId?: string | null) => void;
+  updateAlignmentSpacings: (spacings: SpacingMeasurement[]) => void;
+  updateAlignmentSnapPosition: (snapPosition: { x: number; y: number } | null) => void;
   clearAlignmentGuides: () => void;
 
   // Visual Comparison Tool actions
@@ -275,7 +283,7 @@ const getDefaultDrawingState = () => ({
   alignment: {
     config: {
       enabled: false,
-      alignmentThreshold: 5,
+      alignmentThreshold: 15,
       snapStrength: 0.8,
       showCenterGuides: true,
       showEdgeGuides: true,
@@ -283,7 +291,9 @@ const getDefaultDrawingState = () => ({
       maxGuides: 8
     },
     activeGuides: [],
-    draggingShapeId: null
+    activeSpacings: [],
+    draggingShapeId: null,
+    snapPosition: null
   },
   grid: {
     config: {
@@ -361,6 +371,7 @@ const createInitialState = (): AppState => {
     shapes: [defaultShape],
     layers: [defaultLayer],
     selectedShapeId: null, // Don't auto-select default shape on page load
+    selectedShapeIds: [] as string[], // For multi-selection support
     hoveredShapeId: null,
     dragState: {
       isDragging: false,
@@ -412,6 +423,7 @@ const createInitialState = (): AppState => {
     shapes: baseState.shapes,
     layers: baseState.layers,
     selectedShapeId: baseState.selectedShapeId,
+    selectedShapeIds: baseState.selectedShapeIds,
     hoveredShapeId: baseState.hoveredShapeId,
     dragState: baseState.dragState,
     activeLayerId: baseState.activeLayerId,
@@ -1445,6 +1457,7 @@ export const useAppStore = create<AppStore>()(
           set(
             prevState => ({
               selectedShapeId: id,
+              selectedShapeIds: id ? [id] : [], // Update multi-selection array
               drawing: {
                 ...prevState.drawing,
                 isResizeMode: false,
@@ -1474,6 +1487,7 @@ export const useAppStore = create<AppStore>()(
           set(
             prevState => ({
               selectedShapeId: id,
+              selectedShapeIds: id ? [id] : [], // Update multi-selection array
               drawing: {
                 ...prevState.drawing,
                 // ATOMIC CLEAR: Clear all live state to prevent cross-contamination
@@ -1518,6 +1532,41 @@ export const useAppStore = create<AppStore>()(
         }
       },
 
+      selectMultipleShapes: (ids: string[]) => {
+        set((state) => ({
+          selectedShapeIds: [...ids],
+          selectedShapeId: ids.length === 1 ? ids[0] : null, // Keep single selection for compatibility
+        }), false, 'selectMultipleShapes');
+      },
+
+      toggleShapeSelection: (id: string) => {
+        set((state) => {
+          const currentIds = state.selectedShapeIds || [];
+          const isSelected = currentIds.includes(id);
+
+          let newIds: string[];
+          if (isSelected) {
+            // Remove from selection
+            newIds = currentIds.filter(shapeId => shapeId !== id);
+          } else {
+            // Add to selection
+            newIds = [...currentIds, id];
+          }
+
+          return {
+            selectedShapeIds: newIds,
+            selectedShapeId: newIds.length === 1 ? newIds[0] : null,
+          };
+        }, false, 'toggleShapeSelection');
+      },
+
+      clearSelection: () => {
+        set({
+          selectedShapeId: null,
+          selectedShapeIds: [],
+        }, false, 'clearSelection');
+      },
+
       hoverShape: (id: string | null) => {
         set({ hoveredShapeId: id }, false, 'hoverShape');
       },
@@ -1526,6 +1575,10 @@ export const useAppStore = create<AppStore>()(
       startDragging: (shapeId: string, startPosition: Point2D) => {
         const state = get();
         const shape = state.shapes.find(s => s.id === shapeId);
+
+        // Set alignment to active
+        // const alignmentStore = useAlignmentStore.getState();
+        // alignmentStore.setIsAligning(true);
         
         // Store the current shape points as they are (may include rotation already applied)
         const currentPoints = shape?.points ? [...shape.points] : null;
@@ -1543,27 +1596,99 @@ export const useAppStore = create<AppStore>()(
 
       updateDragPosition: (currentPosition: Point2D) => {
         const state = get();
-        if (!state.dragState.isDragging || 
-            !state.dragState.draggedShapeId || 
-            !state.dragState.startPosition || 
+        if (!state.dragState.isDragging ||
+            !state.dragState.draggedShapeId ||
+            !state.dragState.startPosition ||
             !state.dragState.originalShapePoints) {
           return;
         }
 
         let finalPosition = currentPosition;
-        let detectedGuides: AlignmentGuide[] = [];
 
-        // Apply alignment detection and snapping if enabled
-        if (state.drawing.alignment?.config?.enabled) {
+        // Simple alignment system - throttled to avoid infinite loops
+        try {
+          const draggedShape = state.shapes.find(s => s.id === state.dragState.draggedShapeId);
+          if (draggedShape) {
+            // Create temporary shape with current position for alignment detection
+            const offsetX = currentPosition.x - state.dragState.startPosition.x;
+            const offsetY = currentPosition.y - state.dragState.startPosition.y;
+
+            const tempShape = {
+              ...draggedShape,
+              points: state.dragState.originalShapePoints!.map(p => ({
+                x: p.x + offsetX,
+                y: p.y + offsetY
+              }))
+            };
+
+            // Use direct import for simple alignment detection with Phase 4 equal spacing
+            const otherShapes = state.shapes.filter(s => s.id !== state.dragState.draggedShapeId);
+            const result = SimpleAlignment.detectAlignments(tempShape, otherShapes);
+
+            // Phase 4: Apply magnetic snapping for equal distribution
+            if (result.snapPosition) {
+              const snapThreshold = 8; // 8 meters threshold for snapping
+              const distanceToSnap = Math.sqrt(
+                Math.pow(result.snapPosition.x - tempShape.points[0].x, 2) +
+                Math.pow(result.snapPosition.y - tempShape.points[0].y, 2)
+              );
+
+              // Apply magnetic snapping if within threshold
+              if (distanceToSnap <= snapThreshold) {
+                // Calculate the center of the shape for proper snapping
+                const bounds = SimpleAlignment.getShapeBounds(tempShape);
+                const shapeCenterX = bounds.centerX;
+                const shapeCenterY = bounds.centerY;
+
+                // Calculate offset to move shape center to snap position
+                const snapOffsetX = result.snapPosition.x - shapeCenterX;
+                const snapOffsetY = result.snapPosition.y - shapeCenterY;
+
+                // Adjust final position to achieve the suggested snap position
+                finalPosition = {
+                  x: currentPosition.x + snapOffsetX,
+                  y: currentPosition.y + snapOffsetY
+                };
+              }
+            }
+
+            // Use throttled update to prevent infinite loops
+            // Store the update outside the store state to avoid re-render loops
+            if (!window._alignmentUpdateScheduled) {
+              window._alignmentUpdateScheduled = true;
+              requestAnimationFrame(() => {
+                // Only update if still dragging the same shape
+                const currentState = get();
+                if (currentState.dragState.isDragging && currentState.dragState.draggedShapeId === state.dragState.draggedShapeId) {
+                  currentState.updateAlignmentGuides(result.guides, state.dragState.draggedShapeId);
+                  if (result.spacings && result.spacings.length > 0) {
+                    currentState.updateAlignmentSpacings(result.spacings);
+                  } else {
+                    currentState.updateAlignmentSpacings([]);
+                  }
+                  // Store snap position for preview guides - always update to clear when not snapping
+                  currentState.updateAlignmentSnapPosition(result.snapPosition || null);
+                }
+                window._alignmentUpdateScheduled = false;
+              });
+            }
+
+          }
+        } catch (error) {
+          console.warn('Simple alignment detection failed:', error);
+        }
+
+        // Use complex alignment system - temporarily disabled
+        /* if (alignmentStore.snapConfig.enabled) {
           try {
-            
             // Get the dragged shape
             const draggedShape = state.shapes.find(s => s.id === state.dragState.draggedShapeId);
             if (draggedShape) {
-              // Create a temporary shape with the new position for alignment detection
+              // Create a temporary shape with the new position
               const offsetX = currentPosition.x - state.dragState.startPosition.x;
               const offsetY = currentPosition.y - state.dragState.startPosition.y;
-              
+
+              // Create a temporary shape with updated points for alignment detection
               const tempShape = {
                 ...draggedShape,
                 points: state.dragState.originalShapePoints!.map(p => ({
@@ -1572,50 +1697,73 @@ export const useAppStore = create<AppStore>()(
                 }))
               };
 
-              // Get other shapes for alignment detection
-              const otherShapes = state.shapes.filter(s => s.id !== state.dragState.draggedShapeId);
-              
-              // Detect alignment guides
-              const guides = alignmentService.detectAlignmentGuides(
+              // Get alignment service instance
+              // const alignmentService = AlignmentGuideService.getInstance();
+
+              // Update spatial index with all shapes
+              alignmentService.updateSpatialIndex(state.shapes);
+
+              // Detect alignments
+              const result = alignmentService.detectAlignments(
                 tempShape,
-                otherShapes,
-                state.drawing.alignment.config
+                state.shapes.filter(s => s.id !== state.dragState.draggedShapeId),
+                alignmentStore.snapConfig.threshold
               );
 
-              // Apply magnetic snapping
-              const snapResult = alignmentService.applyMagneticSnapping(
-                currentPosition,
-                guides,
-                state.drawing.alignment.config.snapStrength
-              );
+              // Update alignment store with detected guides
+              alignmentStore.setGuides(result.guides);
+              alignmentStore.setMeasurements(result.measurements);
+              alignmentStore.setIsAligning(true);
 
-              finalPosition = snapResult.snappedPosition;
-              detectedGuides = guides;
+              // Apply snapping if alignments detected
+              if (result.hasSnap && result.guides.length > 0) {
+                const snapPos = alignmentService.getSnapPosition(tempShape, result.guides);
+
+                // Calculate current shape center
+                const currentCenter = alignmentService.getShapeCenter ?
+                  alignmentService.getShapeCenter(tempShape) :
+                  { x: 0, z: 0 }; // fallback if method not available
+
+                // Calculate the offset from current center to snap position
+                const snapOffsetX = snapPos.x - currentCenter.x;
+                const snapOffsetY = snapPos.z - currentCenter.z;
+
+                finalPosition = {
+                  x: currentPosition.x + snapOffsetX,
+                  y: currentPosition.y + snapOffsetY
+                };
+              }
             }
           } catch (error) {
             logger.warn('Alignment detection failed:', error);
           }
-        }
+        } */
 
-        // Update drag state with snapped position and detected guides
+        // Update drag state with final position
         set({
           dragState: {
             ...state.dragState,
             currentPosition: finalPosition,
-          },
-          drawing: {
-            ...state.drawing,
-            alignment: {
-              ...state.drawing.alignment,
-              activeGuides: detectedGuides,
-              draggingShapeId: state.dragState.draggedShapeId
-            }
           }
         }, false, 'updateDragPosition');
       },
 
       finishDragging: () => {
         const state = get();
+
+        // Clear alignment guides and spacings
+        set(prevState => ({
+          drawing: {
+            ...prevState.drawing,
+            alignment: {
+              ...prevState.drawing.alignment,
+              activeGuides: [],
+              activeSpacings: [],
+              snapPosition: null
+            }
+          }
+        }), false, 'clearAlignmentGuides');
+
         if (state.dragState.isDragging && state.dragState.currentPosition && state.dragState.startPosition) {
           // Apply final transformation to shape points
           const offsetX = state.dragState.currentPosition.x - state.dragState.startPosition.x;
@@ -1673,6 +1821,19 @@ export const useAppStore = create<AppStore>()(
       },
 
       cancelDragging: () => {
+        // Clear alignment guides and spacings
+        set(prevState => ({
+          drawing: {
+            ...prevState.drawing,
+            alignment: {
+              ...prevState.drawing.alignment,
+              activeGuides: [],
+              activeSpacings: [],
+              snapPosition: null
+            }
+          }
+        }), false, 'clearAlignmentGuides');
+
         set({
           dragState: {
             isDragging: false,
@@ -3132,6 +3293,38 @@ export const useAppStore = create<AppStore>()(
         );
       },
 
+      updateAlignmentSpacings: (spacings: SpacingMeasurement[]) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              alignment: {
+                ...state.drawing.alignment,
+                activeSpacings: spacings
+              }
+            }
+          }),
+          false,
+          'updateAlignmentSpacings'
+        );
+      },
+
+      updateAlignmentSnapPosition: (snapPosition: { x: number; y: number } | null) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              alignment: {
+                ...state.drawing.alignment,
+                snapPosition
+              }
+            }
+          }),
+          false,
+          'updateAlignmentSnapPosition'
+        );
+      },
+
       clearAlignmentGuides: () => {
         set(
           state => ({
@@ -3140,7 +3333,9 @@ export const useAppStore = create<AppStore>()(
               alignment: {
                 ...state.drawing.alignment,
                 activeGuides: [],
-                draggingShapeId: null
+                activeSpacings: [],
+                draggingShapeId: null,
+                snapPosition: null
               }
             }
           }),

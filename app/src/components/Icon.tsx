@@ -117,6 +117,15 @@ const iconPaths: Record<string, React.ReactNode> = {
       <path d="M4.22 19.78l1.42-1.42" />
       <path d="M18.36 5.64l1.42-1.42" />
     </>
+  ),
+
+  // Alignment Icons
+  target: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </>
   )
 };
 

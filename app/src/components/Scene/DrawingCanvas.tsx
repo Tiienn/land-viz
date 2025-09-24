@@ -44,6 +44,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const finishDrawing = useAppStore(state => state.finishDrawing);
   const cancelDrawing = useAppStore(state => state.cancelDrawing);
   const selectShape = useAppStore(state => state.selectShape);
+  const clearSelection = useAppStore(state => state.clearSelection);
   const hoverShape = useAppStore(state => state.hoverShape);
   const exitRotateMode = useAppStore(state => state.exitRotateMode);
 
@@ -61,15 +62,35 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   // Optimized alignment detection function
   const performAlignmentDetection = useCallback((worldPos2D: Point2D) => {
     const alignmentConfig = useAppStore.getState().drawing.alignment?.config;
-    
-    if (!alignmentConfig?.enabled || !currentShape) return;
-    
+
+    if (!alignmentConfig?.enabled) return;
+
     // Create a temporary shape at the current cursor position for alignment detection
-    const tempShape = {
-      ...currentShape,
-      points: currentShape.points ? [...currentShape.points, worldPos2D] : [worldPos2D],
-      id: 'temp_drawing_shape'
-    };
+    let tempShape;
+    if (currentShape) {
+      // During drawing mode
+      tempShape = {
+        ...currentShape,
+        points: currentShape.points ? [...currentShape.points, worldPos2D] : [worldPos2D],
+        id: 'temp_drawing_shape'
+      };
+    } else {
+      // When no shape is being drawn, create a small cursor shape for alignment detection
+      tempShape = {
+        id: 'temp_cursor_shape',
+        name: 'Cursor',
+        type: 'circle' as const,
+        color: '#3b82f6',
+        visible: true,
+        layerId: 'main',
+        created: new Date(),
+        modified: new Date(),
+        points: [
+          worldPos2D, // Center point
+          { x: worldPos2D.x + 2, y: worldPos2D.y } // Small radius for detection
+        ]
+      };
+    }
 
     // Get other shapes for alignment detection (limit for performance)
     const otherShapes = shapes.slice(0, 8); // Limit to 8 shapes for performance
@@ -81,6 +102,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       alignmentConfig
     ).slice(0, 4); // Limit to 4 guides max for performance
 
+
     // Update the store with alignment guides
     store.setState((state) => ({
       ...state,
@@ -89,7 +111,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         alignment: {
           ...state.drawing.alignment,
           activeGuides: guides,
-          draggingShapeId: 'temp_drawing_shape'
+          draggingShapeId: tempShape.id
         }
       }
     }));
@@ -101,8 +123,23 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     
     if (!snapConfig?.enabled) return worldPos2D;
     
-    // Update snap grid with current shapes
-    snapGrid.current.updateSnapPoints(shapes);
+    // Update snap grid with current shapes, including active drawing shape with preview
+    let allShapes = shapes;
+
+    if (isDrawing && currentShape) {
+      // For polyline, include the preview segment from last point to current cursor
+      if (activeTool === 'polyline' && currentShape.points && currentShape.points.length > 0) {
+        const enhancedPolyline = {
+          ...currentShape,
+          points: [...currentShape.points, worldPos2D] // Add cursor position as preview point
+        };
+        allShapes = [...shapes, enhancedPolyline];
+      } else {
+        allShapes = [...shapes, currentShape];
+      }
+    }
+
+    snapGrid.current.updateSnapPoints(allShapes);
     
     // Find nearest snap point
     const nearestSnapPoint = snapGrid.current.findNearestSnapPoint(
@@ -222,7 +259,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         alignment: {
           ...state.drawing.alignment,
           activeGuides: [],
-          draggingShapeId: null
+          activeSpacings: [],
+          draggingShapeId: null,
+          snapPosition: null
         }
       }
     }));
@@ -231,8 +270,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const handleClick = useCallback((event: ThreeEvent<MouseEvent>) => {
     // Handle deselection when select tool is active and clicking empty space
     if (activeTool === 'select') {
-      selectShape(null);
-      exitRotateMode(); // Clear rotation handles when clicking empty space
+      // Clear all selections when clicking empty space
+      if (!event.shiftKey) {
+        clearSelection();
+        exitRotateMode(); // Clear rotation handles when clicking empty space
+      }
       return;
     }
     
@@ -338,7 +380,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     startDrawing,
     addPoint,
     finishDrawing,
-    selectShape,
+    clearSelection,
     exitRotateMode,
   ]);
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CATEGORY_ICONS } from '../../data/referenceObjects';
+import { useCategoryIcons } from '../../hooks/useCategoryIcons';
 import type { ReferenceCategory } from '../../types/referenceObjects';
 
 interface CategoryTabsProps {
@@ -9,6 +9,7 @@ interface CategoryTabsProps {
 }
 
 export function CategoryTabs({ selected, onChange, counts }: CategoryTabsProps) {
+  const { categoryIcons, loading } = useCategoryIcons();
   const categories: (ReferenceCategory | 'all')[] = ['all', 'sports', 'buildings', 'landmarks', 'nature'];
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -24,7 +25,7 @@ export function CategoryTabs({ selected, onChange, counts }: CategoryTabsProps) 
     <div style={styles.container} onWheel={handleWheel}>
       {categories.map(category => {
         const isSelected = selected === category;
-        const icon = category === 'all' ? '🌐' : CATEGORY_ICONS[category];
+        const icon = category === 'all' ? '🌐' : categoryIcons[category];
         const label = category === 'all' ? 'All' : category.charAt(0).toUpperCase() + category.slice(1);
 
         return (
