@@ -12,12 +12,14 @@ import { InsertAreaModal } from './components/InsertArea';
 import { AddAreaModal } from './components/AddArea';
 import { PresetsModal } from './components/AddArea/PresetsModal';
 import { MeasurementOverlay } from './components/MeasurementOverlay';
+import { DistanceInput } from './components/DistanceInput/DistanceInput';
 import ComparisonPanel from './components/ComparisonPanel';
 import { ConvertPanel } from './components/ConvertPanel';
 import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer';
 import { ObjectPositioner } from './utils/objectPositioning';
 // import PropertiesPanel from './components/PropertiesPanel';
 import AlignmentControls from './components/UI/AlignmentControls';
+import { View2DToggleButton } from './components/UI/View2DToggleButton';
 import Icon from './components/Icon';
 import logger from './utils/logger';
 import type { Point2D, AreaUnit } from './types';
@@ -97,6 +99,7 @@ function App(): React.JSX.Element {
     closePresetsModal,
     createShapeFromPreset,
     customizePreset,
+    toggleViewMode,
     triggerRender,
     undo,
     redo,
@@ -109,6 +112,16 @@ function App(): React.JSX.Element {
     deleteMeasurement,
     selectMeasurement,
     comparison,
+    // Line tool state and actions
+    startLineDrawing,
+    updateDistanceInput,
+    hideDistanceInput,
+    confirmLineDistance,
+    cancelLineDrawing,
+    toggleMultiSegmentMode,
+    completeLine,
+    enableMultiSegmentMode,
+    removeLastLineSegment,
     shapes,
     // layers,
     // activeLayerId,
@@ -116,6 +129,9 @@ function App(): React.JSX.Element {
     // selectShape,
     // enterResizeMode
   } = useAppStore();
+
+  // Line tool state
+  const lineToolState = useAppStore(state => state.drawing.lineTool);
 
 
   // Sync local state with store state when store changes
@@ -142,8 +158,12 @@ function App(): React.JSX.Element {
         // Priority 1: If actively drawing a polyline with points, do point-level undo
         if (drawing.isDrawing && drawing.activeTool === 'polyline' && drawing.currentShape?.points && drawing.currentShape.points.length > 0) {
           removeLastPoint();
-        } 
-        // Priority 2: If not drawing polyline, or polyline has no points, do normal shape undo
+        }
+        // Priority 2: If actively drawing a line in multi-segment mode with segments, do segment-level undo
+        else if (drawing.activeTool === 'line' && lineToolState.isMultiSegment && lineToolState.segments.length > 0) {
+          removeLastLineSegment();
+        }
+        // Priority 3: If not drawing polyline or line, or no points/segments, do normal shape undo
         else if (canUndo()) {
           undo();
         }
@@ -171,17 +191,44 @@ function App(): React.JSX.Element {
           deleteMeasurement(drawing.measurement.selectedMeasurementId);
         }
       }
+      // V key: Toggle 2D/3D view
+      if (event.key === 'v' || event.key === 'V') {
+        event.preventDefault();
+        toggleViewMode();
+      }
+
+      // L key: Activate line tool
+      if (event.key === 'l' || event.key === 'L') {
+        event.preventDefault();
+        setActiveTool('line');
+        setStoreActiveTool('line');
+      }
 
       // ESC key: Cancel all active operations
       if (event.key === 'Escape') {
         event.preventDefault();
         cancelAll();
       }
+
+      // Line tool specific shortcuts
+      if (drawing.activeTool === 'line') {
+        // Tab: Toggle multi-segment mode
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          toggleMultiSegmentMode();
+        }
+
+        // Space: Complete multi-segment line (if in multi-segment mode with segments)
+        if (event.key === ' ' && lineToolState.isMultiSegment && lineToolState.segments.length > 0) {
+          event.preventDefault();
+          completeLine();
+        }
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, removeLastPoint, deleteShape, selectedShapeId, deleteMeasurement, drawing.measurement?.selectedMeasurementId, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape]);
+  }, [undo, redo, canUndo, canRedo, removeLastPoint, removeLastLineSegment, deleteShape, selectedShapeId, deleteMeasurement, drawing.measurement?.selectedMeasurementId, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape, startLineDrawing, toggleMultiSegmentMode, completeLine, lineToolState.isMultiSegment, lineToolState.segments]);
 
   // 3D Scene event handlers
   const handleCoordinateChange = (worldPos: Point2D) => {
@@ -378,132 +425,16 @@ function App(): React.JSX.Element {
           )}
         </div>
         <div style={{ padding: '16px 24px' }}>
-          <div style={{ display: 'flex', gap: '40px', alignItems: 'flex-start' }}>
-            {/* Area Configuration */}
+          <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
+            {/* Drawing */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ 
-                fontSize: '11px', 
-                fontWeight: '600', 
-                color: '#64748b', 
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
                 marginBottom: '8px',
                 textAlign: 'center'
-              }}>Area Configuration</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
-                <button
-                  onClick={() => setInsertAreaModalOpen(true)}
-                  style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  padding: '8px 12px',
-                  borderRadius: '4px',
-                  minWidth: '70px',
-                  height: '60px',
-                  color: '#000000',
-                  background: 'white',
-                  border: '1px solid #e5e7eb',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f3f4f6';
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'white';
-                  e.currentTarget.style.borderColor = '#e5e7eb';
-                }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Insert Area</span>
-                </button>
-                <button
-                  onClick={openAddAreaModal}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    borderRadius: '4px',
-                    minWidth: '70px',
-                    height: '60px',
-                    color: '#000000',
-                    background: 'white',
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'white';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                  }}
-                  title="Create shape from specified area"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    <polyline points="7.5,4.21 12,6.81 16.5,4.21"></polyline>
-                    <polyline points="7.5,19.79 7.5,14.6 3,12"></polyline>
-                    <polyline points="21,12 16.5,14.6 16.5,19.79"></polyline>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Add Area</span>
-                </button>
-                <button
-                  onClick={openPresetsModal}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    borderRadius: '4px',
-                    minWidth: '70px',
-                    height: '60px',
-                    color: '#000000',
-                    background: 'white',
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'white';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                  }}
-                  title="Access area configuration presets"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <rect x="9" y="9" width="6" height="6"></rect>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Presets</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Drawing Tools */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ 
-                fontSize: '11px', 
-                fontWeight: '600', 
-                color: '#64748b', 
-                marginBottom: '8px',
-                textAlign: 'center'
-              }}>Drawing Tools</div>
+              }}>Drawing</div>
               <div style={{ display: 'flex', gap: '2px' }}>
                 <button 
                   onClick={() => {
@@ -516,7 +447,7 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '8px 12px', 
                     borderRadius: '4px', 
-                    minWidth: '70px', 
+                    minWidth: '80px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -544,7 +475,7 @@ function App(): React.JSX.Element {
                     }
                   }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path>
                     <path d="m13 13 6 6"></path>
                   </svg>
@@ -561,7 +492,7 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '8px 12px', 
                     borderRadius: '4px', 
-                    minWidth: '70px', 
+                    minWidth: '80px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -589,7 +520,7 @@ function App(): React.JSX.Element {
                     }
                   }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Rectangle</span>
@@ -605,7 +536,7 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '8px 12px', 
                     borderRadius: '4px', 
-                    minWidth: '70px', 
+                    minWidth: '80px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -633,7 +564,7 @@ function App(): React.JSX.Element {
                     }
                   }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="4,17 10,11 14,15 20,9"></polyline>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Polyline</span>
@@ -649,7 +580,7 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '8px 12px', 
                     borderRadius: '4px', 
-                    minWidth: '70px', 
+                    minWidth: '80px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -677,11 +608,87 @@ function App(): React.JSX.Element {
                     }
                   }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="9"></circle>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Circle</span>
                 </button>
+                <button
+                  onClick={() => {
+                    setActiveTool('line');
+                    setStoreActiveTool('line');
+                  }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '80px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: activeTool === 'line'
+                      ? '#dbeafe'
+                      : '#ffffff',
+                    color: activeTool === 'line' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'line'
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)'
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'line') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'line') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title="Precision Line Tool (L)"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="6" y1="18" x2="18" y2="6"></line>
+                    <circle cx="6" cy="18" r="1" fill="currentColor"></circle>
+                    <circle cx="18" cy="6" r="1" fill="currentColor"></circle>
+                    {/* Multi-segment mode indicator */}
+                    {activeTool === 'line' && lineToolState.isMultiSegment && (
+                      <circle cx="20" cy="4" r="2" fill="#10b981" stroke="#ffffff" strokeWidth="1"></circle>
+                    )}
+                  </svg>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '4px' }}>
+                    <span>Line</span>
+                    {activeTool === 'line' && lineToolState.isMultiSegment && (
+                      <span style={{
+                        fontSize: '9px',
+                        color: '#10b981',
+                        fontWeight: '600',
+                        marginTop: '-2px'
+                      }}>
+                        MULTI
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Precision */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Precision</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
                 <button
                   onClick={() => {
                     setActiveTool('measure');
@@ -693,7 +700,7 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '8px 12px',
                     borderRadius: '4px',
-                    minWidth: '70px',
+                    minWidth: '80px',
                     height: '60px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -722,7 +729,7 @@ function App(): React.JSX.Element {
                   }}
                   title="Measure distances between points with precision"
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 14H3l1.5-2h15z"></path>
                     <path d="M21 19H3l1.5-2h15z"></path>
                     <path d="M21 9H3l1.5-2h15z"></path>
@@ -735,6 +742,122 @@ function App(): React.JSX.Element {
               </div>
             </div>
 
+            {/* Geometry */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Geometry</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button
+                  onClick={() => setInsertAreaModalOpen(true)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '80px',
+                    height: '60px',
+                    color: '#000000',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'white';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Insert Area</span>
+                </button>
+                <button
+                  onClick={openAddAreaModal}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '80px',
+                    height: '60px',
+                    color: '#000000',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'white';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                  title="Create shape from specified area"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="7.5,4.21 12,6.81 16.5,4.21"></polyline>
+                    <polyline points="7.5,19.79 7.5,14.6 3,12"></polyline>
+                    <polyline points="21,12 16.5,14.6 16.5,19.79"></polyline>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Add Area</span>
+                </button>
+                <button
+                  onClick={openPresetsModal}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '80px',
+                    height: '60px',
+                    color: '#000000',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'white';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                  title="Access area configuration presets"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <rect x="9" y="9" width="6" height="6"></rect>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Presets</span>
+                </button>
+              </div>
+            </div>
+
             {/* Vertical Separator */}
             <div style={{
               width: '1px',
@@ -743,7 +866,7 @@ function App(): React.JSX.Element {
               margin: '0 8px'
             }}></div>
 
-            {/* Tools */}
+            {/* Display */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
                 fontSize: '11px',
@@ -751,7 +874,7 @@ function App(): React.JSX.Element {
                 color: '#64748b',
                 marginBottom: '8px',
                 textAlign: 'center'
-              }}>Tools</div>
+              }}>Display</div>
               <div style={{ display: 'flex', gap: '2px' }}>
                 <button 
                   onClick={toggleShowDimensions}
@@ -772,13 +895,14 @@ function App(): React.JSX.Element {
                     fontWeight: '500'
                   }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 14H3l1.5-2h15z"></path>
                     <path d="M21 19H3l1.5-2h15z"></path>
                     <path d="M21 9H3l1.5-2h15z"></path>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Dimensions</span>
                 </button>
+                <View2DToggleButton />
                 <button
                   onClick={() => {
                     if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
@@ -832,7 +956,7 @@ function App(): React.JSX.Element {
                     }
                   }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 12a9 9 0 0 1-9 9c-4.97 0-9-4.03-9-9s4.03-9 9-9"></path>
                     <path d="M12 3l3 3-3 3"></path>
                   </svg>
@@ -870,7 +994,7 @@ function App(): React.JSX.Element {
                   }}
                   title="Clear all shapes from the scene"
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 6h18"></path>
                     <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
                     <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
@@ -931,7 +1055,7 @@ function App(): React.JSX.Element {
                         : 'Enter Edit Mode to modify shape corners'
                   }
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                     <path d="m18.5 2.5-8.5 8.5-2 2v2h2l2-2 8.5-8.5a1.5 1.5 0 0 0 0-2.1v0a1.5 1.5 0 0 0-2.1 0z"></path>
                   </svg>
@@ -985,7 +1109,7 @@ function App(): React.JSX.Element {
                         : 'Select a shape or measurement to delete'
                   }
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 6h18"></path>
                     <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
                     <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
@@ -1028,7 +1152,7 @@ function App(): React.JSX.Element {
                   }}
                   title={canUndo() ? 'Undo last action (Ctrl+Z)' : 'Nothing to undo'}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 7v6h6"></path>
                     <path d="m21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path>
                   </svg>
@@ -1068,38 +1192,11 @@ function App(): React.JSX.Element {
                   }}
                   title={canRedo() ? 'Redo last undone action (Ctrl+Y)' : 'Nothing to redo'}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="m21 7-6 6h6V7z"></path>
                     <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path>
                   </svg>
                   <span style={{ marginTop: '4px' }}>Redo</span>
-                </button>
-                <button 
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '8px 12px', 
-                    borderRadius: '4px', 
-                    minWidth: '80px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500'
-                  }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14,2 14,8 20,8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10,9 9,9 8,9"></polyline>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Enter Dimensions</span>
                 </button>
                 
                 {/* Snap Toggle Buttons */}
@@ -1159,7 +1256,7 @@ function App(): React.JSX.Element {
                     <rect x="14" y="14" width="7" height="7"></rect>
                     <rect x="3" y="14" width="7" height="7"></rect>
                   </svg>
-                  <span style={{ marginTop: '2px' }}>Grid</span>
+                  <span style={{ marginTop: '4px' }}>Grid</span>
                 </button>
                 
                 <button 
@@ -1239,7 +1336,7 @@ function App(): React.JSX.Element {
                     <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
                     <circle cx="20" cy="12" r="2" fill="currentColor"></circle>
                   </svg>
-                  <span style={{ marginTop: '2px' }}>Snap</span>
+                  <span style={{ marginTop: '4px' }}>Snap</span>
                 </button>
                 
                 <button
@@ -1280,7 +1377,7 @@ function App(): React.JSX.Element {
                     <line x1="16" y1="3" x2="16" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
                     <circle cx="12" cy="14" r="2" fill="#8B5CF6" opacity="0.8"></circle>
                   </svg>
-                  <span style={{ marginTop: '2px' }}>Smart Align</span>
+                  <span style={{ marginTop: '4px' }}>Smart Align</span>
                 </button>
               </div>
             </div>
@@ -1368,7 +1465,7 @@ function App(): React.JSX.Element {
                   }}
                   title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Add Corner between selected and next corner' : 'Select a corner first') : 'Enter Edit Mode first'}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="3"></circle>
                     <line x1="12" y1="1" x2="12" y2="9"></line>
                     <line x1="23" y1="12" x2="15" y2="12"></line>
@@ -1402,7 +1499,7 @@ function App(): React.JSX.Element {
                   }}
                   title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Delete Selected Corner' : 'Select a corner to delete') : 'Enter Edit Mode first'}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="3"></circle>
                     <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
                   </svg>
@@ -1450,7 +1547,7 @@ function App(): React.JSX.Element {
                       fontWeight: '500'
                     }}
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                       <polyline points="14,2 14,8 20,8"></polyline>
                       <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -1568,15 +1665,21 @@ function App(): React.JSX.Element {
             flexDirection: 'column',
             flex: 1
           }}>
-            <div style={{ 
-              padding: '16px 0', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: leftPanelExpanded ? 'stretch' : 'center', 
+            <div style={{
+              padding: '16px 0',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: leftPanelExpanded ? 'stretch' : 'center',
               gap: '8px',
               paddingLeft: leftPanelExpanded ? '16px' : '0',
-              paddingRight: leftPanelExpanded ? '16px' : '0'
-            }}>
+              paddingRight: leftPanelExpanded ? '16px' : '0',
+              overflowY: 'auto',
+              flex: 1,
+              scrollbarWidth: 'none', // Firefox
+              msOverflowStyle: 'none', // IE/Edge
+              // Hide scrollbar for Webkit browsers
+            }}
+            className="hide-scrollbar">
               <button style={{ 
                 padding: leftPanelExpanded ? '12px 16px' : '8px', 
                 borderRadius: '8px', 
@@ -1624,7 +1727,7 @@ function App(): React.JSX.Element {
                     setCalculatorExpanded(false);
                     setLayersExpanded(false);
                     setConvertExpanded(false);
-                    setAlignmentExpanded(false);
+                    setTidyUpExpanded(false);
 
                     // If comparison is not expanded, expand the panel if needed and show comparison
                     if (!leftPanelExpanded) {
@@ -1636,7 +1739,7 @@ function App(): React.JSX.Element {
                 style={{
                   padding: leftPanelExpanded ? '12px 16px' : '8px',
                   borderRadius: '8px',
-                  background: comparisonExpanded ? '#dbeafe' : 'transparent',
+                  background: comparisonExpanded ? '#3b82f6' : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
@@ -1646,7 +1749,7 @@ function App(): React.JSX.Element {
                   width: '100%',
                   textAlign: 'center',
                   transition: 'all 0.2s ease',
-                  color: comparisonExpanded ? '#1d4ed8' : '#374151'
+                  color: comparisonExpanded ? '#ffffff' : '#374151'
                 }}
                 title="Compare your land to familiar reference objects"
                 onMouseEnter={(e) => {
@@ -1662,7 +1765,7 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={comparisonExpanded ? '#ffffff' : 'currentColor'} strokeWidth="2">
                   <rect x="2" y="2" width="9" height="9"></rect>
                   <rect x="13" y="2" width="9" height="9"></rect>
                   <rect x="2" y="13" width="9" height="9"></rect>
@@ -1671,7 +1774,7 @@ function App(): React.JSX.Element {
                 <span style={{
                   fontSize: leftPanelExpanded ? '12px' : '10px',
                   fontWeight: '500',
-                  color: comparisonExpanded ? '#1d4ed8' : '#374151',
+                  color: comparisonExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
                 }}>
                   Compare
@@ -1724,7 +1827,7 @@ function App(): React.JSX.Element {
                     setCalculatorExpanded(false);
                     setLayersExpanded(false);
                     setComparisonExpanded(false);
-                    setAlignmentExpanded(false);
+                    setTidyUpExpanded(false);
 
                     // If convert is not expanded, expand the panel if needed and show convert
                     if (!leftPanelExpanded) {
@@ -1736,7 +1839,7 @@ function App(): React.JSX.Element {
                 style={{
                   padding: leftPanelExpanded ? '12px 16px' : '8px',
                   borderRadius: '8px',
-                  background: convertExpanded ? '#dbeafe' : 'transparent',
+                  background: convertExpanded ? '#3b82f6' : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
@@ -1746,7 +1849,7 @@ function App(): React.JSX.Element {
                   width: '100%',
                   textAlign: 'center',
                   transition: 'all 0.2s ease',
-                  color: '#374151'
+                  color: convertExpanded ? '#ffffff' : '#374151'
                 }}
                 title="Unit Converter"
                 onMouseEnter={(e) => {
@@ -1762,11 +1865,11 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <Icon name="unitConverter" size={20} color="#000000" />
+                <Icon name="unitConverter" size={20} color={convertExpanded ? "#ffffff" : "#000000"} />
                 <span style={{
                   fontSize: leftPanelExpanded ? '12px' : '10px',
                   fontWeight: '500',
-                  color: convertExpanded ? '#1d4ed8' : '#374151',
+                  color: convertExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
                 }}>
                   Convert
@@ -1819,7 +1922,7 @@ function App(): React.JSX.Element {
                     setLayersExpanded(false);
                     setComparisonExpanded(false);
                     setConvertExpanded(false);
-                    setAlignmentExpanded(false);
+                    setTidyUpExpanded(false);
 
                     if (!leftPanelExpanded) {
                       setLeftPanelExpanded(true);
@@ -1830,7 +1933,7 @@ function App(): React.JSX.Element {
                 style={{ 
                   padding: leftPanelExpanded ? '12px 16px' : '8px', 
                   borderRadius: '8px', 
-                  background: calculatorExpanded ? '#dbeafe' : 'transparent', 
+                  background: calculatorExpanded ? '#3b82f6' : 'transparent', 
                   border: 'none', 
                   cursor: 'pointer', 
                   display: 'flex',
@@ -1840,7 +1943,7 @@ function App(): React.JSX.Element {
                   width: '100%',
                   textAlign: 'center',
                   transition: 'all 0.2s ease',
-                  color: calculatorExpanded ? '#1d4ed8' : '#374151'
+                  color: calculatorExpanded ? '#ffffff' : '#374151'
                 }} 
                 title="Calculator"
                 onMouseEnter={(e) => {
@@ -1856,11 +1959,11 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <Icon name="calculator" size={20} color="#000000" />
+                <Icon name="calculator" size={20} color={calculatorExpanded ? "#ffffff" : "#000000"} />
                 <span style={{ 
                   fontSize: leftPanelExpanded ? '12px' : '10px', 
                   fontWeight: '500', 
-                  color: calculatorExpanded ? '#1d4ed8' : '#374151',
+                  color: calculatorExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
                 }}>
                   Calculator
@@ -1878,7 +1981,7 @@ function App(): React.JSX.Element {
                   setCalculatorExpanded(false);
                   setComparisonExpanded(false);
                   setConvertExpanded(false);
-                  setAlignmentExpanded(false);
+                  setTidyUpExpanded(false);
 
                   // If layers are not expanded, expand the panel if needed and show layers
                   if (!leftPanelExpanded) {
@@ -1890,7 +1993,7 @@ function App(): React.JSX.Element {
               style={{ 
                 padding: leftPanelExpanded ? '12px 16px' : '8px', 
                 borderRadius: '8px', 
-                background: layersExpanded ? '#dbeafe' : 'transparent', 
+                background: layersExpanded ? '#3b82f6' : 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
                 display: 'flex',
@@ -1900,7 +2003,7 @@ function App(): React.JSX.Element {
                 width: '100%',
                 textAlign: 'center',
                 transition: 'all 0.2s ease',
-                color: layersExpanded ? '#1d4ed8' : '#374151'
+                color: layersExpanded ? '#ffffff' : '#374151'
               }} 
               title="Layers"
               onMouseEnter={(e) => {
@@ -1916,83 +2019,81 @@ function App(): React.JSX.Element {
                 }
               }}
             >
-              <Icon name="layers" size={20} color="#000000" />
+              <Icon name="layers" size={20} color={layersExpanded ? "#ffffff" : "#000000"} />
               <span style={{ 
                 fontSize: leftPanelExpanded ? '12px' : '10px', 
                 fontWeight: '500', 
-                color: layersExpanded ? '#1d4ed8' : '#374151',
+                color: layersExpanded ? '#ffffff' : '#374151',
                 lineHeight: '1'
               }}>
                 Layers
               </span>
             </button>
-            </div>
 
-            {/* TidyUp Button */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
+            <button
                 onClick={() => {
-                  setTidyUpExpanded(!tidyUpExpanded);
-                  setLeftPanelExpanded(true);
-
-                  // Close other panels
-                  setCalculatorExpanded(false);
-                  setLayersExpanded(false);
-                  setConvertExpanded(false);
-                  setComparisonExpanded(false);
+                  if (tidyUpExpanded) {
+                    // If TidyUp is expanded, collapse it and return to thin default menu
+                    setTidyUpExpanded(false);
+                    setLeftPanelExpanded(false);
+                  } else {
+                    // Close other overlays
+                    setCalculatorExpanded(false);
+                    setLayersExpanded(false);
+                    setConvertExpanded(false);
+                    setComparisonExpanded(false);
+                    // If TidyUp is not expanded, expand the panel if needed and show TidyUp
+                    if (!leftPanelExpanded) {
+                      setLeftPanelExpanded(true);
+                    }
+                    setTidyUpExpanded(true);
+                  }
                 }}
                 style={{
                   padding: leftPanelExpanded ? '12px 16px' : '8px',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  background: tidyUpExpanded
-                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                  background: tidyUpExpanded ? '#3b82f6' : 'transparent',
+                  border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
-                  flexDirection: leftPanelExpanded ? 'row' : 'column',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: leftPanelExpanded ? '12px' : '4px',
-                  minHeight: '48px',
-                  minWidth: leftPanelExpanded ? '140px' : '48px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  gap: '4px',
+                  width: '100%',
+                  textAlign: 'center',
                   transition: 'all 0.2s ease',
-                  color: tidyUpExpanded ? 'white' : '#059669'
+                  color: tidyUpExpanded ? '#ffffff' : '#374151'
                 }}
                 title="TidyUp - Organize and distribute shapes automatically"
                 onMouseEnter={(e) => {
                   if (!tidyUpExpanded) {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)';
+                    e.currentTarget.style.background = '#f3f4f6';
                     e.currentTarget.style.transform = 'translateY(-1px)';
-                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!tidyUpExpanded) {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.transform = 'translateY(0px)';
                   }
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="6" height="6" rx="1"/>
-                  <rect x="15" y="3" width="6" height="6" rx="1"/>
-                  <rect x="3" y="15" width="6" height="6" rx="1"/>
-                  <rect x="15" y="15" width="6" height="6" rx="1"/>
-                  <path d="M9 12h6" strokeDasharray="2 2" strokeWidth="1"/>
-                  <path d="M12 9v6" strokeDasharray="2 2" strokeWidth="1"/>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tidyUpExpanded ? "#ffffff" : "#000000"} strokeWidth="2">
+                  <rect x="3" y="3" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
+                  <rect x="15" y="3" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
+                  <rect x="3" y="15" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
+                  <rect x="15" y="15" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
+                  <path d="M9 12h6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
+                  <path d="M12 9v6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
                 </svg>
-                {leftPanelExpanded && (
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    color: tidyUpExpanded ? 'white' : '#059669',
-                    lineHeight: '1'
-                  }}>
-                    TidyUp
-                  </span>
-                )}
+                <span style={{
+                  fontSize: leftPanelExpanded ? '12px' : '10px',
+                  fontWeight: '500',
+                  color: tidyUpExpanded ? '#ffffff' : '#374151',
+                  lineHeight: '1'
+                }}>
+                  TidyUp
+                </span>
               </button>
             </div>
           </div>
@@ -2159,6 +2260,23 @@ function App(): React.JSX.Element {
           <MeasurementOverlay
             camera={sceneManagerRef.current?.camera}
             canvas={sceneManagerRef.current?.canvas}
+          />
+
+          {/* Distance input for line tool */}
+          <DistanceInput
+            value={lineToolState.inputValue}
+            onChange={updateDistanceInput}
+            onConfirm={confirmLineDistance}
+            onCancel={() => {
+              hideDistanceInput();
+              cancelLineDrawing();
+            }}
+            visible={lineToolState.showInput}
+            isMultiSegment={lineToolState.isMultiSegment}
+            segmentCount={lineToolState.segments.length}
+            onEnableMultiSegment={enableMultiSegmentMode}
+            onCompleteMultiSegment={completeLine}
+            onUndoLastSegment={removeLastLineSegment}
           />
 
           {/* Status overlay - shows active tool and current measurements */}
@@ -2341,15 +2459,6 @@ function App(): React.JSX.Element {
                 alignItems: 'center',
                 gap: '8px'
               }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{
-                  color: '#6b7280',
-                  flexShrink: 0
-                }}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  <path d="M9 3v18"></path>
-                  <path d="M9 9h12"></path>
-                  <path d="M9 15h12"></path>
-                </svg>
                 Properties
               </h3>
               <button
@@ -2582,11 +2691,11 @@ function App(): React.JSX.Element {
               style={{ 
                 padding: rightPanelExpanded ? '12px 8px' : '8px', 
                 borderRadius: '8px', 
-                background: propertiesExpanded ? '#dbeafe' : 'transparent', 
+                background: propertiesExpanded ? '#3b82f6' : 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
                 fontSize: '11px',
-                color: propertiesExpanded ? '#1d4ed8' : '#374151',
+                color: propertiesExpanded ? '#ffffff' : '#374151',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -2611,8 +2720,8 @@ function App(): React.JSX.Element {
                 }
               }}
             >
-              <Icon name="properties" size={20} color="#000000" />
-              <span style={{ fontWeight: '500', color: propertiesExpanded ? '#1d4ed8' : '#374151' }}>Properties</span>
+              <Icon name="properties" size={20} color={propertiesExpanded ? "#ffffff" : "#000000"} />
+              <span style={{ fontWeight: '500', color: propertiesExpanded ? '#ffffff' : '#374151' }}>Properties</span>
             </button>
           </div>
         </div>

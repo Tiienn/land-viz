@@ -125,6 +125,36 @@ const createSidebarClickHandler = (
 
 ## 🎨 Design Standards
 
+### **Button Selection States (Updated September 2025)**
+Universal sidebar button styling applied to both left and right sidebars:
+- **Selected Background**: Blue (`#3b82f6`) for active/expanded features
+- **Selected Text**: White (`#ffffff`) for optimal contrast and readability
+- **Selected Icons**: White (`#ffffff`) for visual consistency
+- **Unselected State**: Dark gray text (`#374151`) with transparent background
+- **Hover State**: Light gray (`#f3f4f6`) background on hover for unselected buttons
+- **Transition**: Smooth 0.2s ease transition for all state changes
+
+### **Universal Button Pattern**
+```jsx
+<button style={{
+  background: featureExpanded ? '#3b82f6' : 'transparent',
+  color: featureExpanded ? '#ffffff' : '#374151',
+  padding: sidebarExpanded ? '12px 16px' : '8px',
+  borderRadius: '8px',
+  border: 'none',
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+  // ... other styles
+}}>
+  <Icon color={featureExpanded ? "#ffffff" : "#000000"} />
+  <span style={{
+    color: featureExpanded ? '#ffffff' : '#374151',
+  }}>
+    Feature Name
+  </span>
+</button>
+```
+
 ### **Universal Visual Standards**
 Applied to both left and right sidebar panels:
 

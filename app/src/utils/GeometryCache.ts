@@ -62,6 +62,7 @@ export class GeometryCache {
         return this.createCircleGeometry(shape.points, elevation);
       case 'polygon':
       case 'polyline':
+      case 'line':
         return this.createPolygonGeometry(shape.points, elevation);
       default:
         return new BufferGeometry();

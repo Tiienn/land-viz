@@ -125,7 +125,6 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
         alignItems: 'center'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '18px' }}>⚙️</span>
           <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#111827' }}>
             Properties
           </h2>

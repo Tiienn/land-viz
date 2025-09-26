@@ -466,7 +466,7 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
   const headerStyle: React.CSSProperties = inline ? {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    justifyContent: 'space-between',
     padding: '16px 20px',
     borderBottom: '1px solid #e5e7eb',
     backgroundColor: '#f9fafb',
@@ -484,8 +484,8 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
   };
 
   const titleStyle: React.CSSProperties = {
-    fontWeight: '600',
-    fontSize: '14px',
+    fontWeight: '700',
+    fontSize: '16px',
     margin: 0,
   };
 
@@ -494,11 +494,12 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
     border: 'none',
     color: '#6b7280',
     cursor: 'pointer',
-    padding: '4px',
-    borderRadius: '4px',
-    fontSize: '16px',
-    transition: 'all 0.2s ease',
-    marginLeft: 'auto',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    fontSize: '24px',
+    transition: 'all 200ms ease',
+    lineHeight: 1,
+    fontWeight: 300
   } : {
     background: 'rgba(255, 255, 255, 0.2)',
     border: 'none',
@@ -625,20 +626,20 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
       <div style={headerStyle}>
         {inline ? (
           <>
-            <span>Alignment & Guides</span>
+            <h3 style={titleStyle}>TidyUp</h3>
             {onToggle && (
               <button
                 onClick={onToggle}
                 style={toggleButtonStyle}
                 title="Close"
               >
-                ✕
+                ◀
               </button>
             )}
           </>
         ) : (
           <>
-            <h3 style={titleStyle}>🎯 Alignment & Guides</h3>
+            <h3 style={titleStyle}>TidyUp</h3>
             {compact && onToggle && (
               <button
                 onClick={onToggle}
@@ -659,102 +660,6 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
         display: 'flex',
         flexDirection: 'column',
       } : {}}>
-        {/* Main Controls */}
-        <div style={sectionStyle}>
-        {/* Master Toggle */}
-        <div style={controlRowStyle}>
-          <label style={labelStyle}>
-            Enable Snapping
-          </label>
-          <button
-            onClick={toggleAlignment}
-            style={switchStyle(alignmentConfig?.enabled || false)}
-            title="Toggle alignment guides"
-          >
-            <div style={switchKnobStyle(alignmentConfig?.enabled || false)} />
-          </button>
-        </div>
-
-        {/* Grid Toggle */}
-        <div style={controlRowStyle}>
-          <label style={labelStyle}>
-            Show Grid
-          </label>
-          <button
-            onClick={toggleGrid}
-            style={switchStyle(gridConfig?.enabled || false)}
-            title="Toggle grid visibility"
-          >
-            <div style={switchKnobStyle(gridConfig?.enabled || false)} />
-          </button>
-        </div>
-
-        {/* Snap Threshold */}
-        {alignmentConfig?.enabled && (
-          <div style={{ ...controlRowStyle, marginBottom: '16px' }}>
-            <label style={labelStyle}>
-              Sensitivity: {alignmentConfig.sensitivity || 5}
-            </label>
-            <input
-              type="range"
-              min="1"
-              max="10"
-              value={alignmentConfig.sensitivity || 5}
-              onChange={(e) => updateAlignmentSetting('sensitivity', parseInt(e.target.value))}
-              style={sliderStyle}
-            />
-          </div>
-        )}
-
-        {/* Show During Draw */}
-        {alignmentConfig?.enabled && (
-          <div style={controlRowStyle}>
-            <label style={labelStyle}>
-              Show During Draw
-            </label>
-            <button
-              onClick={() => updateAlignmentSetting('showDuringDraw', !alignmentConfig.showDuringDraw)}
-              style={switchStyle(alignmentConfig.showDuringDraw || false)}
-              title="Show guides during drawing"
-            >
-              <div style={switchKnobStyle(alignmentConfig.showDuringDraw || false)} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Alignment Types */}
-      {alignmentConfig?.enabled && (
-        <div style={sectionStyle}>
-          <div style={{ marginBottom: '12px' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
-              Alignment Types
-            </span>
-          </div>
-
-          <div style={groupStyle}>
-            <label style={checkboxLabelStyle}>
-              <input
-                type="checkbox"
-                checked={alignmentConfig?.showDuringDraw || false}
-                onChange={(e) => updateAlignmentSetting('showDuringDraw', e.target.checked)}
-                style={checkboxStyle(alignmentConfig?.showDuringDraw || false)}
-              />
-              During Draw
-            </label>
-
-            <label style={checkboxLabelStyle}>
-              <input
-                type="checkbox"
-                checked={alignmentConfig?.showDuringEdit || false}
-                onChange={(e) => updateAlignmentSetting('showDuringEdit', e.target.checked)}
-                style={checkboxStyle(alignmentConfig?.showDuringEdit || false)}
-              />
-              During Edit
-            </label>
-          </div>
-        </div>
-      )}
 
       {/* Canva-Style TidyUp Section */}
       <div style={sectionStyle}>
@@ -913,49 +818,6 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
         )}
       </div>
 
-      {/* Advanced Settings */}
-      <div style={sectionStyle}>
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#6B7280',
-            fontSize: '13px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '4px 0',
-          }}
-        >
-          Advanced Settings
-          <span style={{
-            transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease'
-          }}>
-            ▼
-          </span>
-        </button>
-
-        {showAdvanced && alignmentConfig?.enabled && (
-          <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(0, 0, 0, 0.05)' }}>
-            <div style={controlRowStyle}>
-              <label style={labelStyle}>
-                Sensitivity: {alignmentConfig.sensitivity || 5}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={alignmentConfig.sensitivity || 5}
-                onChange={(e) => updateAlignmentSetting('sensitivity', parseInt(e.target.value))}
-                style={sliderStyle}
-              />
-            </div>
-          </div>
-        )}
-      </div>
       </div>
 
       {/* Keyboard Hints */}

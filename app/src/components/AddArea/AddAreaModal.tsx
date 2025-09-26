@@ -212,7 +212,7 @@ export const AddAreaModal: React.FC<AddAreaModalProps> = ({ isOpen, onClose }) =
                 borderRadius: '8px',
                 border: 'none',
                 background: validation.isValid && !isLoading
-                  ? 'linear-gradient(135deg, #10B981, #059669)'
+                  ? 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
                   : '#D1D5DB',
                 color: 'white',
                 fontSize: '16px',

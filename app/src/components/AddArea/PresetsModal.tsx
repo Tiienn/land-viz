@@ -88,7 +88,7 @@ export const PresetsModal: React.FC<PresetsModalProps> = ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 9999999,
+    zIndex: 999999,
     padding: '20px',
     animation: 'fadeIn 0.2s ease-out',
     isolation: 'isolate' as any,
@@ -97,7 +97,7 @@ export const PresetsModal: React.FC<PresetsModalProps> = ({
 
   const modalStyle: React.CSSProperties = {
     backgroundColor: '#FFFFFF',
-    borderRadius: '16px',
+    borderRadius: '12px',
     width: '100%',
     maxWidth: '900px',
     maxHeight: '80vh',
@@ -231,12 +231,8 @@ export const PresetsModal: React.FC<PresetsModalProps> = ({
 
   const primaryButtonStyle: React.CSSProperties = {
     ...buttonStyle,
-    backgroundColor: '#3B82F6',
+    background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
     color: '#FFFFFF',
-    ':hover': {
-      backgroundColor: '#2563EB',
-      transform: 'translateY(-1px)',
-    },
   };
 
   const secondaryButtonStyle: React.CSSProperties = {
@@ -386,13 +382,15 @@ export const PresetsModal: React.FC<PresetsModalProps> = ({
             onClick={() => selectedPreset && onSelectPreset(selectedPreset)}
             onMouseEnter={(e) => {
               if (!selectedPreset) return;
-              (e.target as HTMLElement).style.backgroundColor = '#2563EB';
+              (e.target as HTMLElement).style.background = 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)';
               (e.target as HTMLElement).style.transform = 'translateY(-1px)';
+              (e.target as HTMLElement).style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
             }}
             onMouseLeave={(e) => {
               if (!selectedPreset) return;
-              (e.target as HTMLElement).style.backgroundColor = '#3B82F6';
+              (e.target as HTMLElement).style.background = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)';
               (e.target as HTMLElement).style.transform = 'translateY(0)';
+              (e.target as HTMLElement).style.boxShadow = 'none';
             }}
           >
             Use Preset

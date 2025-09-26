@@ -31,13 +31,13 @@ Right Sidebar Menu (Top to Bottom)
 
 ## 🔧 Current Implementation Status
 
-### **✅ Properties Panel (IMPLEMENTED)**
+### **✅ Properties Panel (IMPLEMENTED - Updated September 2025)**
 - **Width**: 240px
 - **Position**: Expands left from right sidebar
 - **Background**: White (`#ffffff`)
 - **State**: `propertiesExpanded`
 - **Content**: Shape properties, fill opacity, controls
-- **Header**: "Properties" with properties icon and close button
+- **Header**: "Properties" with standardized close button (NO ICONS)
 
 ### **🔄 Planned Implementation (To Be Standardized)**
 - **Land Metrics**: Statistical analysis and area calculations
@@ -86,6 +86,72 @@ onClick={() => {
     setPropertiesExpanded(true);
   }
 }}
+```
+
+## 🎨 Design Standards (Updated September 2025)
+
+### **Standardized Header Design**
+All right sidebar inline panels must follow the same header pattern as left sidebar panels:
+
+- **Layout**: Clean title on left, close button on right (NO ICONS)
+- **Typography**: 16px bold (700 weight) title text in `#1f2937`
+- **Close Button**: "✕" (X) for right sidebar panels (24px font size)
+- **Background**: Light gray (`#fafafa`) with bottom border (`#e5e7eb`)
+- **Header Spacing**: `justifyContent: 'space-between'` for proper distribution
+- **Close Button Styling**: `padding: '4px 8px'`, `fontSize: '24px'`, `lineHeight: 1`
+- **Hover Effects**: Close button highlights to `#f3f4f6`
+
+### **Required Header Pattern**
+```jsx
+function RightSidebarPanelHeader({ onClose, title }) {
+  return (
+    <div style={styles.header}>
+      <h3 style={styles.title}>
+        {title}
+      </h3>
+      <button
+        style={styles.closeButton}
+        onClick={onClose}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        title="Close panel"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// Required Styles
+const styles = {
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: '#fafafa',
+    flexShrink: 0
+  },
+  title: {
+    margin: 0,
+    fontSize: '16px',
+    fontWeight: 700,
+    color: '#1f2937'
+  },
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    fontSize: '24px',
+    cursor: 'pointer',
+    color: '#6b7280',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    transition: 'all 200ms ease',
+    lineHeight: 1,
+    fontWeight: 300
+  }
+};
 ```
 
 ## 🔄 Standardization Plan
@@ -188,6 +254,30 @@ const openRightFeature = (feature: string) => {
   - Transformation tools
 
 ## 🎨 Design Standards (Right Sidebar)
+
+### **Button Selection States (Updated September 2025)**
+All right sidebar buttons now feature modern selection styling to match left sidebar:
+- **Selected Background**: Blue (`#3b82f6`) instead of light blue
+- **Selected Text**: White (`#ffffff`) for better contrast
+- **Selected Icons**: White (`#ffffff`) for consistency
+- **Hover State**: Light gray (`#f3f4f6`) for unselected buttons
+- **Transition**: Smooth 0.2s ease transition for all state changes
+
+### **Right Sidebar Button Styling Pattern**
+```jsx
+<button style={{
+  background: propertiesExpanded ? '#3b82f6' : 'transparent',
+  color: propertiesExpanded ? '#ffffff' : '#374151',
+  // ... other styles
+}}>
+  <Icon color={propertiesExpanded ? "#ffffff" : "#000000"} />
+  <span style={{
+    color: propertiesExpanded ? '#ffffff' : '#374151',
+  }}>
+    Properties
+  </span>
+</button>
+```
 
 ### **Standardized Header Design**
 All right sidebar panels now feature identical header structures:

@@ -91,7 +91,6 @@ export function ComparisonPanel({ expanded, onToggle, inline = false }: Comparis
   if (!expanded) {
     return (
       <div style={styles.collapsedPanel} onClick={onToggle}>
-        <div style={styles.collapsedIcon}>📏</div>
         <div style={styles.collapsedText}>Compare</div>
       </div>
     );

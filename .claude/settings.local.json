@@ -66,7 +66,13 @@
       "WebFetch(domain:www.canva.com)",
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:designbundles.net)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(cat:*)",
+      "Bash(start test-snapping.html)",
+      "WebFetch(domain:www.cadtutor.net)",
+      "Bash(lsof:*)",
+      "mcp__playwright__browser_hover"
     ],
     "deny": [],
     "ask": []

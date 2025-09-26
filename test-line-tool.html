@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Line Tool Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .test-item {
+            margin: 10px 0;
+            padding: 5px;
+        }
+        .pass { color: green; }
+        .fail { color: red; }
+        .pending { color: orange; }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Line Tool Manual Testing Guide</h1>
+
+    <div class="test-section">
+        <h2>Application Access</h2>
+        <p>Application should be running on: <a href="http://localhost:5180" target="_blank">http://localhost:5180</a></p>
+        <iframe src="http://localhost:5180" title="Land Visualizer Application"></iframe>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Cases</h2>
+
+        <div class="test-item">
+            <h3>1. Line Tool Activation</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>Click the "Line" button in the toolbar (has line icon)</li>
+                <li>OR press "L" key on keyboard</li>
+            </ul>
+            <p><strong>Expected Result:</strong> Line button should become highlighted/active</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+
+        <div class="test-item">
+            <h3>2. First Point Placement</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>With line tool active, click anywhere on the 3D scene</li>
+            </ul>
+            <p><strong>Expected Result:</strong> Distance input dialog should appear near the click point</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+
+        <div class="test-item">
+            <h3>3. Distance Input Functionality</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>After first point placement, type a distance value (e.g., "5.5")</li>
+                <li>Press Enter to confirm</li>
+            </ul>
+            <p><strong>Expected Result:</strong> Line should be drawn with precise distance in the direction of cursor movement</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+
+        <div class="test-item">
+            <h3>4. Multi-Segment Mode Toggle</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>With line tool active, press Tab key</li>
+                <li>Look for multi-segment indicator on the line button</li>
+            </ul>
+            <p><strong>Expected Result:</strong> Green circle indicator should appear on line button, distance input should show "Multi-Line Mode"</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+
+        <div class="test-item">
+            <h3>5. Multi-Segment Line Creation</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>In multi-segment mode, place first point and enter distance</li>
+                <li>Press Enter to create first segment</li>
+                <li>Continue adding segments</li>
+                <li>Press Space or Enter without distance to complete multi-line</li>
+            </ul>
+            <p><strong>Expected Result:</strong> Multiple connected line segments, converted to polyline when complete</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+
+        <div class="test-item">
+            <h3>6. Keyboard Shortcuts</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>L key: Activate line tool</li>
+                <li>Tab: Toggle multi-segment mode</li>
+                <li>Enter: Confirm distance input or complete line</li>
+                <li>ESC: Cancel current operation</li>
+            </ul>
+            <p><strong>Expected Result:</strong> All shortcuts should work as described</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+
+        <div class="test-item">
+            <h3>7. Visual Feedback</h3>
+            <p><strong>Steps:</strong></p>
+            <ul>
+                <li>During line drawing, move cursor around</li>
+                <li>Observe preview lines and indicators</li>
+            </ul>
+            <p><strong>Expected Result:</strong> Blue preview line, start point indicator (blue sphere), end point indicator (red sphere), completed segments in green</p>
+            <p class="pending">Status: Manual verification required</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Error Check</h2>
+        <p>Open browser developer tools (F12) and check the Console tab for any errors during line tool usage.</p>
+        <p><strong>Expected Result:</strong> No JavaScript errors related to line tool functionality</p>
+        <p class="pending">Status: Manual verification required</p>
+    </div>
+
+    <div class="test-section">
+        <h2>Implementation Status Summary</h2>
+        <p>Based on code analysis, the Direct Distance Entry Line Tool appears to be fully implemented with the following components:</p>
+        <ul>
+            <li>✅ <strong>DistanceInput Component:</strong> Complete UI for distance input with keyboard shortcuts</li>
+            <li>✅ <strong>PrecisionLinePreview Component:</strong> 3D visual feedback with preview lines and indicators</li>
+            <li>✅ <strong>Line Tool State Management:</strong> Comprehensive Zustand store integration</li>
+            <li>✅ <strong>Precision Math Utilities:</strong> Functions for direction calculation and distance application</li>
+            <li>✅ <strong>Multi-Segment Support:</strong> Complete multi-line functionality</li>
+            <li>✅ <strong>Keyboard Shortcuts:</strong> L key activation, Tab toggle, Enter/ESC handling</li>
+            <li>✅ <strong>DrawingCanvas Integration:</strong> Click handling and tool activation</li>
+        </ul>
+    </div>
+</body>
+</html>

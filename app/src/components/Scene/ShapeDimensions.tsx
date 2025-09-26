@@ -202,6 +202,9 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
 
   // Add area label for closed shapes
   const areaLabel = useMemo(() => {
+    // Skip area calculation for line shapes - lines don't have area
+    if (shape.type === 'line') return null;
+
     // Only skip area calculation for true 2-point lines, not polylines with 3+ points
     if (shape.type === 'polyline' && shape.points.length <= 2) return null;
     

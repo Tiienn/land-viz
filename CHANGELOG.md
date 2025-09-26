@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Direct Distance Entry Line Tool with Multi-Line Mode (2025-09-26)
+- **AutoCAD-Style Precision Line Drawing**: Professional CAD workflow with exact distance input
+  - Single line mode: Click first point → enter distance → creates precise line in cursor direction
+  - Multi-line mode: Tab to enable → polyline-style workflow with distance entry at each segment
+  - Mathematical precision using direction vectors and distance calculations
+  - Real-time preview with cursor tracking and grid snapping integration
+
+- **Multi-Segment Polyline Creation**: Advanced polyline workflow with distance control
+  - Automatic shape closing when clicking near start point (4m threshold)
+  - Manual completion with Space key for open polylines
+  - Segment counter and progress tracking during multi-line creation
+  - Connected line chains with precise distance control at each segment
+
+- **Enhanced Distance Input Interface**: Professional input modal with keyboard shortcuts
+  - Fixed positioning beside mouse position indicator (no overlap)
+  - Dynamic instruction text based on current mode (single vs multi-line)
+  - Keyboard shortcuts: Tab (enable multi-line), Space (complete), ESC (cancel)
+  - Auto-focus and text selection for efficient distance entry
+
+- **Integration Features**: Seamless connection with existing drawing systems
+  - Works with existing grid snapping (1m snap increments)
+  - Compatible with alignment guides and magnetic snapping
+  - Lines excluded from total area calculations (lines don't have area)
+  - Proper shape naming: "Line N" for single lines, "Multi-Line N" for polylines
+
 #### Historical Land Measurement Units (2025-09-22)
 - **Comprehensive Regional Support**: 5 new historical land measurement units with regional accuracy
   - **Perches (British)**: 25.29 m² - Standard imperial land measurement

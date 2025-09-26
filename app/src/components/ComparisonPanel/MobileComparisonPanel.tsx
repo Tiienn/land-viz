@@ -61,7 +61,7 @@ export function MobileComparisonPanel({ isOpen, onClose }: MobileComparisonPanel
       <div style={styles.panel}>
         {/* Header */}
         <div style={styles.header}>
-          <h3 style={styles.title}>📊 Compare Land Size</h3>
+          <h3 style={styles.title}>Compare Land Size</h3>
           <button onClick={onClose} style={styles.closeButton}>✕</button>
         </div>
 

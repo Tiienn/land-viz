@@ -419,7 +419,7 @@ export class SimpleAlignment {
     // Left edge alignment
     if (Math.abs(draggedBounds.left - otherBounds.left) < threshold) {
       guides.push({
-        id: `left-${draggedId}-${otherId}`,
+        id: `left-${draggedId}-${otherId}-${Date.now()}`,
         type: 'vertical',
         position: otherBounds.left,
         start: Math.min(draggedBounds.top, otherBounds.top) - 20,
@@ -431,7 +431,7 @@ export class SimpleAlignment {
     // Right edge alignment
     if (Math.abs(draggedBounds.right - otherBounds.right) < threshold) {
       guides.push({
-        id: `right-${draggedId}-${otherId}`,
+        id: `right-${draggedId}-${otherId}-${Date.now()}`,
         type: 'vertical',
         position: otherBounds.right,
         start: Math.min(draggedBounds.top, otherBounds.top) - 20,
@@ -443,7 +443,7 @@ export class SimpleAlignment {
     // Center vertical alignment
     if (Math.abs(draggedBounds.centerX - otherBounds.centerX) < threshold) {
       guides.push({
-        id: `vcenter-${draggedId}-${otherId}`,
+        id: `vcenter-${draggedId}-${otherId}-${Date.now()}`,
         type: 'vertical',
         position: otherBounds.centerX,
         start: Math.min(draggedBounds.top, otherBounds.top) - 20,
@@ -468,7 +468,7 @@ export class SimpleAlignment {
     // Top edge alignment
     if (Math.abs(draggedBounds.top - otherBounds.top) < threshold) {
       guides.push({
-        id: `top-${draggedId}-${otherId}`,
+        id: `top-${draggedId}-${otherId}-${Date.now()}`,
         type: 'horizontal',
         position: otherBounds.top,
         start: Math.min(draggedBounds.left, otherBounds.left) - 20,
@@ -480,7 +480,7 @@ export class SimpleAlignment {
     // Bottom edge alignment
     if (Math.abs(draggedBounds.bottom - otherBounds.bottom) < threshold) {
       guides.push({
-        id: `bottom-${draggedId}-${otherId}`,
+        id: `bottom-${draggedId}-${otherId}-${Date.now()}`,
         type: 'horizontal',
         position: otherBounds.bottom,
         start: Math.min(draggedBounds.left, otherBounds.left) - 20,
@@ -492,7 +492,7 @@ export class SimpleAlignment {
     // Center horizontal alignment
     if (Math.abs(draggedBounds.centerY - otherBounds.centerY) < threshold) {
       guides.push({
-        id: `hcenter-${draggedId}-${otherId}`,
+        id: `hcenter-${draggedId}-${otherId}-${Date.now()}`,
         type: 'horizontal',
         position: otherBounds.centerY,
         start: Math.min(draggedBounds.left, otherBounds.left) - 20,
@@ -540,7 +540,7 @@ export class SimpleAlignment {
       if (horizontalDistance > 10) { // Only show meaningful spacing
         // Create ONE spacing measurement in the center (correct behavior)
         spacings.push({
-          id: `hspacing-${draggedId}-${otherId}`,
+          id: `hspacing-${draggedId}-${otherId}-${Date.now()}`,
           distance: Math.round(horizontalDistance * 10) / 10, // Round to 1 decimal
           position: { x: labelX, y: labelY },
           direction: 'horizontal',
@@ -576,7 +576,7 @@ export class SimpleAlignment {
       if (verticalDistance > 10) { // Only show meaningful spacing
         // Create ONE spacing measurement in the center (correct behavior)
         spacings.push({
-          id: `vspacing-${draggedId}-${otherId}`,
+          id: `vspacing-${draggedId}-${otherId}-${Date.now()}`,
           distance: Math.round(verticalDistance * 10) / 10, // Round to 1 decimal
           position: { x: labelX, y: labelY },
           direction: 'vertical',

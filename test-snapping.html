@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Land Visualizer - Magnetic Snapping Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: #2563eb;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .step.warning {
+            border-left-color: #ffc107;
+            background: #fff8e1;
+        }
+        .app-link {
+            display: inline-block;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 500;
+            margin: 10px 0;
+        }
+        .app-link:hover {
+            background: #1d4ed8;
+        }
+        .checklist {
+            list-style-type: none;
+            padding: 0;
+        }
+        .checklist li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .checklist li:before {
+            content: '☐';
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        .code-highlight {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 Land Visualizer - Magnetic Snapping Test Guide</h1>
+        <p>Test the magnetic snapping functionality for alignment lines</p>
+        <a href="http://localhost:5175" class="app-link" target="_blank">Open Land Visualizer →</a>
+    </div>
+
+    <div class="test-section">
+        <h2>🔍 What We're Testing</h2>
+        <p>The <strong>magnetic snapping to purple dashed alignment lines</strong> should only work when the <span class="code-highlight">Snap</span> toggle is <strong>ON</strong>.</p>
+
+        <div class="step">
+            <strong>Expected Behavior:</strong>
+            <ul>
+                <li><strong>Snap OFF:</strong> Purple dashed lines appear but shapes DON'T magnetically snap to them</li>
+                <li><strong>Snap ON:</strong> Purple dashed lines appear AND shapes magnetically snap when dragged close (within 8 meters)</li>
+                <li><strong>Visual Feedback:</strong> Green "SNAP" confirmation badge appears when magnetic snapping is active</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📋 Test Steps</h2>
+
+        <div class="step">
+            <h3>Step 1: Create Test Shapes</h3>
+            <ol>
+                <li>Select the <strong>Rectangle tool</strong></li>
+                <li>Create at least 3 rectangles in a horizontal or vertical line</li>
+                <li>Space them roughly equally (don't worry about precision yet)</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Test with Snap OFF</h3>
+            <ol>
+                <li>Click the <strong>Grid button</strong> to turn Snap <strong>OFF</strong> (should show "Free move")</li>
+                <li>Select a shape and drag it to disturb the alignment</li>
+                <li>Drag the shape back toward the alignment line</li>
+                <li><strong>Verify:</strong> Purple dashed lines appear but the shape does NOT snap to them</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Test with Snap ON</h3>
+            <ol>
+                <li>Click the <strong>Grid button</strong> to turn Snap <strong>ON</strong> (should show "1m snap")</li>
+                <li>Select a shape and drag it to disturb the alignment</li>
+                <li>Drag the shape back toward the alignment line</li>
+                <li><strong>Verify:</strong> Shape magnetically snaps to the purple dashed line when close</li>
+                <li><strong>Look for:</strong> Green "SNAP" confirmation badge when snapping occurs</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Test Different Orientations</h3>
+            <ol>
+                <li>Create shapes in a vertical column</li>
+                <li>Repeat the Snap OFF/ON tests with vertical alignment</li>
+                <li>Test both horizontal and vertical spacing measurements</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>✅ Verification Checklist</h2>
+        <ul class="checklist">
+            <li>Purple dashed alignment lines appear for shape sequences (both Snap ON and OFF)</li>
+            <li>With Snap OFF: No magnetic attraction to purple lines</li>
+            <li>With Snap ON: Shapes snap to purple lines when dragged close</li>
+            <li>Green "SNAP" badge appears during magnetic snapping</li>
+            <li>Purple spacing badges show distance measurements</li>
+            <li>8-meter threshold for magnetic snapping activation</li>
+            <li>Both horizontal and vertical alignments work</li>
+            <li>Grid snapping and shape snapping work together</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🐛 Issues to Report</h2>
+        <div class="step warning">
+            <strong>Report any of these behaviors:</strong>
+            <ul>
+                <li>Magnetic snapping happens when Snap is OFF</li>
+                <li>No magnetic snapping happens when Snap is ON</li>
+                <li>Purple lines don't appear for aligned shapes</li>
+                <li>Green "SNAP" badge doesn't appear during snapping</li>
+                <li>Spacing measurements are incorrect</li>
+                <li>Console errors during drag operations</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔧 Technical Details</h2>
+        <p><strong>Implementation Notes:</strong></p>
+        <ul>
+            <li>Magnetic snapping is controlled by <span class="code-highlight">state.drawing.snapping?.config?.activeTypes?.size > 0</span></li>
+            <li>Snap threshold is 8 meters for equal spacing detection</li>
+            <li>Purple lines are generated by <span class="code-highlight">SimpleAlignment.detectAlignments()</span></li>
+            <li>Green snap indicators are rendered by <span class="code-highlight">SimpleAlignmentGuides</span> component</li>
+        </ul>
+    </div>
+
+    <script>
+        // Add click handlers for checklist items
+        document.querySelectorAll('.checklist li').forEach(item => {
+            item.style.cursor = 'pointer';
+            item.addEventListener('click', function() {
+                if (this.style.textDecoration === 'line-through') {
+                    this.style.textDecoration = 'none';
+                    this.style.opacity = '1';
+                    this.querySelector('::before') ? null : (this.innerHTML = this.innerHTML.replace('☑', '☐'));
+                } else {
+                    this.style.textDecoration = 'line-through';
+                    this.style.opacity = '0.6';
+                    this.innerHTML = this.innerHTML.replace('☐', '☑');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

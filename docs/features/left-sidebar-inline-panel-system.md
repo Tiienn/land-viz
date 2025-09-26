@@ -101,31 +101,63 @@ const handleFeatureClick = () => {
 - **Component**: `CalculatorDemo`
 - **State**: `calculatorExpanded`
 - **Content**: Mathematical operations, unit conversion tools
-- **Header**: "Calculator" with calculator icon and close button
+- **Header**: "Calculator" with standardized close arrow
 
 ### **2. Layers (420px width)**
 - **Purpose**: Layer management and organization
 - **Component**: `LayerPanel`
 - **State**: `layersExpanded`
 - **Content**: Layer list, visibility controls, ordering
-- **Header**: "Layers" with layers icon and close button
+- **Header**: "Layers" with standardized close arrow
 
 ### **3. Compare (420px width)**
 - **Purpose**: Visual size comparisons with reference objects
 - **Component**: `ComparisonPanel`
 - **State**: `comparisonExpanded`
 - **Content**: Object categories, search, calculations
-- **Header**: "Visual Comparison" with comparison icon and close button
+- **Header**: "Visual Comparison" with standardized close arrow
+
+### **4. TidyUp (420px width)**
+- **Purpose**: Smart object alignment and distribution
+- **Component**: `AlignmentControls`
+- **State**: `tidyUpExpanded`
+- **Content**: Shape alignment tools, equal spacing distribution
+- **Header**: "TidyUp" with standardized close arrow
 
 ## 🎨 Design Standards
 
-### **Standardized Header Design**
+### **Button Selection States (Updated September 2025)**
+All left sidebar buttons now feature modern selection styling:
+- **Selected Background**: Blue (`#3b82f6`) instead of light blue
+- **Selected Text**: White (`#ffffff`) for better contrast
+- **Selected Icons**: White (`#ffffff`) for consistency
+- **Hover State**: Light gray (`#f3f4f6`) for unselected buttons
+- **Transition**: Smooth 0.2s ease transition for all state changes
+
+### **Button Styling Pattern**
+```jsx
+<button style={{
+  background: buttonExpanded ? '#3b82f6' : 'transparent',
+  color: buttonExpanded ? '#ffffff' : '#374151',
+  // ... other styles
+}}>
+  <Icon color={buttonExpanded ? "#ffffff" : "#000000"} />
+  <span style={{
+    color: buttonExpanded ? '#ffffff' : '#374151',
+  }}>
+    Button Text
+  </span>
+</button>
+```
+
+### **Standardized Header Design (Updated September 2025)**
 All inline panels now feature identical header structures:
-- **Layout**: Title with icon on left, close button on right
-- **Typography**: 16px bold title text in `#1f2937`
-- **Icon Style**: 20x20px SVG icons in `#6b7280`
-- **Close Button**: "◀" arrow pointing toward sidebar collapse
-- **Background**: Light gray (`#fafafa`) with bottom border
+- **Layout**: Clean title on left, close button on right (NO ICONS)
+- **Typography**: 16px bold (700 weight) title text in `#1f2937`
+- **Close Button**: "◀" arrow (24px font size) pointing toward sidebar collapse
+- **Background**: Light gray (`#f9fafb`) with bottom border (`#e5e7eb`)
+- **Header Spacing**: `justifyContent: 'space-between'` for proper distribution
+- **Close Button Styling**: `padding: '4px 8px'`, `fontSize: '24px'`, `lineHeight: 1`
 - **Hover Effects**: Close button highlights to `#f3f4f6`
 
 ### **Visual Consistency**
@@ -135,15 +167,12 @@ All inline panels now feature identical header structures:
 - **Height**: `maxHeight: 100vh` for full viewport utilization
 - **Width**: Standardized 420px for all panels
 
-### **Header Pattern**
+### **Header Pattern (Updated September 2025)**
 ```jsx
-function FeaturePanelHeader({ onClose, title, iconSvg }) {
+function FeaturePanelHeader({ onClose, title }) {
   return (
     <div style={styles.header}>
       <h3 style={styles.title}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={styles.titleIcon}>
-          {iconSvg}
-        </svg>
         {title}
       </h3>
       <button
@@ -158,6 +187,37 @@ function FeaturePanelHeader({ onClose, title, iconSvg }) {
     </div>
   );
 }
+
+// Required Styles
+const styles = {
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: '#f9fafb',
+    flexShrink: 0
+  },
+  title: {
+    margin: 0,
+    fontSize: '16px',
+    fontWeight: 700,
+    color: '#1f2937'
+  },
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    fontSize: '24px',
+    cursor: 'pointer',
+    color: '#6b7280',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    transition: 'all 200ms ease',
+    lineHeight: 1,
+    fontWeight: 300
+  }
+};
 ```
 
 ### **Close Button Standards**

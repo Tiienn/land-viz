@@ -1,9 +1,10 @@
-import { useRef, useImperativeHandle, forwardRef, useCallback, useEffect } from 'react';
+import { useRef, useImperativeHandle, forwardRef, useCallback, useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { OrbitControls } from '@react-three/drei';
 import { Vector3 } from 'three';
 import type { Point3D } from '@/types';
+import { useAppStore } from '@/store/useAppStore';
 
 export interface CameraControllerRef {
   focusOnPoint: (point: Point3D, duration?: number) => void;
@@ -38,6 +39,11 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
   ) => {
     const controlsRef = useRef<OrbitControlsImpl>(null);
     const { camera, gl } = useThree();
+    const { is2DMode, setZoom2D } = useAppStore(state => ({
+      is2DMode: state.viewState?.is2DMode || false,
+      setZoom2D: state.setZoom2D
+    }));
+
     const animationRef = useRef<{
       isAnimating: boolean;
       startTime: number;
@@ -152,6 +158,60 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
     }));
 
 
+    // Dynamic control configuration based on 2D/3D mode
+    const controlConfig = useMemo(() => {
+      if (is2DMode) {
+        return {
+          enableRotate: false,     // No rotation in 2D
+          enablePan: true,
+          enableZoom: true,
+          panSpeed: 2.0,          // Faster pan in 2D
+          zoomSpeed: 3.0,         // Faster zoom in 2D
+          rotateSpeed: 0,         // No rotation
+          mouseButtons: {
+            LEFT: undefined,       // Disable left click
+            MIDDLE: 2,            // Pan with middle (THREE.MOUSE.PAN = 2)
+            RIGHT: undefined      // Disable right click in 2D
+          },
+          touches: {
+            ONE: 2,               // Pan with one finger
+            TWO: 3                // Zoom with two fingers
+          }
+        };
+      }
+
+      // Existing 3D configuration
+      return {
+        enableRotate: true,
+        enablePan: true,
+        enableZoom: true,
+        panSpeed: 1.5,
+        zoomSpeed: 2.0,
+        rotateSpeed: 1.0,
+        mouseButtons: {
+          LEFT: undefined,        // Left-click does nothing
+          MIDDLE: 2,             // Middle-click for PAN
+          RIGHT: 0               // Right-click for ROTATE/orbit
+        }
+      };
+    }, [is2DMode]);
+
+    // Handle zoom changes in 2D mode
+    useEffect(() => {
+      if (is2DMode && controlsRef.current) {
+        const handleZoomChange = () => {
+          if (camera && 'zoom' in camera) {
+            setZoom2D(camera.zoom);
+          }
+        };
+
+        controlsRef.current.addEventListener('change', handleZoomChange);
+        return () => {
+          controlsRef.current?.removeEventListener('change', handleZoomChange);
+        };
+      }
+    }, [is2DMode, camera, setZoom2D]);
+
     const handleChange = useCallback(() => {
       if (onCameraChange && controlsRef.current) {
         const position = {
@@ -212,20 +272,11 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
         ref={controlsRef}
         maxDistance={maxDistance}
         minDistance={minDistance}
-        maxPolarAngle={maxPolarAngle}
+        maxPolarAngle={is2DMode ? undefined : maxPolarAngle}
+        minPolarAngle={is2DMode ? 0 : undefined}
         dampingFactor={dampingFactor}
         enableDamping
-        enablePan
-        enableZoom={true}
-        enableRotate
-        zoomSpeed={2.0}
-        panSpeed={1.5}
-        rotateSpeed={1.0}
-        mouseButtons={{
-          LEFT: undefined, // Left-click does nothing
-          MIDDLE: 2,  // Middle-click for PAN (THREE.MOUSE.PAN = 2)
-          RIGHT: 0    // Right-click for ROTATE/orbit (THREE.MOUSE.ROTATE = 0)
-        }}
+        {...controlConfig}
         onChange={handleChange}
       />
     );

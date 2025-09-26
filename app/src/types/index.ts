@@ -42,10 +42,13 @@ export interface Shape {
   rotation?: ShapeRotation;
 }
 
-export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline';
+export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline' | 'line';
+
+// Re-export ViewState for easy import
+export type { ViewState };
 
 // Drawing tool types
-export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate' | 'measure';
+export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate' | 'measure' | 'line';
 
 export interface DrawingState {
   activeTool: DrawingTool;
@@ -105,6 +108,8 @@ export interface DrawingState {
   };
   // Measurement state (only available in 'measure' mode)
   measurement: MeasurementState;
+  // Line tool state (only available in 'line' mode)
+  lineTool: LineToolState;
 }
 
 // ================================
@@ -167,6 +172,54 @@ export interface MeasurementState {
   showMeasurements: boolean;
   /** Current unit preference for new measurements */
   unit: 'metric' | 'imperial' | 'toise';
+}
+
+// ================================
+// LINE TOOL SYSTEM TYPES
+// ================================
+
+/**
+ * Line segment for precision line drawing
+ */
+export interface LineSegment {
+  /** Unique identifier for the line segment */
+  id: string;
+  /** Starting point of the line */
+  startPoint: Point2D;
+  /** Ending point of the line */
+  endPoint: Point2D;
+  /** Calculated distance between points */
+  distance: number;
+  /** When this segment was created */
+  created: Date;
+}
+
+/**
+ * Current state of the line tool system
+ */
+export interface LineToolState {
+  /** Whether line tool is currently active */
+  isActive: boolean;
+  /** Whether user is currently drawing a line */
+  isDrawing: boolean;
+  /** First point of current line (if drawing) */
+  startPoint: Point2D | null;
+  /** Current distance input value */
+  inputValue: string;
+  /** Current numeric distance parsed from input */
+  currentDistance: number | null;
+  /** Preview end point position (live during drawing) */
+  previewEndPoint: Point2D | null;
+  /** Array of completed line segments */
+  segments: LineSegment[];
+  /** Whether waiting for distance input */
+  isWaitingForInput: boolean;
+  /** Position where distance input should appear */
+  inputPosition: Point2D;
+  /** Whether distance input is visible */
+  showInput: boolean;
+  /** Whether in multi-segment mode */
+  isMultiSegment: boolean;
 }
 
 // Area unit types for Insert Area feature
@@ -259,6 +312,21 @@ export interface Measurements {
   units: 'metric' | 'imperial' | 'toise';
 }
 
+// View state for 2D/3D modes
+export interface ViewState {
+  is2DMode: boolean;
+  cameraType: 'perspective' | 'orthographic';
+  viewAngle: 'top' | '3d';
+  zoom2D: number;
+  lastPerspectivePosition?: Point3D;
+  lastPerspectiveTarget?: Point3D;
+  transition: {
+    isAnimating: boolean;
+    startTime: number;
+    duration: number;
+  };
+}
+
 // Application state
 export interface AppState {
   shapes: Shape[];
@@ -274,6 +342,7 @@ export interface AppState {
   presets: import('./presets').PresetsState; // Area presets state
   comparison: import('./referenceObjects').ComparisonState; // Visual comparison tool state
   conversion: import('./conversion').ConversionState; // Unit conversion tool state
+  viewState: ViewState; // 2D/3D view state
 }
 
 export interface DragState {

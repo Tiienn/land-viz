@@ -283,12 +283,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
       {inline && (
         <div style={headerStyles.header}>
           <h3 style={headerStyles.title}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={headerStyles.titleIcon}>
-              <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-              <path d="M2 8h20"></path>
-              <path d="M6 12h8"></path>
-              <path d="M6 16h6"></path>
-            </svg>
             Layers
           </h3>
           <button

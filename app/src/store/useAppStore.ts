@@ -11,9 +11,10 @@ import { logger } from '../utils/logger';
 import { convertToSquareMeters, calculateGridAwareDimensions, getUnitLabel, calculateSmartGridPosition, generateShapeFromArea } from '../utils/areaCalculations';
 import { SimpleAlignment, type SpacingMeasurement } from '../services/simpleAlignment';
 import { MeasurementUtils, MEASUREMENT_CONSTANTS } from '../utils/measurementUtils';
+import { calculateDirection, applyDistance, parseDistance } from '../utils/precisionMath';
 import { defaultAreaPresets } from '../data/areaPresets';
 import { loadCustomPresets, saveCustomPresets } from '../utils/presetStorage';
-import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState } from '../types';
+import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState, LineSegment } from '../types';
 import type { AreaPreset, PresetsState, PresetCategory } from '../types/presets';
 import type { ConversionActions } from '../types/conversion';
 
@@ -122,6 +123,22 @@ interface AppStore extends AppState {
   setMeasurementUnit: (unit: 'metric' | 'imperial' | 'toise') => void;
   toggleMeasurementDisplay: () => void;
 
+  // Line tool actions (only available in 'line' mode)
+  activateLineTool: () => void;
+  deactivateLineTool: () => void;
+  startLineDrawing: (point: Point2D) => void;
+  updateLinePreview: (point: Point2D) => void;
+  updateDistanceInput: (value: string) => void;
+  showDistanceInput: () => void;
+  hideDistanceInput: () => void;
+  confirmLineDistance: () => void;
+  cancelLineDrawing: () => void;
+  completeLine: () => void;
+  enableMultiSegmentMode: () => void;
+  clearAllLineSegments: () => void;
+  removeLastLineSegment: () => void;
+  toggleMultiSegmentMode: () => void;
+
   // History actions
   undo: () => void;
   redo: () => void;
@@ -181,6 +198,13 @@ interface AppStore extends AppState {
   setInputUnit: (unit: AreaUnit) => void;
   clearConversion: () => void;
   setInputError: (error: string | null) => void;
+
+  // View Mode actions (2D/3D)
+  setViewMode: (mode: '2D' | '3D') => void;
+  toggleViewMode: () => void;
+  setZoom2D: (zoom: number) => void;
+  saveCurrentView: () => void;
+  restorePerspectiveView: () => void;
 }
 
 const generateId = (): string => {
@@ -325,6 +349,20 @@ const getDefaultDrawingState = () => ({
     selectedMeasurementId: null,
     showMeasurements: true,
     unit: MEASUREMENT_CONSTANTS.DEFAULT_UNIT
+  },
+  // Line tool state
+  lineTool: {
+    isActive: false,
+    isDrawing: false,
+    startPoint: null,
+    inputValue: '',
+    currentDistance: null,
+    previewEndPoint: null,
+    segments: [],
+    isWaitingForInput: false,
+    inputPosition: { x: 0, y: 0 },
+    showInput: false,
+    isMultiSegment: false
   }
 });
 
@@ -415,6 +453,19 @@ const createInitialState = (): AppState => {
       currentInputUnit: 'sqm',
       lastValidValue: null,
       inputError: null,
+    },
+    viewState: {
+      is2DMode: false,
+      cameraType: 'perspective' as const,
+      viewAngle: '3d' as const,
+      zoom2D: 1,
+      lastPerspectivePosition: undefined,
+      lastPerspectiveTarget: undefined,
+      transition: {
+        isAnimating: false,
+        startTime: 0,
+        duration: 300,
+      },
     },
   };
   
@@ -648,6 +699,26 @@ export const useAppStore = create<AppStore>()(
               maintainAspectRatio: tool === 'select' ? prevState.drawing.maintainAspectRatio : false,
               // ATOMIC CLEAR: Always clear liveResizePoints when leaving select tool
               liveResizePoints: tool === 'select' ? prevState.drawing.liveResizePoints : null,
+              // Line tool activation/deactivation
+              lineTool: tool === 'line'
+                ? { ...prevState.drawing.lineTool, isActive: true }
+                : prevState.drawing.activeTool === 'line'
+                  ? {
+                      isActive: false,
+                      isDrawing: false,
+                      startPoint: null,
+                      inputValue: '',
+                      currentDistance: null,
+                      previewEndPoint: null,
+                      segments: prevState.drawing.lineTool.segments,
+                      isWaitingForInput: false,
+                      inputPosition: { x: 0, y: 0 },
+                      showInput: false,
+                    inputPosition: { x: 0, y: 0 },
+                inputPosition: { x: 0, y: 0 },
+                      isMultiSegment: false
+                    }
+                  : prevState.drawing.lineTool,
             },
             // Clear hover state when switching away from select tool
             hoveredShapeId: tool === 'select' ? prevState.hoveredShapeId : null,
@@ -1625,8 +1696,10 @@ export const useAppStore = create<AppStore>()(
             const otherShapes = state.shapes.filter(s => s.id !== state.dragState.draggedShapeId);
             const result = SimpleAlignment.detectAlignments(tempShape, otherShapes);
 
-            // Phase 4: Apply magnetic snapping for equal distribution
-            if (result.snapPosition) {
+            // Phase 4: Apply magnetic snapping for equal distribution (only when Grid snap is enabled)
+            const snapEnabled = state.drawing.snapping?.config?.activeTypes?.has?.('grid');
+
+            if (result.snapPosition && snapEnabled) {
               const snapThreshold = 8; // 8 meters threshold for snapping
               const distanceToSnap = Math.sqrt(
                 Math.pow(result.snapPosition.x - tempShape.points[0].x, 2) +
@@ -2973,6 +3046,448 @@ export const useAppStore = create<AppStore>()(
         );
       },
 
+      // Line tool actions
+      activateLineTool: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              activeTool: 'line',
+              lineTool: {
+                ...state.drawing.lineTool,
+                isActive: true
+              }
+            }
+          }),
+          false,
+          'activateLineTool'
+        );
+      },
+
+      deactivateLineTool: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                isActive: false,
+                isDrawing: false,
+                startPoint: null,
+                inputValue: '',
+                currentDistance: null,
+                previewEndPoint: null,
+                isWaitingForInput: false,
+                showInput: false,
+                inputPosition: { x: 0, y: 0 }
+              }
+            }
+          }),
+          false,
+          'deactivateLineTool'
+        );
+      },
+
+      startLineDrawing: (point: Point2D) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                isDrawing: true,
+                startPoint: point,
+                isWaitingForInput: true,
+                inputPosition: point,
+                showInput: true,
+                inputValue: '',
+                currentDistance: null,
+                previewEndPoint: null
+              }
+            }
+          }),
+          false,
+          'startLineDrawing'
+        );
+      },
+
+      updateLinePreview: (point: Point2D) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                previewEndPoint: point
+              }
+            }
+          }),
+          false,
+          'updateLinePreview'
+        );
+      },
+
+      updateDistanceInput: (value: string) => {
+        const parsedDistance = parseDistance(value);
+
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                inputValue: value,
+                currentDistance: parsedDistance
+              }
+            }
+          }),
+          false,
+          'updateDistanceInput'
+        );
+      },
+
+      showDistanceInput: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                showInput: true
+              }
+            }
+          }),
+          false,
+          'showDistanceInput'
+        );
+      },
+
+      hideDistanceInput: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                showInput: false,
+                inputPosition: { x: 0, y: 0 },
+                inputValue: '',
+                currentDistance: null
+              }
+            }
+          }),
+          false,
+          'hideDistanceInput'
+        );
+      },
+
+      confirmLineDistance: () => {
+        const state = get();
+        const { lineTool } = state.drawing;
+
+        if (lineTool.startPoint && lineTool.currentDistance && lineTool.currentDistance > 0 && lineTool.previewEndPoint) {
+          // Calculate precise end point using direction and distance
+          const direction = calculateDirection(lineTool.startPoint, lineTool.previewEndPoint);
+          const preciseEndPoint = applyDistance(lineTool.startPoint, direction, lineTool.currentDistance);
+
+          if (lineTool.isMultiSegment) {
+            // Multi-segment mode: Create segment and continue to next
+            const segment: LineSegment = {
+              id: `segment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              startPoint: lineTool.startPoint,
+              endPoint: preciseEndPoint,
+              distance: lineTool.currentDistance,
+              created: new Date()
+            };
+
+            // Check if we're close to the first point to close the shape
+            const firstPoint = lineTool.segments.length > 0 ? lineTool.segments[0].startPoint : lineTool.startPoint;
+            const distanceToFirst = Math.sqrt(
+              Math.pow(preciseEndPoint.x - firstPoint.x, 2) + Math.pow(preciseEndPoint.y - firstPoint.y, 2)
+            );
+
+            const closeThreshold = 4.0; // 4 meters threshold for closing
+
+            if (lineTool.segments.length >= 2 && distanceToFirst < closeThreshold) {
+              // Close the shape - create a polyline from all segments
+              const allPoints: Point2D[] = [];
+
+              // Add all segment points
+              if (lineTool.segments.length > 0) {
+                allPoints.push(lineTool.segments[0].startPoint);
+                lineTool.segments.forEach(seg => {
+                  allPoints.push(seg.endPoint);
+                });
+              }
+              allPoints.push(preciseEndPoint);
+
+              // Create polyline shape (closed)
+              const polylineShape: Omit<Shape, 'id' | 'created' | 'modified'> = {
+                name: `Multi-Line ${state.shapes.length + 1}`,
+                points: allPoints,
+                type: 'polyline',
+                color: '#3b82f6',
+                visible: true,
+                layerId: state.activeLayerId
+              };
+
+              get().addShape(polylineShape);
+
+              // Reset line tool
+              set(
+                state => ({
+                  drawing: {
+                    ...state.drawing,
+                    lineTool: {
+                      ...state.drawing.lineTool,
+                      isDrawing: false,
+                      isMultiSegment: false,
+                      segments: [],
+                      startPoint: null,
+                      inputValue: '',
+                      currentDistance: null,
+                      previewEndPoint: null,
+                      isWaitingForInput: false,
+                      showInput: false,
+                      inputPosition: { x: 0, y: 0 }
+                    }
+                  }
+                }),
+                false,
+                'confirmLineDistance_closeShape'
+              );
+            } else {
+              // Continue multi-segment drawing
+              set(
+                state => ({
+                  drawing: {
+                    ...state.drawing,
+                    lineTool: {
+                      ...state.drawing.lineTool,
+                      segments: [...state.drawing.lineTool.segments, segment],
+                      startPoint: preciseEndPoint, // Next segment starts where this one ended
+                      inputValue: '',
+                      currentDistance: null,
+                      previewEndPoint: null,
+                      isWaitingForInput: true, // Wait for next distance input
+                      showInput: true,
+                      inputPosition: preciseEndPoint,
+                      // Explicitly preserve multi-segment state
+                      isMultiSegment: true,
+                      isDrawing: true
+                    }
+                  }
+                }),
+                false,
+                'confirmLineDistance_multiSegment'
+              );
+
+            }
+          } else {
+            // Single segment mode: Create line shape and complete
+            const lineShape: Omit<Shape, 'id' | 'created' | 'modified'> = {
+              name: `Line ${state.shapes.length + 1}`,
+              points: [lineTool.startPoint, preciseEndPoint],
+              type: 'line',
+              color: '#3b82f6',
+              visible: true,
+              layerId: state.activeLayerId
+            };
+
+            get().addShape(lineShape);
+
+            set(
+              state => ({
+                drawing: {
+                  ...state.drawing,
+                  lineTool: {
+                    ...state.drawing.lineTool,
+                    isDrawing: false,
+                    startPoint: null,
+                    inputValue: '',
+                    currentDistance: null,
+                    previewEndPoint: null,
+                    isWaitingForInput: false,
+                    showInput: false,
+                    inputPosition: { x: 0, y: 0 }
+                  }
+                }
+              }),
+              false,
+              'confirmLineDistance_single'
+            );
+          }
+        }
+      },
+
+      cancelLineDrawing: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                isDrawing: false,
+                startPoint: null,
+                inputValue: '',
+                currentDistance: null,
+                previewEndPoint: null,
+                isWaitingForInput: false,
+                showInput: false,
+                inputPosition: { x: 0, y: 0 }
+              }
+            }
+          }),
+          false,
+          'cancelLineDrawing'
+        );
+      },
+
+      completeLine: () => {
+        const state = get();
+        const { lineTool } = state.drawing;
+
+        if (lineTool.segments.length > 0) {
+          // Convert segments to polyline shape
+          const allPoints: Point2D[] = [];
+
+          // Add start point of first segment
+          allPoints.push(lineTool.segments[0].startPoint);
+
+          // Add end point of each segment
+          lineTool.segments.forEach(segment => {
+            allPoints.push(segment.endPoint);
+          });
+
+          // Create polyline shape from segments
+          const polylineShape: Omit<Shape, 'id' | 'created' | 'modified'> = {
+            name: `Multi-Line ${state.shapes.length + 1}`,
+            points: allPoints,
+            type: 'polyline',
+            color: '#3b82f6',
+            visible: true,
+            layerId: state.activeLayerId
+          };
+
+          get().addShape(polylineShape);
+
+          // Clear line tool state
+          set(
+            state => ({
+              drawing: {
+                ...state.drawing,
+                lineTool: {
+                  ...state.drawing.lineTool,
+                  isDrawing: false,
+                  isMultiSegment: false,
+                  startPoint: null,
+                  inputValue: '',
+                  currentDistance: null,
+                  previewEndPoint: null,
+                  segments: [],
+                  isWaitingForInput: false,
+                  showInput: false,
+                inputPosition: { x: 0, y: 0 }
+                }
+              }
+            }),
+            false,
+            'completeLine_multiSegment'
+          );
+        } else {
+          // Single segment, just confirm the current distance
+          get().confirmLineDistance();
+        }
+      },
+
+      clearAllLineSegments: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                segments: []
+              }
+            }
+          }),
+          false,
+          'clearAllLineSegments'
+        );
+      },
+
+      removeLastLineSegment: () => {
+        set(
+          state => {
+            const { lineTool } = state.drawing;
+            if (lineTool.segments.length === 0) {
+              return state; // No segments to remove
+            }
+
+            const newSegments = lineTool.segments.slice(0, -1);
+
+            // Update the start point for the next segment
+            let newStartPoint = lineTool.startPoint;
+            if (newSegments.length > 0) {
+              // If there are remaining segments, start from the last segment's end point
+              const lastSegment = newSegments[newSegments.length - 1];
+              newStartPoint = lastSegment.endPoint;
+            }
+
+            return {
+              drawing: {
+                ...state.drawing,
+                lineTool: {
+                  ...lineTool,
+                  segments: newSegments,
+                  startPoint: newStartPoint,
+                  // Clear current input to start fresh
+                  inputValue: '',
+                  currentDistance: null,
+                  // Keep modal open if in multi-segment mode and we still have segments OR if we're starting fresh
+                  isWaitingForInput: lineTool.isMultiSegment,
+                  showInput: lineTool.isMultiSegment
+                }
+              }
+            };
+          },
+          false,
+          'removeLastLineSegment'
+        );
+      },
+
+      toggleMultiSegmentMode: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                isMultiSegment: !state.drawing.lineTool.isMultiSegment
+              }
+            }
+          }),
+          false,
+          'toggleMultiSegmentMode'
+        );
+      },
+
+      enableMultiSegmentMode: () => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              lineTool: {
+                ...state.drawing.lineTool,
+                isMultiSegment: true
+              }
+            }
+          }),
+          false,
+          'enableMultiSegmentMode'
+        );
+      },
+
       // Utility actions
       clearAll: () => {
         set(
@@ -3027,12 +3542,15 @@ export const useAppStore = create<AppStore>()(
       getTotalArea: () => {
         const state = get();
         let totalArea = 0;
-        
+
         state.shapes.forEach(shape => {
-          const measurements = precisionCalculator.calculateShapeMeasurements(shape);
-          totalArea += parseFloat(measurements.area.squareMeters);
+          // Exclude line shapes from total area calculation since lines don't have area
+          if (shape.type !== 'line') {
+            const measurements = precisionCalculator.calculateShapeMeasurements(shape);
+            totalArea += parseFloat(measurements.area.squareMeters);
+          }
         });
-        
+
         return totalArea.toFixed(2);
       },
 
@@ -3043,11 +3561,14 @@ export const useAppStore = create<AppStore>()(
 
       getAverageArea: () => {
         const state = get();
-        if (state.shapes.length === 0) return '0.00';
-        
+
+        // Count only shapes that have area (exclude lines)
+        const shapesWithArea = state.shapes.filter(shape => shape.type !== 'line');
+        if (shapesWithArea.length === 0) return '0.00';
+
         const totalArea = parseFloat(get().getTotalArea());
-        const averageArea = totalArea / state.shapes.length;
-        
+        const averageArea = totalArea / shapesWithArea.length;
+
         return averageArea.toFixed(2);
       },
 
@@ -3226,7 +3747,21 @@ export const useAppStore = create<AppStore>()(
               rotationStartAngle: 0,
               rotationCenter: null,
               originalRotation: null,
-              activeTool: 'select' // Reset to select tool
+              activeTool: 'select', // Reset to select tool
+              // Reset line tool state
+              lineTool: {
+                isActive: false,
+                isDrawing: false,
+                startPoint: null,
+                inputValue: '',
+                currentDistance: null,
+                previewEndPoint: null,
+                segments: state.drawing.lineTool.segments, // Keep existing segments
+                isWaitingForInput: false,
+                showInput: false,
+                inputPosition: { x: 0, y: 0 },
+                isMultiSegment: false
+              }
             },
             // Clear selections and hover states
             selectedShapeId: null,
@@ -3532,6 +4067,81 @@ export const useAppStore = create<AppStore>()(
           }),
           false,
           'setInputError'
+        );
+      },
+
+      // View Mode actions (2D/3D)
+      setViewMode: (mode: '2D' | '3D') => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              is2DMode: mode === '2D',
+              cameraType: mode === '2D' ? 'orthographic' : 'perspective',
+              viewAngle: mode === '2D' ? 'top' : '3d'
+            }
+          }),
+          false,
+          'setViewMode'
+        );
+      },
+
+      toggleViewMode: () => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              is2DMode: !state.viewState.is2DMode,
+              cameraType: state.viewState.is2DMode ? 'perspective' : 'orthographic',
+              viewAngle: state.viewState.is2DMode ? '3d' : 'top'
+            }
+          }),
+          false,
+          'toggleViewMode'
+        );
+      },
+
+      setZoom2D: (zoom: number) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              zoom2D: Math.max(0.1, Math.min(10, zoom))
+            }
+          }),
+          false,
+          'setZoom2D'
+        );
+      },
+
+      saveCurrentView: () => {
+        // This will be implemented when we have camera access
+        // For now, just a placeholder
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              lastPerspectivePosition: { x: 0, y: 80, z: 80 },
+              lastPerspectiveTarget: { x: 0, y: 0, z: 0 }
+            }
+          }),
+          false,
+          'saveCurrentView'
+        );
+      },
+
+      restorePerspectiveView: () => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              is2DMode: false,
+              cameraType: 'perspective',
+              viewAngle: '3d'
+            }
+          }),
+          false,
+          'restorePerspectiveView'
         );
       },
     }),

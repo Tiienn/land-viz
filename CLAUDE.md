@@ -9,6 +9,7 @@
 - Professional ribbon with SVG icons and tool grouping
 - Full Three.js/React Three Fiber 3D scene
 - Drawing tools: Rectangle, circle, polyline (with imaginary line)
+- **Direct Distance Entry Line Tool: AutoCAD-style precision line drawing with multi-line mode**
 - **Measurement tool: Point-to-point distance measurement with precision**
 - **Visual Comparison Tool: Compare land size to 16+ reference objects (inline panel)**
 - **Comprehensive Unit Conversion: 12 area units including historical French/British measurements**

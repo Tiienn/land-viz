@@ -128,11 +128,11 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
 
         <h2
           style={{
-            margin: '0 0 16px 0',
-            fontSize: '20px',
-            fontWeight: '600',
+            margin: '0 0 20px 0',
+            fontSize: '24px',
+            fontWeight: '700',
             color: '#1F2937',
-            fontFamily: '"Nunito Sans", system-ui, sans-serif'
+            fontFamily: 'Nunito Sans, sans-serif'
           }}
         >
           Insert Area
@@ -143,7 +143,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
             margin: '0 0 20px 0',
             fontSize: '14px',
             color: '#6B7280',
-            fontFamily: '"Nunito Sans", system-ui, sans-serif'
+            fontFamily: 'Nunito Sans, sans-serif'
           }}
         >
           Enter the desired area. A rectangle with exact area will be created.
@@ -160,7 +160,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                   fontWeight: '500',
                   color: '#374151',
                   marginBottom: '6px',
-                  fontFamily: '"Nunito Sans", system-ui, sans-serif'
+                  fontFamily: 'Nunito Sans, sans-serif'
                 }}
               >
                 Area *
@@ -181,7 +181,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                   borderRadius: '8px',
                   padding: '0 12px',
                   fontSize: '14px',
-                  fontFamily: '"Nunito Sans", system-ui, sans-serif',
+                  fontFamily: 'Nunito Sans, sans-serif',
                   outline: 'none',
                   transition: 'border-color 200ms ease'
                 }}
@@ -202,7 +202,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                     fontSize: '12px',
                     color: '#EF4444',
                     margin: '4px 0 0 0',
-                    fontFamily: '"Nunito Sans", system-ui, sans-serif'
+                    fontFamily: 'Nunito Sans, sans-serif'
                   }}
                 >
                   {validation.error}
@@ -219,7 +219,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                   fontWeight: '500',
                   color: '#374151',
                   marginBottom: '6px',
-                  fontFamily: '"Nunito Sans", system-ui, sans-serif'
+                  fontFamily: 'Nunito Sans, sans-serif'
                 }}
               >
                 Unit
@@ -235,7 +235,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                   borderRadius: '8px',
                   padding: '0 12px',
                   fontSize: '14px',
-                  fontFamily: '"Nunito Sans", system-ui, sans-serif',
+                  fontFamily: 'Nunito Sans, sans-serif',
                   backgroundColor: 'white',
                   cursor: 'pointer'
                 }}
@@ -260,7 +260,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
               padding: '12px',
               margin: '16px 0',
               fontSize: '13px',
-              fontFamily: '"Nunito Sans", system-ui, sans-serif'
+              fontFamily: 'Nunito Sans, sans-serif'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -310,14 +310,14 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
             onClick={onClose}
             disabled={isSubmitting}
             style={{
-              padding: '8px 16px',
+              padding: '12px 24px',
               border: '1px solid #D1D5DB',
               borderRadius: '8px',
               backgroundColor: 'white',
               color: '#374151',
-              fontSize: '14px',
-              fontWeight: '500',
-              fontFamily: '"Nunito Sans", system-ui, sans-serif',
+              fontSize: '16px',
+              fontWeight: '600',
+              fontFamily: 'Nunito Sans, sans-serif',
               cursor: isSubmitting ? 'not-allowed' : 'pointer',
               transition: 'background-color 200ms ease'
             }}
@@ -335,16 +335,16 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
             onClick={() => handleSubmit()}
             disabled={!canSubmit}
             style={{
-              padding: '8px 16px',
+              padding: '12px 24px',
               border: 'none',
               borderRadius: '8px',
               background: canSubmit
                 ? 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
                 : '#9CA3AF',
               color: 'white',
-              fontSize: '14px',
-              fontWeight: '500',
-              fontFamily: '"Nunito Sans", system-ui, sans-serif',
+              fontSize: '16px',
+              fontWeight: '600',
+              fontFamily: 'Nunito Sans, sans-serif',
               cursor: canSubmit ? 'pointer' : 'not-allowed',
               transition: 'all 200ms ease'
             }}

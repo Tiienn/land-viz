@@ -39,6 +39,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   // Measurement state selectors
   const isMeasuring = useAppStore(state => state.drawing.measurement.isMeasuring);
 
+  // Line tool state selectors
+  const lineToolState = useAppStore(state => state.drawing.lineTool);
+  const isLineDrawing = useAppStore(state => state.drawing.lineTool.isDrawing);
+
   const startDrawing = useAppStore(state => state.startDrawing);
   const addPoint = useAppStore(state => state.addPoint);
   const finishDrawing = useAppStore(state => state.finishDrawing);
@@ -53,6 +57,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const updateMeasurementPreview = useAppStore(state => state.updateMeasurementPreview);
   const completeMeasurement = useAppStore(state => state.completeMeasurement);
   const cancelMeasurement = useAppStore(state => state.cancelMeasurement);
+
+  // Line tool actions
+  const startLineDrawing = useAppStore(state => state.startLineDrawing);
+  const updateLinePreview = useAppStore(state => state.updateLinePreview);
+  const showDistanceInput = useAppStore(state => state.showDistanceInput);
+  const cancelLineDrawing = useAppStore(state => state.cancelLineDrawing);
   
   // Get the entire store for updating state
   const store = useAppStore;
@@ -194,20 +204,31 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const getWorldPosition = useCallback((event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): Vector3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
     const mouse = new Vector2();
-    
+
     // Calculate normalized device coordinates
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
+
     // Use RaycastManager for optimized ground plane intersection
     const intersection = raycastManager.current.intersectGroundPlane(camera, mouse, 0);
-    
+
     if (intersection) {
       return snapToGridPoint(intersection);
     }
-    
+
     return null;
   }, [camera, gl.domElement, snapToGridPoint]);
+
+  const worldPositionToScreenPosition = useCallback((worldPos: Vector3): Point2D => {
+    // Project 3D world position to screen coordinates
+    const projected = worldPos.clone().project(camera);
+    const rect = gl.domElement.getBoundingClientRect();
+
+    return {
+      x: (projected.x * 0.5 + 0.5) * rect.width,
+      y: (-projected.y * 0.5 + 0.5) * rect.height
+    };
+  }, [camera, gl.domElement]);
 
   const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
     const worldPos = getWorldPosition(event);
@@ -233,11 +254,16 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         updateMeasurementPreview(snappedPos);
       }
 
+      // Handle line tool preview when drawing line
+      if (activeTool === 'line' && isLineDrawing) {
+        updateLinePreview(snappedPos);
+      }
+
       if (onCoordinateChange) {
         onCoordinateChange(worldPos2D, screenPos);
       }
     }
-  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, isMeasuring, updateMeasurementPreview]);
+  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, isMeasuring, updateMeasurementPreview, isLineDrawing, updateLinePreview]);
 
   const handlePointerLeave = useCallback(() => {
     // Clear hover state when mouse leaves the drawing area
@@ -268,6 +294,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   }, [activeTool, hoverShape, store]);
 
   const handleClick = useCallback((event: ThreeEvent<MouseEvent>) => {
+
     // Handle deselection when select tool is active and clicking empty space
     if (activeTool === 'select') {
       // Clear all selections when clicking empty space
@@ -277,7 +304,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       }
       return;
     }
-    
+
     const worldPos = getWorldPosition(event);
     if (!worldPos) return;
 
@@ -290,6 +317,49 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const snappedPos = performSnapDetection(point2D);
 
     switch (activeTool) {
+      case 'line':
+        // Direct Distance Entry line tool
+        // Get fresh state to avoid stale selector issues
+        const freshState = useAppStore.getState();
+        const freshLineToolState = freshState.drawing.lineTool;
+
+        if (!freshLineToolState.isDrawing) {
+          // Start line drawing - place first point
+          startLineDrawing(snappedPos);
+          // Show distance input (positioned beside mouse position indicator)
+          showDistanceInput();
+        } else {
+          // Line tool is active and drawing (using fresh state from above)
+          // Check if we're in multi-segment mode and can close the shape
+          if (freshLineToolState.isMultiSegment && freshLineToolState.segments && freshLineToolState.segments.length >= 2) {
+            // Get the first point of the multi-line shape
+            const firstPoint = freshLineToolState.segments[0].startPoint;
+
+            if (firstPoint) {
+              const distance = Math.sqrt(
+                Math.pow(snappedPos.x - firstPoint.x, 2) + Math.pow(snappedPos.y - firstPoint.y, 2)
+              );
+
+              const closeThreshold = Math.max(gridSize * 2.0, 4.0); // Ensure minimum threshold
+
+              if (distance < closeThreshold) {
+                // First hide the distance input if it's showing
+                const hideDistanceInput = useAppStore.getState().hideDistanceInput;
+                hideDistanceInput();
+
+                // Then complete the multi-line shape
+                const completeMultiLine = useAppStore.getState().completeLine;
+                completeMultiLine();
+                return;
+              }
+            }
+          }
+
+          // For other cases during line drawing, let normal flow handle it
+          // This allows the distance input workflow to work normally
+        }
+        break;
+
       case 'measure':
         // Get fresh state from store directly to avoid stale selector issues
         const currentState = useAppStore.getState();
@@ -391,12 +461,22 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handleContextMenu = useCallback((event: ThreeEvent<MouseEvent>) => {
     event.nativeEvent.preventDefault();
-    if (isDrawing) {
+
+    // Get fresh state to avoid stale selector issues
+    const freshState = useAppStore.getState();
+    const freshIsDrawing = freshState.drawing.isDrawing;
+    const freshIsMeasuring = freshState.drawing.measurement.isMeasuring;
+    const freshIsLineDrawing = freshState.drawing.lineTool.isDrawing;
+
+
+    if (freshIsDrawing) {
       cancelDrawing();
-    } else if (isMeasuring) {
+    } else if (freshIsMeasuring) {
       cancelMeasurement();
+    } else if (freshIsLineDrawing) {
+      cancelLineDrawing();
     }
-  }, [isDrawing, cancelDrawing, isMeasuring, cancelMeasurement]);
+  }, [isDrawing, cancelDrawing, isMeasuring, cancelMeasurement, isLineDrawing, cancelLineDrawing]);
 
   // Cleanup on component unmount
   useEffect(() => {

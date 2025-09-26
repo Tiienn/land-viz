@@ -3,10 +3,12 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { Environment } from '@react-three/drei';
 // Removed Vector3 import to avoid type conflicts
 import CameraController, { type CameraControllerRef } from './CameraController';
+import Camera2DToggle from './Camera2DToggle';
 import DrawingCanvas from './DrawingCanvas';
 import DrawingFeedback from './DrawingFeedback';
 import ShapeRenderer from './ShapeRenderer';
 import MeasurementRenderer from './MeasurementRenderer';
+import PrecisionLinePreview from './PrecisionLinePreview';
 import InfiniteGrid from './GridBackground';
 import BackgroundManager from './BackgroundManager';
 import { SnapIndicator } from './SnapIndicator';
@@ -99,6 +101,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
   return (
     <>
       <CameraCanvasCapture onReady={onCameraCanvasReady} />
+      <Camera2DToggle />
       <ambientLight intensity={0.4} color="#ffffff" />
       <directionalLight
         position={[10, 20, 8]}
@@ -153,6 +156,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       {/* Measurement visualization */}
       <MeasurementRenderer elevation={0.03} />
+
+      {/* Line tool preview */}
+      <PrecisionLinePreview />
 
       {/* Resize handles for selected shapes */}
       <ResizableShapeControls elevation={0.02} />
