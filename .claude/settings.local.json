@@ -72,7 +72,13 @@
       "Bash(start test-snapping.html)",
       "WebFetch(domain:www.cadtutor.net)",
       "Bash(lsof:*)",
-      "mcp__playwright__browser_hover"
+      "mcp__playwright__browser_hover",
+      "Bash(node:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm run test:coverage:*)",
+      "Bash(claude --version)",
+      "Bash(claude update)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

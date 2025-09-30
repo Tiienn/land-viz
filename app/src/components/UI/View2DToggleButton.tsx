@@ -21,33 +21,39 @@ const Square2DIcon = () => (
 );
 
 export const View2DToggleButton: React.FC = () => {
-  const { is2DMode, toggleViewMode } = useAppStore(state => ({
-    is2DMode: state.viewState?.is2DMode || false,
-    toggleViewMode: state.toggleViewMode
-  }));
+  const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
+  const toggleViewMode = useAppStore(state => state.toggleViewMode);
 
   const [isHovered, setIsHovered] = React.useState(false);
 
   const buttonStyle: React.CSSProperties = {
-    padding: '8px 16px',
-    borderRadius: '8px',
+    position: 'fixed',
+    bottom: '20px',
+    right: '20px',
+    padding: '12px 16px',
+    borderRadius: '12px',
     border: 'none',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
     fontSize: '14px',
-    fontWeight: 500,
+    fontWeight: 600,
     color: 'white',
     background: is2DMode
       ? 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'
       : 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)',
-    boxShadow: isHovered ? '0 4px 8px rgba(0, 0, 0, 0.15)' : '0 2px 4px rgba(0, 0, 0, 0.1)',
-    transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
-    transition: 'all 0.2s ease',
+    boxShadow: isHovered
+      ? '0 8px 25px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+      : '0 4px 15px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+    transform: isHovered ? 'translateY(-2px) scale(1.02)' : 'translateY(0) scale(1)',
+    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     fontFamily: 'Nunito Sans, sans-serif',
-    minWidth: '120px',
-    justifyContent: 'center'
+    minWidth: '110px',
+    justifyContent: 'center',
+    zIndex: 1000,
+    backdropFilter: 'blur(10px)',
+    userSelect: 'none'
   };
 
   return (

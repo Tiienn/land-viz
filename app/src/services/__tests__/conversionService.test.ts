@@ -222,7 +222,7 @@ describe('ConversionService', () => {
     it('should convert to all other units except source', () => {
       const results = ConversionService.convertToAllUnits(100, 'sqm');
 
-      expect(results).toHaveLength(5); // 6 total units - 1 source unit
+      expect(results).toHaveLength(11); // 12 total units - 1 source unit
 
       const units = results.map(r => r.unit);
       expect(units).toContain('sqft');
@@ -243,7 +243,7 @@ describe('ConversionService', () => {
       const results = ConversionService.convertToAllUnits(100, 'sqm');
 
       results.forEach(result => {
-        expect(result.formatted).toMatch(/^[\d.]+(\.\d+)?(e[+-]?\d+)?\s+\w+²?$/);
+        expect(result.formatted).toMatch(/^[\d.]+(\.\d+)?(e[+-]?\d+)?\s+[\w\-]+²?$/);
         expect(result.value).toBeGreaterThan(0);
         expect(typeof result.isApproximate).toBe('boolean');
       });

@@ -13,13 +13,13 @@ import InfiniteGrid from './GridBackground';
 import BackgroundManager from './BackgroundManager';
 import { SnapIndicator } from './SnapIndicator';
 import { ActiveSnapIndicator } from './ActiveSnapIndicator';
+import { useAppStore } from '@/store/useAppStore';
 // import AlignmentGuides from './AlignmentGuides';
 import SimpleAlignmentGuides from './SimpleAlignmentGuides';
 import DraggableShapes from './DraggableShapes';
 import ResizableShapeControls from './ResizableShapeControls';
 import RulerSystem from './RulerSystem';
 import type { SceneSettings, Point3D, Point2D } from '@/types';
-import { useAppStore } from '@/store/useAppStore';
 
 export interface SceneManagerRef {
   cameraController: React.RefObject<CameraControllerRef | null>;
@@ -90,6 +90,13 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const finalSettings = { ...defaultSettings, ...settings };
   const alignmentGuides = useAppStore(state => state.drawing.alignment?.activeGuides || []);
   const alignmentConfig = useAppStore(state => state.drawing.alignment?.config);
+
+  // Get current view mode to adjust snap indicator distance
+  const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
+
+  // Calculate appropriate distance limits for snap indicators
+  // 3D camera is at distance ~113 units, 2D camera is at ~100 units
+  const snapIndicatorDistance = is2DMode ? 120 : 150;
 
   // Use new alignment store - temporarily disabled
   // const { showGuides } = useAlignmentStore();
@@ -163,8 +170,8 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Resize handles for selected shapes */}
       <ResizableShapeControls elevation={0.02} />
 
-      {/* Snap Indicators */}
-      <SnapIndicator maxDistance={100} />
+      {/* Snap Indicators - Dynamic distance based on view mode */}
+      <SnapIndicator maxDistance={snapIndicatorDistance} />
       <ActiveSnapIndicator />
 
       {/* Professional Alignment Guides - New Smart System */}

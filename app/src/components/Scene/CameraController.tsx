@@ -39,10 +39,8 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
   ) => {
     const controlsRef = useRef<OrbitControlsImpl>(null);
     const { camera, gl } = useThree();
-    const { is2DMode, setZoom2D } = useAppStore(state => ({
-      is2DMode: state.viewState?.is2DMode || false,
-      setZoom2D: state.setZoom2D
-    }));
+    const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
+    const setZoom2D = useAppStore(state => state.setZoom2D);
 
     const animationRef = useRef<{
       isAnimating: boolean;

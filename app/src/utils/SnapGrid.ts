@@ -8,6 +8,10 @@ export class SnapGrid {
   private grid: Map<string, SnapPoint[]> = new Map();
   private cellSize: number;
   private snapDistance: number;
+  private lastUpdateTime = 0;
+  private readonly UPDATE_INTERVAL = 16; // ~60fps throttling
+  private gridCache = new Map<string, SnapPoint[]>();
+  private readonly CACHE_SIZE_LIMIT = 100;
 
   constructor(cellSize = 10, snapDistance = 1.5) {
     this.cellSize = cellSize;
@@ -26,10 +30,15 @@ export class SnapGrid {
   /**
    * Extract snap points from a shape based on its type
    */
-  private extractSnapPoints(shape: Shape): SnapPoint[] {
+  private extractSnapPoints(shape: Shape, cursorPosition?: Point2D): SnapPoint[] {
     const snapPoints: SnapPoint[] = [];
-    
+
     if (!shape.points || shape.points.length === 0) return snapPoints;
+
+    // Skip snap point generation for incomplete shapes
+    // Rectangle needs at least 2 points, circle needs 2 points, other shapes need at least 2 points for meaningful snapping
+    const minPointsRequired = shape.type === 'polyline' ? 1 : 2;
+    if (shape.points.length < minPointsRequired) return snapPoints;
 
     // Apply rotation if exists
     const points = this.applyRotation(shape.points, shape.rotation);
@@ -85,26 +94,86 @@ export class SnapGrid {
       });
     }
 
-    // Grid intersection points (if enabled)
-    snapPoints.forEach(snapPoint => {
-      const gridX = Math.round(snapPoint.position.x);
-      const gridZ = Math.round(snapPoint.position.y);
-      
-      // Add grid snap if close to grid intersection
-      if (Math.abs(snapPoint.position.x - gridX) < 0.1 && 
-          Math.abs(snapPoint.position.y - gridZ) < 0.1) {
-        snapPoints.push({
-          id: `grid_${gridX}_${gridZ}`,
-          position: { x: gridX, y: gridZ },
+    // Grid intersection points (cursor-proximity based)
+    if (cursorPosition) {
+      this.addNearbyGridPoints(snapPoints, cursorPosition);
+    }
+
+    return snapPoints;
+  }
+
+  /**
+   * Smart validation for grid point generation
+   */
+  private shouldGenerateGridPoint(gridX: number, gridY: number, cursorPos: Point2D, snapRadius: number): boolean {
+    const distance = Math.sqrt(
+      Math.pow(cursorPos.x - gridX, 2) +
+      Math.pow(cursorPos.y - gridY, 2)
+    );
+    return distance <= snapRadius;
+  }
+
+  /**
+   * Generate cache key for grid region
+   */
+  private getGridCacheKey(cursorPosition: Point2D, radius: number): string {
+    const cellX = Math.floor(cursorPosition.x / radius);
+    const cellY = Math.floor(cursorPosition.y / radius);
+    return `${cellX}_${cellY}_${radius}`;
+  }
+
+  /**
+   * Add grid intersection points near cursor position with smart generation and caching
+   */
+  private addNearbyGridPoints(snapPoints: SnapPoint[], cursorPosition: Point2D): void {
+    // OPTION 1 FIX: Use larger radius for grid generation (minimum 2m) to ensure grid points
+    // are found, while keeping actual snap detection precise (handled by SnapIndicator proximity filtering)
+    const searchRadius = Math.max(this.snapDistance, 2.0);
+    const cacheKey = this.getGridCacheKey(cursorPosition, searchRadius);
+
+    // Check cache first
+    if (this.gridCache.has(cacheKey)) {
+      const cachedPoints = this.gridCache.get(cacheKey)!;
+      snapPoints.push(...cachedPoints);
+      return;
+    }
+
+    // Generate new grid points
+    const gridPoints: SnapPoint[] = [];
+    const minX = Math.floor(cursorPosition.x - searchRadius);
+    const maxX = Math.ceil(cursorPosition.x + searchRadius);
+    const minY = Math.floor(cursorPosition.y - searchRadius);
+    const maxY = Math.ceil(cursorPosition.y + searchRadius);
+
+    for (let gridX = minX; gridX <= maxX; gridX++) {
+      for (let gridY = minY; gridY <= maxY; gridY++) {
+        // Only generate if actually close enough (smart generation)
+        if (!this.shouldGenerateGridPoint(gridX, gridY, cursorPosition, searchRadius)) {
+          continue;
+        }
+        // Create new grid point for caching
+        gridPoints.push({
+          id: `grid_${gridX}_${gridY}`,
+          position: { x: gridX, y: gridY },
           type: 'grid',
           strength: 0.4,
           shapeId: 'grid',
-          metadata: { description: `Grid point (${gridX}, ${gridZ})` }
+          metadata: { description: `Grid point (${gridX}, ${gridY})` }
         });
       }
-    });
+    }
 
-    return snapPoints;
+    // Cache the results
+    this.gridCache.set(cacheKey, gridPoints);
+
+    // Limit cache size
+    if (this.gridCache.size > this.CACHE_SIZE_LIMIT) {
+      const firstKey = this.gridCache.keys().next().value;
+      this.gridCache.delete(firstKey);
+    }
+
+    // Add generated points to snap points
+    snapPoints.push(...gridPoints);
   }
 
   /**
@@ -133,11 +202,16 @@ export class SnapGrid {
    * Calculate center point of a shape
    */
   private calculateCenter(points: Point2D[]): Point2D {
+    if (points.length === 0) {
+      // Return origin as fallback, though this should not happen due to earlier checks
+      return { x: 0, y: 0 };
+    }
+
     const sum = points.reduce(
       (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
       { x: 0, y: 0 }
     );
-    
+
     return {
       x: sum.x / points.length,
       y: sum.y / points.length
@@ -165,21 +239,28 @@ export class SnapGrid {
   /**
    * Update snap points from shapes array
    */
-  updateSnapPoints(shapes: Shape[]): void {
+  updateSnapPoints(shapes: Shape[], cursorPosition?: Point2D): void {
+    // Throttle updates to 60fps for performance
+    const now = performance.now();
+    if (now - this.lastUpdateTime < this.UPDATE_INTERVAL) {
+      return;
+    }
+    this.lastUpdateTime = now;
+
     // Clear existing grid
     this.grid.clear();
 
     // Process each shape
     shapes.forEach(shape => {
-      const snapPoints = this.extractSnapPoints(shape);
-      
+      const snapPoints = this.extractSnapPoints(shape, cursorPosition);
+
       snapPoints.forEach(snapPoint => {
         const key = this.getGridKey(snapPoint.position.x, snapPoint.position.y);
-        
+
         if (!this.grid.has(key)) {
           this.grid.set(key, []);
         }
-        
+
         this.grid.get(key)!.push(snapPoint);
       });
     });
@@ -196,13 +277,13 @@ export class SnapGrid {
   findNearestSnapPoint(position: Point2D, maxDistance?: number): SnapPoint | null {
     const searchDistance = maxDistance || this.snapDistance;
     const nearbyKeys = this.getNearbyGridKeys(position, Math.ceil(searchDistance / this.cellSize));
-    
+
     let nearestSnapPoint: SnapPoint | null = null;
     let nearestDistance = searchDistance;
 
     nearbyKeys.forEach(key => {
       const snapPoints = this.grid.get(key) || [];
-      
+
       snapPoints.forEach(snapPoint => {
         const distance = Math.sqrt(
           Math.pow(position.x - snapPoint.position.x, 2) +
@@ -228,7 +309,7 @@ export class SnapGrid {
 
     nearbyKeys.forEach(key => {
       const snapPoints = this.grid.get(key) || [];
-      
+
       snapPoints.forEach(snapPoint => {
         const distance = Math.sqrt(
           Math.pow(position.x - snapPoint.position.x, 2) +
@@ -263,10 +344,10 @@ export class SnapGrid {
    */
   getStats() {
     const totalSnapPoints = Array.from(this.grid.values()).reduce(
-      (sum, points) => sum + points.length, 
+      (sum, points) => sum + points.length,
       0
     );
-    
+
     return {
       gridCells: this.grid.size,
       totalSnapPoints,

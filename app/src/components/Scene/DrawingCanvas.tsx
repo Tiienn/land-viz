@@ -63,7 +63,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const updateLinePreview = useAppStore(state => state.updateLinePreview);
   const showDistanceInput = useAppStore(state => state.showDistanceInput);
   const cancelLineDrawing = useAppStore(state => state.cancelLineDrawing);
-  
+
+  // Cursor position tracking
+  const setCursorPosition = useAppStore(state => state.setCursorPosition);
+
   // Get the entire store for updating state
   const store = useAppStore;
 
@@ -130,9 +133,24 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   // Optimized snap detection function
   const performSnapDetection = useCallback((worldPos2D: Point2D) => {
     const snapConfig = useAppStore.getState().drawing.snapping?.config;
-    
-    if (!snapConfig?.enabled) return worldPos2D;
-    
+
+    if (!snapConfig?.enabled) {
+      // Clear snap points when snapping is disabled
+      store.setState((state) => ({
+        ...state,
+        drawing: {
+          ...state.drawing,
+          snapping: {
+            ...state.drawing.snapping,
+            availableSnapPoints: [],
+            activeSnapPoint: null,
+            snapPreviewPosition: null
+          }
+        }
+      }));
+      return worldPos2D;
+    }
+
     // Update snap grid with current shapes, including active drawing shape with preview
     let allShapes = shapes;
 
@@ -149,44 +167,49 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       }
     }
 
-    snapGrid.current.updateSnapPoints(allShapes);
-    
-    // Find nearest snap point
-    const nearestSnapPoint = snapGrid.current.findNearestSnapPoint(
-      worldPos2D, 
-      snapConfig.distance || 5
+    // Calculate snap radius first
+    const viewState = useAppStore.getState().viewState;
+    const is2DMode = viewState?.is2DMode || false;
+    const baseSnapRadius = snapConfig.snapRadius || 15;
+    // In 2D mode, use very precise radius for CAD-like behavior. 0.05m = 5cm snap radius
+    const snapRadius = is2DMode ? 0.05 : baseSnapRadius;
+
+    // Synchronize SnapGrid's internal snap distance with the actual radius being used
+    snapGrid.current.setSnapDistance(snapRadius);
+
+    snapGrid.current.updateSnapPoints(allShapes, worldPos2D);
+    const nearbySnapPoints = snapGrid.current.findSnapPointsInRadius(worldPos2D, snapRadius);
+
+    // Filter by enabled snap types
+    const filteredSnapPoints = nearbySnapPoints.filter(snap =>
+      snapConfig.activeTypes?.has?.(snap.type)
     );
-    
-    if (nearestSnapPoint) {
-      // Update store with active snap point
-      store.setState((state) => ({
-        ...state,
-        drawing: {
-          ...state.drawing,
-          snapping: {
-            ...state.drawing.snapping,
-            activeSnapPoint: nearestSnapPoint,
-            snapPreviewPosition: nearestSnapPoint.position
-          }
+
+    // Find nearest snap point from filtered points
+    const nearestSnapPoint = snapGrid.current.findNearestSnapPoint(
+      worldPos2D,
+      snapRadius
+    );
+
+    // Update store with both available snap points (for indicators) and active snap point
+    store.setState((state) => ({
+      ...state,
+      drawing: {
+        ...state.drawing,
+        snapping: {
+          ...state.drawing.snapping,
+          availableSnapPoints: filteredSnapPoints, // Show indicators for all nearby snap points
+          activeSnapPoint: nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint : null,
+          snapPreviewPosition: nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint.position : null
         }
-      }));
-      
+      }
+    }));
+
+    // Return snap position if we have an active snap point
+    if (nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type)) {
       return nearestSnapPoint.position;
-    } else {
-      // Clear active snap point
-      store.setState((state) => ({
-        ...state,
-        drawing: {
-          ...state.drawing,
-          snapping: {
-            ...state.drawing.snapping,
-            activeSnapPoint: null,
-            snapPreviewPosition: null
-          }
-        }
-      }));
     }
-    
+
     return worldPos2D;
   }, [shapes, store]);
 
@@ -245,6 +268,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         y: worldPos.z, // Using Z as Y for 2D mapping
       };
 
+      // Update cursor position in store for render-time filtering
+      setCursorPosition(worldPos2D);
+
       // Use optimized snap detection and alignment detection for better performance
       const snappedPos = performSnapDetection(worldPos2D);
       performAlignmentDetection(snappedPos);
@@ -263,14 +289,20 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         onCoordinateChange(worldPos2D, screenPos);
       }
     }
-  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, isMeasuring, updateMeasurementPreview, isLineDrawing, updateLinePreview]);
+  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, isMeasuring, updateMeasurementPreview, isLineDrawing, updateLinePreview, setCursorPosition]);
 
   const handlePointerLeave = useCallback(() => {
+    // Clear cursor position when leaving canvas
+    setCursorPosition(null);
+
     // Clear hover state when mouse leaves the drawing area
     if (activeTool === 'select') {
       hoverShape(null);
     }
-    
+
+    // Clear snap grid to prevent persistent indicators
+    snapGrid.current.clear();
+
     // Clear snap points and alignment guides when leaving the drawing area
     store.setState((state) => ({
       ...state,
@@ -291,7 +323,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         }
       }
     }));
-  }, [activeTool, hoverShape, store]);
+  }, [activeTool, hoverShape, store, setCursorPosition]);
 
   const handleClick = useCallback((event: ThreeEvent<MouseEvent>) => {
 
@@ -477,6 +509,27 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       cancelLineDrawing();
     }
   }, [isDrawing, cancelDrawing, isMeasuring, cancelMeasurement, isLineDrawing, cancelLineDrawing]);
+
+  // Clear snap state when tool changes (defensive state clearing)
+  useEffect(() => {
+    // Clear cursor position and snap grid
+    setCursorPosition(null);
+    snapGrid.current.clear();
+
+    // Clear all snap state
+    store.setState((state) => ({
+      ...state,
+      drawing: {
+        ...state.drawing,
+        snapping: {
+          ...state.drawing.snapping,
+          availableSnapPoints: [],
+          activeSnapPoint: null,
+          snapPreviewPosition: null
+        }
+      }
+    }));
+  }, [activeTool, store, setCursorPosition]);
 
   // Cleanup on component unmount
   useEffect(() => {

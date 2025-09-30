@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
-import { Html } from '@react-three/drei';
+import { Html, Line } from '@react-three/drei';
 import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
@@ -24,6 +24,17 @@ const normalizeAngle = (angle: number): number => {
   while (angle > 180) angle -= 360;
   while (angle <= -180) angle += 360;
   return angle;
+};
+
+/**
+ * Normalize angle to 0-2π range (for cursor rotation mode)
+ */
+const normalizeAngleRadian = (angle: number): number => {
+  let normalized = angle % (2 * Math.PI);
+  if (normalized < 0) {
+    normalized += 2 * Math.PI;
+  }
+  return normalized;
 };
 
 const calculateShapeCenter = (shape: any): Point2D => {
@@ -65,7 +76,9 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   const enterRotateMode = useAppStore(state => state.enterRotateMode);
   const rotateShape = useAppStore(state => state.rotateShape);
   const rotateShapeLive = useAppStore(state => state.rotateShapeLive);
-  
+  const exitCursorRotationMode = useAppStore(state => state.exitCursorRotationMode);
+  const applyCursorRotation = useAppStore(state => state.applyCursorRotation);
+
   // Get global drag state to handle shape dragging transforms
   const globalDragState = useAppStore(state => state.dragState);
   
@@ -77,7 +90,20 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   
   // Use ref to track shift state immediately (avoids stale closure issues)
   const shiftPressedRef = useRef(false);
-  
+
+  // Use ref to track angle immediately (avoids stale closure issues)
+  const angleRef = useRef(0);
+
+  // Use ref to track if actual dragging occurred (prevents accidental clicks from applying rotation)
+  const hasDraggedRef = useRef(false);
+
+  // Cursor rotation mode state (hover-to-rotate)
+  const cursorRotationMode = useAppStore(state => state.drawing.cursorRotationMode);
+  const cursorRotationShapeId = useAppStore(state => state.drawing.cursorRotationShapeId);
+  const [cursorAngle, setCursorAngle] = React.useState(0);
+  const cursorPositionRef = useRef<THREE.Vector2 | null>(null);
+  const cursorAngleRef = useRef(0); // For immediate access in callbacks
+
   // Dragging state
   const dragState = useRef({
     isDragging: false,
@@ -99,6 +125,11 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
   // Find the shape being rotated or show rotation handle for selected shape
   const targetShape = useMemo(() => {
+    // Cursor rotation mode: show handle for the shape being rotated
+    if (cursorRotationMode && cursorRotationShapeId) {
+      return shapes.find(shape => shape.id === cursorRotationShapeId) || null;
+    }
+
     if (drawing.isRotateMode && drawing.rotatingShapeId) {
       return shapes.find(shape => shape.id === drawing.rotatingShapeId) || null;
     }
@@ -110,7 +141,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     }
 
     return null;
-  }, [shapes, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing, shapes.length]);
+  }, [shapes, cursorRotationMode, cursorRotationShapeId, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing, shapes.length]);
 
   // Calculate rotation handle position and rotation center
   const rotationHandlePosition = useMemo(() => {
@@ -221,6 +252,9 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       const mousePoint: Point2D = { x: intersection.x, y: intersection.z };
       const currentMouseAngle = calculateAngle(rotationHandlePosition.center, mousePoint);
       
+      // Mark that actual dragging has occurred (not just a click)
+      hasDraggedRef.current = true;
+
       // Calculate rotation angle relative to start
       let rotationAngle = currentMouseAngle - dragState.current.startMouseAngle;
       rotationAngle = normalizeAngle(rotationAngle);
@@ -244,6 +278,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       
       // Update the display angle and apply to shape (live preview)
       setCurrentAngle(angleToUse);
+      angleRef.current = angleToUse; // Store in ref for immediate access in callbacks
       rotateShapeLive(targetShape.id, angleToUse, rotationHandlePosition.center);
     }
   }, [targetShape, rotationHandlePosition, gl.domElement, camera, raycaster, groundPlane, isShiftPressed, rotateShapeLive]);
@@ -252,14 +287,18 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     if (dragState.current.isDragging &&
         (dragState.current.pointerId === null || event.pointerId === dragState.current.pointerId)) {
 
-      // Commit final rotation to history (if we have a valid target and position)
-      if (targetShape && rotationHandlePosition) {
-        rotateShape(targetShape.id, currentAngle, rotationHandlePosition.center);
+      // Commit final rotation to history ONLY if actual dragging occurred
+      // This prevents accidental clicks from resetting the rotation
+      if (targetShape && rotationHandlePosition && hasDraggedRef.current) {
+        // Use angleRef.current to get the most up-to-date angle value
+        // This avoids stale closure issues with the currentAngle state
+        rotateShape(targetShape.id, angleRef.current, rotationHandlePosition.center);
       }
 
       // Clean up drag state
       dragState.current.isDragging = false;
       dragState.current.pointerId = null;
+      hasDraggedRef.current = false; // Reset drag flag for next interaction
 
       setIsRotating(false);
       setCursorOverride(null);
@@ -269,7 +308,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       document.removeEventListener('pointerup', handlePointerUp, true);
       document.removeEventListener('pointercancel', handlePointerUp, true);
     }
-  }, [handlePointerMove, targetShape, rotationHandlePosition, currentAngle, rotateShape]);
+  }, [handlePointerMove, targetShape, rotationHandlePosition, rotateShape]);
 
   // Keyboard event handlers for Shift key
   useEffect(() => {
@@ -322,10 +361,12 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       dragState.current.isDragging = true;
       dragState.current.startMouseAngle = mouseAngle;
       dragState.current.pointerId = eventData.pointerId;
+      hasDraggedRef.current = false; // Reset flag - will be set to true on first move
 
       // Use the original rotation from the store
       const initialAngle = originalRotation?.angle || 0;
       setCurrentAngle(initialAngle);
+      angleRef.current = initialAngle; // Store in ref for immediate access
       setCursorOverride('grab');
 
       // Capture pointer (safely check if target still exists)
@@ -339,6 +380,193 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       document.addEventListener('pointercancel', handlePointerUp, true);
     }
   }, [targetShape, drawing.isRotateMode, enterRotateMode, gl.domElement, camera, raycaster, groundPlane, rotationHandlePosition, originalRotation, handlePointerMove, handlePointerUp]);
+
+  /**
+   * Cursor rotation mode: Track cursor movement for hover-to-rotate
+   */
+  useEffect(() => {
+    if (!cursorRotationMode || !targetShape || !gl.domElement || !camera || !rotationHandlePosition) {
+      return;
+    }
+
+    const canvas = gl.domElement;
+
+    const handleCursorMove = (event: PointerEvent) => {
+      // Convert screen coordinates to normalized device coordinates
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      // Raycast to find cursor position in world space (on ground plane)
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const cursorPos = new THREE.Vector3();
+      const intersected = raycaster.ray.intersectPlane(groundPlane, cursorPos);
+
+      if (!intersected) return;
+
+      // Store cursor position for guide line rendering
+      cursorPositionRef.current = new THREE.Vector2(cursorPos.x, cursorPos.z);
+
+      // Calculate rotation angle from shape center to cursor (in DEGREES like drag mode)
+      const shapeCenter = rotationHandlePosition.center;
+      const mousePoint: Point2D = { x: cursorPos.x, y: cursorPos.z };
+      let angleDegrees = calculateAngle(shapeCenter, mousePoint);
+
+      // Apply angle snapping if Shift is pressed
+      if (shiftPressedRef.current) {
+        angleDegrees = snapAngleToIncrement(angleDegrees, 45);
+      }
+
+      // Normalize angle to -180 to 180 range
+      angleDegrees = normalizeAngle(angleDegrees);
+
+      // Update state and ref (store in degrees)
+      setCursorAngle(angleDegrees);
+      cursorAngleRef.current = angleDegrees;
+
+      // Apply live rotation in DEGREES (store expects degrees, not radians)
+      rotateShapeLive(targetShape.id, angleDegrees, shapeCenter);
+    };
+
+    // Throttle to 60 FPS (16ms)
+    let throttleTimeout: NodeJS.Timeout | null = null;
+    const throttledHandler = (event: PointerEvent) => {
+      if (throttleTimeout) return;
+      throttleTimeout = setTimeout(() => {
+        handleCursorMove(event);
+        throttleTimeout = null;
+      }, 16);
+    };
+
+    canvas.addEventListener('pointermove', throttledHandler);
+
+    return () => {
+      canvas.removeEventListener('pointermove', throttledHandler);
+      if (throttleTimeout) clearTimeout(throttleTimeout);
+    };
+  }, [
+    cursorRotationMode,
+    targetShape,
+    camera,
+    gl.domElement,
+    rotationHandlePosition,
+    rotateShapeLive,
+    shiftPressedRef,
+    raycaster
+  ]);
+
+  /**
+   * Cursor rotation mode: Handle clicks to confirm rotation
+   */
+  useEffect(() => {
+    if (!cursorRotationMode || !targetShape || !rotationHandlePosition || !gl.domElement) {
+      return;
+    }
+
+    const canvas = gl.domElement;
+    let pointerDownTime = 0;
+    let pointerDownPos = { x: 0, y: 0 };
+    let isValidClick = false;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      // Ignore if dragging the rotation handle
+      if (dragState.current.isDragging) return;
+
+      // Only handle left button (button === 0)
+      if (event.button !== 0) return;
+
+      pointerDownTime = Date.now();
+      pointerDownPos = { x: event.clientX, y: event.clientY };
+      isValidClick = true;
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      // Ignore if dragging the rotation handle
+      if (dragState.current.isDragging) return;
+
+      // Only handle left button
+      if (event.button !== 0) return;
+
+      // Must have a valid pointerdown first
+      if (!isValidClick) return;
+
+      // Check if this was a quick click (not a drag)
+      const timeDiff = Date.now() - pointerDownTime;
+      const posDiff = Math.sqrt(
+        Math.pow(event.clientX - pointerDownPos.x, 2) +
+        Math.pow(event.clientY - pointerDownPos.y, 2)
+      );
+
+      // Only confirm if it was a quick click with minimal movement
+      if (timeDiff < 300 && posDiff < 5) {
+        // Prevent any default behavior
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Apply rotation with history save (in DEGREES)
+        applyCursorRotation(
+          targetShape.id,
+          cursorAngleRef.current,
+          rotationHandlePosition.center
+        );
+
+        // Exit cursor rotation mode
+        exitCursorRotationMode();
+      }
+
+      // Reset flag
+      isValidClick = false;
+    };
+
+    // Listen on canvas with capture phase to get events first
+    canvas.addEventListener('pointerdown', handlePointerDown, true);
+    canvas.addEventListener('pointerup', handlePointerUp, true);
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown, true);
+      canvas.removeEventListener('pointerup', handlePointerUp, true);
+    };
+  }, [cursorRotationMode, targetShape, rotationHandlePosition, applyCursorRotation, gl.domElement]);
+
+  /**
+   * Cursor rotation mode: Handle ESC key to exit
+   */
+  useEffect(() => {
+    if (!cursorRotationMode) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        exitCursorRotationMode();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [cursorRotationMode, exitCursorRotationMode]);
+
+  /**
+   * Cursor rotation mode: Exit when tool or shape selection changes
+   */
+  useEffect(() => {
+    // Only check if currently in cursor rotation mode
+    if (!cursorRotationMode) return;
+
+    // Exit if tool changed away from select
+    if (activeTool !== 'select') {
+      exitCursorRotationMode();
+      return;
+    }
+
+    // Exit if shape selection changed
+    if (!selectedShapeId || selectedShapeId !== cursorRotationShapeId) {
+      exitCursorRotationMode();
+      return;
+    }
+  }, [cursorRotationMode, activeTool, selectedShapeId, cursorRotationShapeId, exitCursorRotationMode]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -461,6 +689,68 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
             {isShiftPressed && <span style={{ marginLeft: '8px', fontSize: '12px' }}>⇧ 45°</span>}
           </div>
         </Html>
+      )}
+
+      {/* Cursor Rotation Mode Visual Guides */}
+      {cursorRotationMode && targetShape && cursorPositionRef.current && rotationHandlePosition && (
+        <>
+          {/* Guide line from center to cursor */}
+          <Line
+            points={[
+              [rotationHandlePosition.center.x, elevation + 0.1, rotationHandlePosition.center.y],
+              [cursorPositionRef.current.x, elevation + 0.1, cursorPositionRef.current.y]
+            ]}
+            color="#9333EA"
+            lineWidth={2}
+            dashed
+            dashSize={0.2}
+            gapSize={0.1}
+          />
+
+          {/* Angle display at cursor */}
+          <Html
+            position={[cursorPositionRef.current.x, elevation + 0.5, cursorPositionRef.current.y]}
+            center
+            style={{ pointerEvents: 'none' }}
+          >
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.8)',
+                color: 'white',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                fontFamily: '"Nunito Sans", sans-serif',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {Math.round(cursorAngle)}°
+              {shiftPressedRef.current && (
+                <span style={{ color: '#10B981', marginLeft: '6px' }}>
+                  SNAP
+                </span>
+              )}
+            </div>
+          </Html>
+
+          {/* Snap indicator ring */}
+          {shiftPressedRef.current && (
+            <mesh
+              position={[cursorPositionRef.current.x, elevation + 0.05, cursorPositionRef.current.y]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <ringGeometry args={[0.8, 1.0, 32]} />
+              <meshBasicMaterial
+                color="#10B981"
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          )}
+        </>
       )}
     </group>
   );

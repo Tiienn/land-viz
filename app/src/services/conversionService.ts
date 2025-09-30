@@ -238,3 +238,6 @@ export class ConversionService {
     };
   }
 }
+
+// Export a singleton instance of the conversion service
+export const conversionService = new ConversionService();

@@ -16,7 +16,8 @@
 - **Unified Sidebar Architecture: All features use inline panels for consistency**
 - **🎯 Canva-Style Equal Spacing System: Professional alignment with magnetic snapping**
 - Shape editing with draggable sphere corners
-- Professional resize/rotation with angle snapping
+- **Professional resize/rotation with angle snapping**
+- **🎯 Cursor-Based Rotation Mode: Hover-to-rotate with Shift snapping and visual guides**
 - Custom camera controls (right-orbit, middle-pan)
 - Green grass grid with unified snapping system
 - Nunito Sans typography, production security headers
@@ -176,7 +177,7 @@ npm run test:coverage       # Generate coverage report
 - `ShapeRenderer.tsx` - Renders drawn shapes in 3D space with rotation transforms
 - `EditableShapeControls.tsx` - Interactive sphere corners for shape editing
 - `ResizableShapeControls.tsx` - Professional resize handles with Windows-style cursors
-- `RotationControls.tsx` - Professional rotation handles with angle snapping and live preview
+- `RotationControls.tsx` - Professional rotation handles with angle snapping, live preview, and cursor-based rotation mode
 - `MeasurementRenderer.tsx` - 3D measurement lines and spheres for point-to-point measurements
 - `MeasurementOverlay.tsx` - HTML overlay for distance labels with 3D-to-2D projection
 
@@ -214,7 +215,17 @@ npm run test:coverage       # Generate coverage report
 - **Accessibility Compliance**: WCAG 2.1 AA compliance verification with jest-axe
 - **GeometryLoader Testing**: Dynamic import system and caching validation
 
-**Measurement Feature (Latest):**
+**Cursor-Based Rotation Mode (October 2025):**
+- **Hover-to-Rotate**: Click Rotate button to enter mode where shape rotates as cursor moves (no drag needed)
+- **Real-time Visual Feedback**: Purple dashed guide line from shape center to cursor with live angle display
+- **Shift Snapping**: Hold Shift for 45° angle snapping with green ring indicator
+- **Click Confirmation**: Single left-click to lock in rotation and save to history
+- **Multiple Exit Methods**: ESC key, Rotate button toggle, tool change, or shape selection change
+- **Performance Optimized**: 60 FPS cursor tracking with 16ms throttle and efficient raycasting
+- **Full Undo/Redo Support**: All rotations saved to history for complete state management
+- **Compatibility**: Works alongside existing drag-to-rotate functionality without conflicts
+
+**Measurement Feature:**
 - Complete measurement tool implementation with 3D visualization
 - HTML overlay system for distance labels with 3D-to-2D projection
 - Camera and canvas reference system for proper coordinate mapping
@@ -252,7 +263,8 @@ npm run test:coverage       # Generate coverage report
 **Measuring:** Measure button → click two points for distance measurement
 **Editing:** Edit button → drag sphere corners, Add/Delete corners
 **Resize:** Click shape → drag handles (Shift for aspect ratio)
-**Rotate:** Rotate button → drag handle (Shift for 45° snap)
+**Rotate (Drag Mode):** Select shape → drag green handle (Shift for 45° snap)
+**Rotate (Cursor Mode):** Rotate button → move cursor to rotate → left-click to confirm (Shift for 45° snap, ESC to exit)
 **Panels:** Click to expand horizontally, triangle to collapse
 **Grid:** Toggle in Properties (shows "1m snap" or "Free move")
 
@@ -276,7 +288,7 @@ app/src/
 │   ├── ShapeRenderer.tsx   # Shape visualization with rotation transforms
 │   ├── EditableShapeControls.tsx # Shape editing with sphere corners
 │   ├── ResizableShapeControls.tsx # Professional resize handles
-│   ├── RotationControls.tsx # Professional rotation handles with snapping
+│   ├── RotationControls.tsx # Professional rotation with drag & cursor modes
 │   └── MeasurementRenderer.tsx # 3D measurement lines and spheres
 ├── components/
 │   ├── MeasurementOverlay.tsx # HTML overlay for distance labels

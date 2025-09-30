@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { ComparisonState, ReferenceCategory } from '../types/referenceObjects';
-import { referenceObjects } from '../data/referenceObjects';
+import { REFERENCE_OBJECTS } from '../data/referenceObjects';
 import { logger } from '../utils/logger';
 
 interface ComparisonStore {
@@ -118,7 +118,7 @@ export const useComparisonStore = create<ComparisonStore>()(
           const calculations = new Map();
 
           // Calculate comparisons for all reference objects
-          referenceObjects.forEach((obj) => {
+          REFERENCE_OBJECTS.forEach((obj) => {
             const quantity = state.comparison.landArea / obj.dimensions.area;
             const fits = Math.floor(quantity);
             const percentage = (obj.dimensions.area / state.comparison.landArea) * 100;
@@ -216,7 +216,7 @@ export const useComparisonStore = create<ComparisonStore>()(
         const state = get();
         const { searchQuery, selectedCategory } = state.comparison;
 
-        let filteredObjects = referenceObjects;
+        let filteredObjects = REFERENCE_OBJECTS;
 
         // Filter by category
         if (selectedCategory !== 'all') {

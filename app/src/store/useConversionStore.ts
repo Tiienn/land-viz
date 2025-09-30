@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { ConversionState, AreaUnit } from '../types/conversion';
-import { conversionService } from '../services/conversionService';
+import { ConversionService } from '../services/conversionService';
 import { logger } from '../utils/logger';
 
 interface ConversionStore {
@@ -170,8 +170,8 @@ export const useConversionStore = create<ConversionStore>()(
 
           allUnits.forEach(targetUnit => {
             if (targetUnit !== inputUnit) {
-              const convertedValue = conversionService.convert(numericValue, inputUnit, targetUnit);
-              results.set(targetUnit, conversionService.formatValue(convertedValue, targetUnit));
+              const convertedValue = ConversionService.convertBetweenUnits(numericValue, inputUnit, targetUnit);
+              results.set(targetUnit, ConversionService.formatValue(convertedValue, targetUnit));
             }
           });
 

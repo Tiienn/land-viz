@@ -70,6 +70,7 @@ function App(): React.JSX.Element {
   // Connect to the 3D scene store
   const {
     drawing,
+    viewState,
     setActiveTool: setStoreActiveTool,
     toggleShowDimensions,
     clearAll,
@@ -90,6 +91,8 @@ function App(): React.JSX.Element {
     cancelAll,
     enterRotateMode,
     exitResizeMode,
+    enterCursorRotationMode,
+    exitCursorRotationMode,
     createShapeFromArea,
     addAreaModalOpen,
     openAddAreaModal,
@@ -248,6 +251,27 @@ function App(): React.JSX.Element {
 
   const handlePolylineStartProximity = (isNear: boolean) => {
     setIsNearPolylineStart(isNear);
+  };
+
+  // Helper function to get appropriate cursor based on view mode and tool
+  const getCursor = () => {
+    if (activeTool === 'select') return 'default';
+
+    const is2DMode = viewState?.is2DMode || false;
+
+    if (is2DMode) {
+      // Use simple cursors in 2D mode
+      if (isNearPolylineStart && activeTool === 'polyline') {
+        return 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 16 16\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'1\' d=\'M8 2v12M2 8h12\'/%3E%3Ccircle cx=\'8\' cy=\'8\' r=\'4\' fill=\'none\' stroke=\'red\' stroke-width=\'1\'/%3E%3C/svg%3E") 8 8, crosshair';
+      }
+      return 'crosshair';
+    } else {
+      // Use larger cursors in 3D mode
+      if (isNearPolylineStart && activeTool === 'polyline') {
+        return 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair';
+      }
+      return 'crosshair';
+    }
   };
 
   const handleCameraChange = () => {
@@ -902,37 +926,36 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Dimensions</span>
                 </button>
-                <View2DToggleButton />
                 <button
                   onClick={() => {
-                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
-                      // If in resize mode, exit it first, then enter rotate mode
+                    // Toggle cursor rotation mode on/off
+                    if (drawing.cursorRotationMode) {
+                      // Exit cursor rotation mode
+                      exitCursorRotationMode();
+                    } else if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
+                      // Exit resize mode if active
                       if (drawing.isResizeMode) {
                         exitResizeMode();
-                        // Use a small timeout to ensure resize mode exits before entering rotate mode
-                        setTimeout(() => {
-                          enterRotateMode(selectedShapeId);
-                        }, 10);
-                      } else {
-                        enterRotateMode(selectedShapeId);
                       }
+                      // Enter cursor rotation mode
+                      enterCursorRotationMode(selectedShapeId);
                     }
                   }}
                   disabled={!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '8px 12px', 
-                    borderRadius: '4px', 
-                    minWidth: '80px', 
-                    height: '60px', 
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    minWidth: '80px',
+                    height: '60px',
                     border: '1px solid #e5e7eb',
                     cursor: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
                       ? 'not-allowed'
                       : 'pointer',
-                    background: drawing.isRotateMode ? '#a5b4fc' : '#ffffff',
-                    color: drawing.isRotateMode ? '#312e81' :
+                    background: drawing.cursorRotationMode ? '#a5b4fc' : '#ffffff',
+                    color: drawing.cursorRotationMode ? '#312e81' :
                            (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
                              ? '#9ca3af'
                              : '#000000',
@@ -944,13 +967,13 @@ function App(): React.JSX.Element {
                       : 1
                   }}
                   onMouseEnter={(e) => {
-                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.isRotateMode) {
+                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.cursorRotationMode) {
                       e.currentTarget.style.background = '#f3f4f6';
                       e.currentTarget.style.borderColor = '#d1d5db';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!drawing.isRotateMode) {
+                    if (!drawing.cursorRotationMode) {
                       e.currentTarget.style.background = '#ffffff';
                       e.currentTarget.style.borderColor = '#e5e7eb';
                     }
@@ -1200,21 +1223,26 @@ function App(): React.JSX.Element {
                 </button>
                 
                 {/* Snap Toggle Buttons */}
-                <button 
+                <button
                   onClick={() => {
-                    // Toggle snap to grid
+                    // Toggle snap to grid - update both systems synchronously
                     const currentState = useAppStore.getState();
+                    const currentSnapToGrid = currentState.drawing.snapToGrid;
+                    const newSnapToGrid = !currentSnapToGrid;
+
                     useAppStore.setState(state => ({
                       ...state,
                       drawing: {
                         ...state.drawing,
+                        snapToGrid: newSnapToGrid, // Update legacy system
                         snapping: {
                           ...state.drawing.snapping,
                           config: {
                             ...state.drawing.snapping.config,
-                            activeTypes: currentState.drawing.snapping.config.activeTypes?.has?.('grid')
-                              ? new Set([...currentState.drawing.snapping.config.activeTypes].filter(t => t !== 'grid'))
-                              : new Set([...currentState.drawing.snapping.config.activeTypes, 'grid'])
+                            enabled: newSnapToGrid || state.drawing.snapping.config.activeTypes?.has?.('endpoint') || state.drawing.snapping.config.activeTypes?.has?.('midpoint') || state.drawing.snapping.config.activeTypes?.has?.('center'),
+                            activeTypes: newSnapToGrid
+                              ? new Set([...state.drawing.snapping.config.activeTypes, 'grid'])
+                              : new Set([...state.drawing.snapping.config.activeTypes].filter(t => t !== 'grid'))
                           }
                         }
                       }
@@ -1230,20 +1258,20 @@ function App(): React.JSX.Element {
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    background: drawing.snapping?.config?.activeTypes?.has?.('grid') ? '#dbeafe' : '#ffffff',
-                    color: drawing.snapping?.config?.activeTypes?.has?.('grid') ? '#1d4ed8' : '#000000',
+                    background: drawing.snapToGrid ? '#dbeafe' : '#ffffff',
+                    color: drawing.snapToGrid ? '#1d4ed8' : '#000000',
                     transition: 'all 0.2s ease',
                     fontSize: '10px',
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
-                    if (!drawing.snapping?.config?.activeTypes?.has?.('grid')) {
+                    if (!drawing.snapToGrid) {
                       e.currentTarget.style.background = '#f3f4f6';
                       e.currentTarget.style.borderColor = '#d1d5db';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!drawing.snapping?.config?.activeTypes?.has?.('grid')) {
+                    if (!drawing.snapToGrid) {
                       e.currentTarget.style.background = '#ffffff';
                       e.currentTarget.style.borderColor = '#e5e7eb';
                     }
@@ -1646,21 +1674,21 @@ function App(): React.JSX.Element {
 
 
       {/* Main Content */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Sidebar */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {/* Left Sidebar - Fixed width */}
         <div style={{
-          width: calculatorExpanded ? '420px' : (layersExpanded ? '420px' : (comparisonExpanded ? '420px' : (convertExpanded ? '420px' : (tidyUpExpanded ? '420px' : (leftPanelExpanded ? '160px' : '50px'))))),
+          width: '50px',
           background: 'white',
           borderRight: '1px solid #e5e5e5',
           display: 'flex',
-          flexDirection: 'row',
-          transition: 'width 0.3s ease',
-          position: 'relative'
+          flexDirection: 'column',
+          position: 'relative',
+          zIndex: 10
         }}>
 
           {/* Main Navigation Section */}
           <div style={{
-            width: leftPanelExpanded ? '160px' : '50px',
+            width: '50px',
             display: 'flex',
             flexDirection: 'column',
             flex: 1
@@ -1669,10 +1697,10 @@ function App(): React.JSX.Element {
               padding: '16px 0',
               display: 'flex',
               flexDirection: 'column',
-              alignItems: leftPanelExpanded ? 'stretch' : 'center',
+              alignItems: 'center',
               gap: '8px',
-              paddingLeft: leftPanelExpanded ? '16px' : '0',
-              paddingRight: leftPanelExpanded ? '16px' : '0',
+              paddingLeft: '0',
+              paddingRight: '0',
               overflowY: 'auto',
               flex: 1,
               scrollbarWidth: 'none', // Firefox
@@ -1680,12 +1708,12 @@ function App(): React.JSX.Element {
               // Hide scrollbar for Webkit browsers
             }}
             className="hide-scrollbar">
-              <button style={{ 
-                padding: leftPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '8px', 
-                background: 'transparent', 
-                border: 'none', 
-                cursor: 'pointer', 
+              <button style={{
+                padding: '8px',
+                borderRadius: '8px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -1694,7 +1722,7 @@ function App(): React.JSX.Element {
                 textAlign: 'center',
                 transition: 'all 0.2s ease',
                 color: '#374151'
-              }} 
+              }}
               title="Home"
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = '#f3f4f6';
@@ -1706,9 +1734,9 @@ function App(): React.JSX.Element {
               }}
               >
                 <Icon name="home" size={20} color="#000000" />
-                <span style={{ 
-                  fontSize: leftPanelExpanded ? '12px' : '10px', 
-                  fontWeight: '500', 
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: '500',
                   color: '#374151',
                   lineHeight: '1'
                 }}>
@@ -1737,7 +1765,7 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{
-                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  padding: '8px',
                   borderRadius: '8px',
                   background: comparisonExpanded ? '#3b82f6' : 'transparent',
                   border: 'none',
@@ -1772,7 +1800,7 @@ function App(): React.JSX.Element {
                   <rect x="13" y="13" width="9" height="9"></rect>
                 </svg>
                 <span style={{
-                  fontSize: leftPanelExpanded ? '12px' : '10px',
+                  fontSize: '10px',
                   fontWeight: '500',
                   color: comparisonExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
@@ -1808,7 +1836,7 @@ function App(): React.JSX.Element {
               >
                 <Icon name="visualComparison" size={20} color="#000000" />
                 <span style={{ 
-                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontSize: '10px', 
                   fontWeight: '500', 
                   color: '#374151',
                   lineHeight: '1'
@@ -1837,7 +1865,7 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{
-                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  padding: '8px',
                   borderRadius: '8px',
                   background: convertExpanded ? '#3b82f6' : 'transparent',
                   border: 'none',
@@ -1867,7 +1895,7 @@ function App(): React.JSX.Element {
               >
                 <Icon name="unitConverter" size={20} color={convertExpanded ? "#ffffff" : "#000000"} />
                 <span style={{
-                  fontSize: leftPanelExpanded ? '12px' : '10px',
+                  fontSize: '10px',
                   fontWeight: '500',
                   color: convertExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
@@ -1903,7 +1931,7 @@ function App(): React.JSX.Element {
               >
                 <Icon name="quickTools" size={20} color="#000000" />
                 <span style={{ 
-                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontSize: '10px', 
                   fontWeight: '500', 
                   color: '#374151',
                   lineHeight: '1'
@@ -1931,7 +1959,7 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{ 
-                  padding: leftPanelExpanded ? '12px 16px' : '8px', 
+                  padding: '8px', 
                   borderRadius: '8px', 
                   background: calculatorExpanded ? '#3b82f6' : 'transparent', 
                   border: 'none', 
@@ -1961,7 +1989,7 @@ function App(): React.JSX.Element {
               >
                 <Icon name="calculator" size={20} color={calculatorExpanded ? "#ffffff" : "#000000"} />
                 <span style={{ 
-                  fontSize: leftPanelExpanded ? '12px' : '10px', 
+                  fontSize: '10px', 
                   fontWeight: '500', 
                   color: calculatorExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
@@ -2050,7 +2078,7 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{
-                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  padding: '8px',
                   borderRadius: '8px',
                   background: tidyUpExpanded ? '#3b82f6' : 'transparent',
                   border: 'none',
@@ -2087,7 +2115,7 @@ function App(): React.JSX.Element {
                   <path d="M12 9v6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
                 </svg>
                 <span style={{
-                  fontSize: leftPanelExpanded ? '12px' : '10px',
+                  fontSize: '10px',
                   fontWeight: '500',
                   color: tidyUpExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
@@ -2098,132 +2126,158 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
-          {/* Calculator Expansion Panel - Inline */}
-          {calculatorExpanded && (
-            <div style={{
-              width: '420px',
-              background: 'white',
-              borderLeft: '1px solid #e2e8f0',
-              overflowY: 'auto',
-              maxHeight: '100vh'
-            }}>
-              <UIErrorBoundary componentName="CalculatorDemo" showMinimalError={true}>
-                <CalculatorDemo
-                  inline={true}
-                  onClose={() => {
-                    setCalculatorExpanded(false);
-                    setLeftPanelExpanded(false);
-                  }}
-                />
-              </UIErrorBoundary>
-            </div>
-          )}
-
-          {/* Layers Expansion Panel - Inline */}
-          {layersExpanded && (
-            <div style={{
-              width: '420px',
-              background: 'white',
-              borderLeft: '1px solid #e2e8f0',
-              overflowY: 'auto',
-              maxHeight: '100vh'
-            }}>
-              <UIErrorBoundary componentName="LayerPanel" showMinimalError={true}>
-                <LayerPanel
-                  isOpen={true}
-                  inline={true}
-                  onClose={() => {
-                    setLayersExpanded(false);
-                    setLeftPanelExpanded(false);
-                  }}
-                />
-              </UIErrorBoundary>
-            </div>
-          )}
-
-          {/* Comparison Expansion Panel - Inline */}
-          {comparisonExpanded && (
-            <div style={{
-              width: '420px',
-              background: 'white',
-              borderLeft: '1px solid #e2e8f0',
-              overflowY: 'auto',
-              maxHeight: '100vh'
-            }}>
-              <UIErrorBoundary componentName="ComparisonPanel" showMinimalError={true}>
-                <ComparisonPanel
-                  expanded={true}
-                  onToggle={() => {
-                    setComparisonExpanded(false);
-                    setLeftPanelExpanded(false);
-                  }}
-                  inline={true}
-                />
-              </UIErrorBoundary>
-            </div>
-          )}
-
-          {/* Convert Expansion Panel - Inline */}
-          {convertExpanded && (
-            <div style={{
-              width: '420px',
-              background: 'white',
-              borderLeft: '1px solid #e2e8f0',
-              overflowY: 'auto',
-              maxHeight: '100vh'
-            }}>
-              <UIErrorBoundary componentName="ConvertPanel" showMinimalError={true}>
-                <ConvertPanel
-                  expanded={true}
-                  onToggle={() => {
-                    setConvertExpanded(false);
-                    setLeftPanelExpanded(false);
-                  }}
-                  inline={true}
-                />
-              </UIErrorBoundary>
-            </div>
-          )}
-
-          {/* TidyUp Expansion Panel - Inline */}
-          {tidyUpExpanded && (
-            <div style={{
-              width: '420px',
-              background: 'white',
-              borderLeft: '1px solid #e2e8f0',
-              overflowY: 'auto',
-              maxHeight: '100vh'
-            }}>
-              <UIErrorBoundary componentName="AlignmentControls" showMinimalError={true}>
-                <AlignmentControls
-                  expanded={true}
-                  onToggle={() => {
-                    setTidyUpExpanded(false);
-                    setLeftPanelExpanded(false);
-                  }}
-                  inline={true}
-                />
-              </UIErrorBoundary>
-            </div>
-          )}
-
         </div>
 
+        {/* Overlay Panels - Float over canvas */}
+        {/* Calculator Expansion Panel - Overlay */}
+        {calculatorExpanded && (
+          <div style={{
+            position: 'absolute',
+            left: '50px',
+            top: 0,
+            bottom: 0,
+            width: '420px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20
+          }}>
+            <UIErrorBoundary componentName="CalculatorDemo" showMinimalError={true}>
+              <CalculatorDemo
+                inline={true}
+                onClose={() => {
+                  setCalculatorExpanded(false);
+                  setLeftPanelExpanded(false);
+                }}
+              />
+            </UIErrorBoundary>
+          </div>
+        )}
+
+        {/* Layers Expansion Panel - Overlay */}
+        {layersExpanded && (
+          <div style={{
+            position: 'absolute',
+            left: '50px',
+            top: 0,
+            bottom: 0,
+            width: '420px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20
+          }}>
+            <UIErrorBoundary componentName="LayerPanel" showMinimalError={true}>
+              <LayerPanel
+                isOpen={true}
+                inline={true}
+                onClose={() => {
+                  setLayersExpanded(false);
+                  setLeftPanelExpanded(false);
+                }}
+              />
+            </UIErrorBoundary>
+          </div>
+        )}
+
+        {/* Comparison Expansion Panel - Overlay */}
+        {comparisonExpanded && (
+          <div style={{
+            position: 'absolute',
+            left: '50px',
+            top: 0,
+            bottom: 0,
+            width: '420px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20
+          }}>
+            <UIErrorBoundary componentName="ComparisonPanel" showMinimalError={true}>
+              <ComparisonPanel
+                expanded={true}
+                onToggle={() => {
+                  setComparisonExpanded(false);
+                  setLeftPanelExpanded(false);
+                }}
+                inline={true}
+              />
+            </UIErrorBoundary>
+          </div>
+        )}
+
+        {/* Convert Expansion Panel - Overlay */}
+        {convertExpanded && (
+          <div style={{
+            position: 'absolute',
+            left: '50px',
+            top: 0,
+            bottom: 0,
+            width: '420px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20
+          }}>
+            <UIErrorBoundary componentName="ConvertPanel" showMinimalError={true}>
+              <ConvertPanel
+                expanded={true}
+                onToggle={() => {
+                  setConvertExpanded(false);
+                  setLeftPanelExpanded(false);
+                }}
+                inline={true}
+              />
+            </UIErrorBoundary>
+          </div>
+        )}
+
+        {/* TidyUp Expansion Panel - Overlay */}
+        {tidyUpExpanded && (
+          <div style={{
+            position: 'absolute',
+            left: '50px',
+            top: 0,
+            bottom: 0,
+            width: '420px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20
+          }}>
+            <UIErrorBoundary componentName="AlignmentControls" showMinimalError={true}>
+              <AlignmentControls
+                expanded={true}
+                onToggle={() => {
+                  setTidyUpExpanded(false);
+                  setLeftPanelExpanded(false);
+                }}
+                inline={true}
+              />
+            </UIErrorBoundary>
+          </div>
+        )}
+
         {/* Central 3D Canvas */}
-        <main style={{ 
-          flex: 1, 
-          position: 'relative', 
-          background: '#3b82f6', 
+        <main style={{
+          flex: 1,
+          position: 'relative',
+          background: '#3b82f6',
           overflow: 'hidden',
-          cursor: activeTool !== 'select' ? (isNearPolylineStart && activeTool === 'polyline' ? 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair' : 'crosshair') : 'default'
+          cursor: getCursor()
         }}>
-          <div style={{ 
-            width: '100%', 
-            height: '100%', 
-            position: 'absolute', 
-            top: 0, 
+          <div style={{
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            top: 0,
             left: 0,
-            cursor: activeTool !== 'select' ? (isNearPolylineStart && activeTool === 'polyline' ? 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 32 32\'%3E%3Cpath fill=\'white\' stroke=\'black\' stroke-width=\'2\' d=\'M16 4v24M4 16h24\'/%3E%3Ccircle cx=\'16\' cy=\'16\' r=\'10\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C/svg%3E") 16 16, crosshair' : 'crosshair') : 'default'
+            cursor: getCursor()
           }}>
             <SceneErrorBoundary>
               <SceneManager
@@ -2428,158 +2482,30 @@ function App(): React.JSX.Element {
           )}
         </main>
 
-        {/* Properties Expansion Panel - Positioned before right panel to expand to the left */}
-        {propertiesExpanded && (
-          <div style={{
-            width: '240px',
-            background: 'white',
-            borderLeft: '1px solid #e5e5e5',
-            borderRight: '1px solid #e5e5e5',
-            overflowY: 'auto',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '16px 20px',
-              borderBottom: '1px solid #e5e7eb',
-              backgroundColor: '#fafafa',
-              flexShrink: 0
-            }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '16px',
-                fontWeight: 700,
-                color: '#1f2937',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                Properties
-              </h3>
-              <button
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#6b7280',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  transition: 'all 200ms ease',
-                  lineHeight: 1,
-                  fontWeight: 300
-                }}
-                onClick={() => {
-                  setPropertiesExpanded(false);
-                  setRightPanelExpanded(false);
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-                title="Collapse properties panel"
-              >
-                ▶
-              </button>
-            </div>
 
-            {/* Content */}
-            <div style={{ flex: 1, padding: '16px' }}>
-            <div style={{
-              background: '#ffffff',
-              borderRadius: '8px',
-              padding: '16px',
-              border: '1px solid #e5e7eb'
-            }}>
-              <p style={{
-                margin: '0 0 12px 0',
-                fontSize: '14px',
-                color: '#6b7280'
-              }}>
-                Configure drawing properties and settings here.
-              </p>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px'
-              }}>
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '4px'
-                  }}>
-                    Stroke Width
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    defaultValue="2"
-                    style={{
-                      width: '100%',
-                      cursor: 'pointer'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '4px'
-                  }}>
-                    Fill Opacity
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    defaultValue="20"
-                    style={{
-                      width: '100%',
-                      cursor: 'pointer'
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-            </div>
-          </div>
-        )}
-
-        {/* Right Sidebar */}
-        <div style={{ 
-          width: rightPanelExpanded ? '160px' : '50px', 
-          background: 'white', 
-          borderLeft: '1px solid #e5e5e5', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          transition: 'width 0.3s ease',
-          position: 'relative'
+        {/* Right Sidebar - Fixed width */}
+        <div style={{
+          width: '50px',
+          background: 'white',
+          borderLeft: '1px solid #e5e5e5',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          zIndex: 10
         }}>
 
-          <div style={{ 
-            padding: '16px 0', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: rightPanelExpanded ? 'stretch' : 'center', 
+          <div style={{
+            padding: '16px 0',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             gap: '8px',
-            paddingLeft: rightPanelExpanded ? '16px' : '0',
-            paddingRight: rightPanelExpanded ? '16px' : '0'
+            paddingLeft: '0',
+            paddingRight: '0',
+            flex: 1
           }}>
             <button style={{ 
-              padding: rightPanelExpanded ? '12px 8px' : '8px', 
+              padding: '8px', 
               borderRadius: '8px', 
               background: 'transparent', 
               border: 'none', 
@@ -2611,7 +2537,7 @@ function App(): React.JSX.Element {
             </button>
             
             <button style={{ 
-              padding: rightPanelExpanded ? '12px 8px' : '8px', 
+              padding: '8px', 
               borderRadius: '8px', 
               background: 'transparent', 
               border: 'none', 
@@ -2643,7 +2569,7 @@ function App(): React.JSX.Element {
             </button>
             
             <button style={{ 
-              padding: rightPanelExpanded ? '12px 8px' : '8px', 
+              padding: '8px', 
               borderRadius: '8px', 
               background: 'transparent', 
               border: 'none', 
@@ -2689,7 +2615,7 @@ function App(): React.JSX.Element {
                 }
               }}
               style={{ 
-                padding: rightPanelExpanded ? '12px 8px' : '8px', 
+                padding: '8px', 
                 borderRadius: '8px', 
                 background: propertiesExpanded ? '#3b82f6' : 'transparent', 
                 border: 'none', 
@@ -2724,7 +2650,68 @@ function App(): React.JSX.Element {
               <span style={{ fontWeight: '500', color: propertiesExpanded ? '#ffffff' : '#374151' }}>Properties</span>
             </button>
           </div>
+
         </div>
+
+        {/* Properties Panel - Overlay from right */}
+        {propertiesExpanded && (
+          <div style={{
+            position: 'absolute',
+            right: '50px',
+            top: 0,
+            bottom: 0,
+            width: '400px',
+            background: 'white',
+            borderLeft: '1px solid #e5e5e5',
+            boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '16px 20px',
+              borderBottom: '1px solid #e5e7eb',
+              backgroundColor: '#fafafa'
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '16px',
+                fontWeight: 700,
+                color: '#1f2937'
+              }}>
+                Properties
+              </h3>
+              <button
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: '4px 8px',
+                  borderRadius: '6px'
+                }}
+                onClick={() => {
+                  setPropertiesExpanded(false);
+                  setRightPanelExpanded(false);
+                }}
+              >
+                ▶
+              </button>
+            </div>
+            {/* Content */}
+            <div style={{ flex: 1, padding: '16px' }}>
+              <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#6b7280' }}>
+                Configure drawing properties and settings here.
+              </p>
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -2775,6 +2762,9 @@ function App(): React.JSX.Element {
         customPresets={presets.customPresets}
         recentPresets={presets.recentPresets}
       />
+
+      {/* Floating 2D/3D Toggle Button */}
+      <View2DToggleButton />
     </div>
   );
 }

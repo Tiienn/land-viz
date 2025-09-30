@@ -3,34 +3,49 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useAppStore } from '../../store/useAppStore';
 
+// Centralized size constants for different view modes
+const INDICATOR_SIZES = {
+  GRID_3D: 0.03,
+  GRID_2D: 0.003
+} as const;
+
 export const ActiveSnapIndicator: React.FC = () => {
   const meshRef = useRef<THREE.Mesh | THREE.Line>(null);
   const outerRingRef = useRef<THREE.Mesh>(null);
-  const { drawing } = useAppStore();
+  const { drawing, viewState } = useAppStore();
   const snapping = drawing.snapping;
+
+  // Get 2D mode state with safe default
+  const is2DMode = viewState?.is2DMode || false;
   
-  // Enhanced geometries for active indicator (made larger)
-  const geometries = useMemo(() => ({
-    grid: new THREE.PlaneGeometry(1.0, 1.0), // Increased size
-    endpoint: new THREE.CircleGeometry(0.7, 20), // Increased size
-    midpoint: new THREE.RingGeometry(0.4, 0.7, 4, 1, Math.PI / 4), // Increased size
+  // Enhanced geometries for active indicator with 2D mode sizing
+  const geometries = useMemo(() => {
+    // Dynamic grid size based on view mode
+    const gridSize = is2DMode ? INDICATOR_SIZES.GRID_2D : INDICATOR_SIZES.GRID_3D;
+
+    return {
+    grid: new THREE.PlaneGeometry(gridSize, gridSize), // Smaller in 2D mode
+    endpoint: new THREE.CircleGeometry(0.3, 12), // Much smaller
+    midpoint: new THREE.RingGeometry(0.2, 0.3, 4, 1, Math.PI / 4), // Much smaller
     center: (() => {
       const geometry = new THREE.BufferGeometry();
+      const centerSize = is2DMode ? 0.015 : 0.3; // Much smaller in 2D mode
       const vertices = new Float32Array([
-        -0.8, 0, 0,  0.8, 0, 0,  // Horizontal line (increased)
-        0, -0.8, 0,  0, 0.8, 0   // Vertical line (increased)
+        -centerSize, 0, 0,  centerSize, 0, 0,  // Horizontal line (scaled for 2D)
+        0, -centerSize, 0,  0, centerSize, 0   // Vertical line (scaled for 2D)
       ]);
       geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
       return geometry;
     })(),
-    quadrant: new THREE.CircleGeometry(0.6, 16), // Increased size
-    intersection: new THREE.RingGeometry(0.3, 0.7, 8), // Increased size
-    perpendicular: new THREE.PlaneGeometry(1.0, 0.2), // Increased size
-    extension: new THREE.PlaneGeometry(1.2, 0.12), // Increased size
-    tangent: new THREE.CircleGeometry(0.5, 12), // Increased size
-    edge: new THREE.PlaneGeometry(0.7, 0.12), // Increased size
-    outerRing: new THREE.RingGeometry(0.8, 1.2, 24) // Increased size
-  }), []);
+    quadrant: new THREE.CircleGeometry(0.25, 12), // Much smaller
+    intersection: new THREE.RingGeometry(0.15, 0.3, 6), // Much smaller
+    perpendicular: new THREE.PlaneGeometry(0.4, 0.08), // Much smaller
+    extension: new THREE.PlaneGeometry(0.5, 0.05), // Much smaller
+    tangent: new THREE.CircleGeometry(0.2, 8), // Much smaller
+    edge: new THREE.PlaneGeometry(0.3, 0.05), // Much smaller
+    outerRing: new THREE.RingGeometry(0.35, 0.5, 16) // Much smaller
+  };
+  }, [is2DMode]); // Include is2DMode in memoization dependencies
 
   // Enhanced materials with animation properties
   const materials = useMemo(() => ({
@@ -197,6 +212,7 @@ export const ActiveSnapIndicator: React.FC = () => {
           geometry={geometry}
           material={material}
           renderOrder={3}
+          rotation={activeSnapPoint.type === 'grid' ? [0, 0, Math.PI / 4] : [0, 0, 0]}
         />
       )}
     </group>

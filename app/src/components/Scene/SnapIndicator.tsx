@@ -1,111 +1,91 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useAppStore } from '../../store/useAppStore';
 import type { SnapPoint } from '../../types';
 
+// Centralized size constants for different view modes
+const INDICATOR_SIZES = {
+  GRID_3D: 0.03,
+  GRID_2D: 0.003
+} as const;
+
 interface SnapIndicatorProps {
   maxDistance?: number;
 }
 
-export const SnapIndicator: React.FC<SnapIndicatorProps> = ({ 
-  maxDistance = 100 
+export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
+  maxDistance = 100
 }) => {
   const groupRef = useRef<THREE.Group>(null);
-  const { drawing, shapes } = useAppStore();
+  const { drawing, shapes, viewState } = useAppStore();
   const snapping = drawing.snapping;
   const currentShape = drawing.currentShape;
   const isDrawing = drawing.isDrawing;
   const activeTool = drawing.activeTool;
+  const cursorPosition = drawing.cursorPosition;
 
-  // Performance optimization: limit visible indicators
+  // Get 2D mode state with safe default
+  const is2DMode = viewState?.is2DMode || false;
+
+  // Debug logging removed for performance
+
+  // Proximity validation function
+  const validateSnapPointProximity = useCallback((snapPoint: SnapPoint, cursor: Point2D, radius: number): boolean => {
+    const distance = Math.sqrt(
+      Math.pow(cursor.x - snapPoint.position.x, 2) +
+      Math.pow(cursor.y - snapPoint.position.y, 2)
+    );
+    return distance <= radius;
+  }, []);
+
+  // Performance optimization: limit visible indicators with render-time proximity filtering
   const maxVisibleIndicators = 25; // Limit to 25 indicators for performance
   const limitedSnapPoints = useMemo(() => {
-    let allSnapPoints = [...(snapping?.availableSnapPoints || [])];
-    
-    // Add snap points from current drawing shape (for polyline midpoints during drawing)
-    if (currentShape && isDrawing && currentShape.points && currentShape.points.length >= 1) {
-      const currentShapeSnapPoints: SnapPoint[] = [];
-      
-      // Generate midpoint snap points for current drawing shape segments (between placed points)
-      for (let i = 0; i < currentShape.points.length - 1; i++) {
-        const p1 = currentShape.points[i];
-        const p2 = currentShape.points[i + 1];
-        const midpoint = {
-          x: (p1.x + p2.x) / 2,
-          y: (p1.y + p2.y) / 2
-        };
-        
-        currentShapeSnapPoints.push({
-          position: midpoint,
-          type: 'midpoint',
-          shapeId: 'current_drawing_shape',
-          priority: 8,
-          metadata: { segmentIndex: i, isCurrentShape: true }
-        });
-      }
-      
-      // Generate midpoint for the imaginary line segment (from last point to cursor)
-      if (activeTool === 'polyline' && snapping.snapPreviewPosition && currentShape.points.length >= 1) {
-        const lastPoint = currentShape.points[currentShape.points.length - 1];
-        const cursorPosition = snapping.snapPreviewPosition;
-        const imaginaryMidpoint = {
-          x: (lastPoint.x + cursorPosition.x) / 2,
-          y: (lastPoint.y + cursorPosition.y) / 2
-        };
-        
-        currentShapeSnapPoints.push({
-          position: imaginaryMidpoint,
-          type: 'midpoint',
-          shapeId: 'current_drawing_shape',
-          priority: 8,
-          metadata: { segmentIndex: currentShape.points.length - 1, isCurrentShape: true, isImaginaryLine: true }
-        });
-      }
-      
-      // Add endpoint snap points for current drawing shape
-      currentShape.points.forEach((point, index) => {
-        currentShapeSnapPoints.push({
-          position: { x: point.x, y: point.y },
-          type: 'endpoint',
-          shapeId: 'current_drawing_shape',
-          priority: 10,
-          metadata: { pointIndex: index, isCurrentShape: true }
-        });
-      });
-      
-      allSnapPoints = [...allSnapPoints, ...currentShapeSnapPoints];
+    // Return empty array if no cursor position (cursor not on canvas)
+    if (!cursorPosition) {
+      return [];
     }
-    
-    // Filter snap points by active types
-    const filteredPoints = allSnapPoints.filter(snapPoint => 
-      snapping.config?.activeTypes?.has?.(snapPoint.type)
+
+    // Get snap radius based on view mode (same as DrawingCanvas)
+    const snapRadius = is2DMode ? 0.05 : 1.5; // 5cm in 2D mode, 1.5m in 3D mode
+
+    // Filter snap points by actual proximity to cursor
+    const proximityFilteredPoints = (snapping?.availableSnapPoints || []).filter(point =>
+      validateSnapPointProximity(point, cursorPosition, snapRadius)
     );
-    
-    return filteredPoints.slice(0, maxVisibleIndicators);
-  }, [snapping?.availableSnapPoints, snapping?.config?.activeTypes, snapping?.snapPreviewPosition, currentShape, isDrawing, activeTool, maxVisibleIndicators]);
+
+    return proximityFilteredPoints.slice(0, maxVisibleIndicators);
+  }, [snapping?.availableSnapPoints, cursorPosition, is2DMode, validateSnapPointProximity, maxVisibleIndicators]);
   
-  // Geometry cache for different snap types (made larger and more visible)
-  const geometries = useMemo(() => ({
-    grid: new THREE.PlaneGeometry(0.8, 0.8), // Doubled size
-    endpoint: new THREE.CircleGeometry(0.5, 16), // Increased size
-    midpoint: new THREE.RingGeometry(0.3, 0.5, 4, 1, Math.PI / 4), // Increased size
-    center: (() => {
-      const geometry = new THREE.BufferGeometry();
-      const vertices = new Float32Array([
-        -0.6, 0, 0,  0.6, 0, 0,  // Horizontal line (increased)
-        0, -0.6, 0,  0, 0.6, 0   // Vertical line (increased)
-      ]);
-      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-      return geometry;
-    })(),
-    quadrant: new THREE.CircleGeometry(0.4, 12), // Increased size
-    intersection: new THREE.RingGeometry(0.2, 0.5, 8), // Increased size
-    perpendicular: new THREE.PlaneGeometry(0.8, 0.15), // Increased size
-    extension: new THREE.PlaneGeometry(0.9, 0.1), // Increased size
-    tangent: new THREE.CircleGeometry(0.35, 8), // Increased size
-    edge: new THREE.PlaneGeometry(0.5, 0.1) // Increased size
-  }), []);
+  // Create fresh geometries each time to ensure proper size updates
+  const getGeometries = () => {
+    // Dynamic grid size based on view mode
+    const gridSize = is2DMode ? INDICATOR_SIZES.GRID_2D : INDICATOR_SIZES.GRID_3D;
+    // Grid size optimization for view mode
+
+    return {
+      grid: new THREE.PlaneGeometry(gridSize, gridSize), // Smaller in 2D mode
+      endpoint: new THREE.CircleGeometry(0.2, 12), // Much smaller
+      midpoint: new THREE.RingGeometry(0.15, 0.25, 4, 1, Math.PI / 4), // Much smaller
+      center: (() => {
+        const geometry = new THREE.BufferGeometry();
+        const centerSize = is2DMode ? 0.01 : 0.25; // Much smaller in 2D mode
+        const vertices = new Float32Array([
+          -centerSize, 0, 0,  centerSize, 0, 0,  // Horizontal line (scaled for 2D)
+          0, -centerSize, 0,  0, centerSize, 0   // Vertical line (scaled for 2D)
+        ]);
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        return geometry;
+      })(),
+      quadrant: new THREE.CircleGeometry(0.2, 8), // Much smaller
+      intersection: new THREE.RingGeometry(0.1, 0.2, 6), // Much smaller
+      perpendicular: new THREE.PlaneGeometry(0.3, 0.05), // Much smaller
+      extension: new THREE.PlaneGeometry(0.35, 0.04), // Much smaller
+      tangent: new THREE.CircleGeometry(0.15, 6), // Much smaller
+      edge: new THREE.PlaneGeometry(0.2, 0.04) // Much smaller
+    };
+  };
 
   // Materials for different snap types
   const materials = useMemo(() => ({
@@ -167,8 +147,9 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
   const snapMeshes = useMemo(() => {
     if (!snapping.config.enabled || !limitedSnapPoints.length) return [];
 
+    const geometries = getGeometries(); // Get fresh geometries
     const meshes: THREE.Object3D[] = [];
-    
+
     limitedSnapPoints.forEach((snapPoint) => {
       let geometry: THREE.BufferGeometry;
       let material: THREE.Material;
@@ -218,19 +199,22 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
           return;
       }
 
-      const mesh = snapPoint.type === 'center' 
+      const mesh = snapPoint.type === 'center'
         ? new THREE.Line(geometry, material)
         : new THREE.Mesh(geometry, material);
-      
+
       mesh.position.set(snapPoint.position.x, 0.02, snapPoint.position.y);
       mesh.rotation.x = -Math.PI / 2; // Lay flat on ground
+      if (snapPoint.type === 'grid') {
+        mesh.rotation.z = Math.PI / 4; // Rotate grid indicators 45° to make diamond
+      }
       mesh.renderOrder = 1; // Render above ground but below UI
-      
+
       meshes.push(mesh);
     });
 
     return meshes;
-  }, [limitedSnapPoints, snapping.config.enabled, geometries, materials]);
+  }, [limitedSnapPoints, snapping.config.enabled, materials, is2DMode]); // Add is2DMode dependency
 
   // Update group children when snap points change
   useEffect(() => {

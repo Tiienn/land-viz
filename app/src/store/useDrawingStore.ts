@@ -55,7 +55,7 @@ const getDefaultDrawingState = (): DrawingState => ({
   activeTool: 'select' as DrawingTool,
   isDrawing: false,
   currentShape: null,
-  snapToGrid: true,
+  snapToGrid: false,
   gridSize: 1,
   showDimensions: true,
   isEditMode: false,
@@ -74,9 +74,9 @@ const getDefaultDrawingState = (): DrawingState => ({
   originalRotation: null,
   snapping: {
     config: {
-      enabled: true,
+      enabled: false,
       snapRadius: 10,
-      activeTypes: new Set(['grid', 'endpoint']),
+      activeTypes: new Set([]),
       visual: {
         showIndicators: true,
         showSnapLines: true,

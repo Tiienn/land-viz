@@ -14,7 +14,7 @@ import { MeasurementUtils, MEASUREMENT_CONSTANTS } from '../utils/measurementUti
 import { calculateDirection, applyDistance, parseDistance } from '../utils/precisionMath';
 import { defaultAreaPresets } from '../data/areaPresets';
 import { loadCustomPresets, saveCustomPresets } from '../utils/presetStorage';
-import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState, LineSegment } from '../types';
+import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, SnapType, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState, LineSegment } from '../types';
 import type { AreaPreset, PresetsState, PresetCategory } from '../types/presets';
 import type { ConversionActions } from '../types/conversion';
 
@@ -109,6 +109,11 @@ interface AppStore extends AppState {
   rotateShapeLive: (shapeId: string, angle: number, center: Point2D) => void;
   rotateShape: (shapeId: string, angle: number, center: Point2D) => void;
 
+  // Cursor rotation mode actions (hover-to-rotate mode)
+  enterCursorRotationMode: (shapeId: string) => void;
+  exitCursorRotationMode: () => void;
+  applyCursorRotation: (shapeId: string, angle: number, center: Point2D) => void;
+
   // Measurement actions (only available in 'measure' mode)
   activateMeasurementTool: () => void;
   deactivateMeasurementTool: () => void;
@@ -178,6 +183,7 @@ interface AppStore extends AppState {
 
   // Alignment and snapping system methods
   updateDrawingState: (updates: Partial<DrawingState>) => void;
+  setCursorPosition: (position: Point2D | null) => void;
   updateSnapPoints: (snapPoints: SnapPoint[], activeSnapPoint?: SnapPoint | null) => void;
   updateAlignmentGuides: (guides: AlignmentGuide[], draggingShapeId?: string | null) => void;
   updateAlignmentSpacings: (spacings: SpacingMeasurement[]) => void;
@@ -234,6 +240,9 @@ const getDefaultDrawingState = () => ({
   rotationStartAngle: 0,
   rotationCenter: null,
   originalRotation: null,
+  // Cursor rotation mode state (hover-to-rotate)
+  cursorRotationMode: false,
+  cursorRotationShapeId: null,
   // Enhanced snapping and guides system
   snapping: {
     config: {
@@ -256,6 +265,7 @@ const getDefaultDrawingState = () => ({
     activeSnapPoint: null,
     snapPreviewPosition: null
   },
+  cursorPosition: null,
   guides: {
     staticGuides: [],
     activeAlignmentGuides: [],
@@ -684,6 +694,39 @@ export const useAppStore = create<AppStore>()(
           }
         }
         
+        // Configure snap types based on the active tool
+        const getSnapTypesForTool = (tool: DrawingTool): Set<SnapType> => {
+          const baseTypes = new Set<SnapType>(['grid']);
+
+          switch (tool) {
+            case 'rectangle':
+            case 'circle':
+            case 'polyline':
+              // Add shape snapping for drawing tools
+              baseTypes.add('endpoint');
+              baseTypes.add('midpoint');
+              baseTypes.add('center');
+              break;
+            case 'measure':
+              // Enable all snap types for measurement tool
+              baseTypes.add('endpoint');
+              baseTypes.add('midpoint');
+              baseTypes.add('center');
+              baseTypes.add('intersection');
+              break;
+            case 'select':
+              // Keep basic snapping for selection tool
+              baseTypes.add('endpoint');
+              baseTypes.add('center');
+              break;
+            default:
+              // For other tools, keep just grid snapping
+              break;
+          }
+
+          return baseTypes;
+        };
+
         set(
           prevState => ({
             drawing: {
@@ -691,6 +734,14 @@ export const useAppStore = create<AppStore>()(
               activeTool: tool,
               isDrawing: false,
               currentShape: null,
+              // Update snap configuration based on tool
+              snapping: {
+                ...prevState.drawing.snapping,
+                config: {
+                  ...prevState.drawing.snapping.config,
+                  activeTypes: getSnapTypesForTool(tool)
+                }
+              },
               // CRITICAL FIX: Comprehensive state clearing when leaving select tool
               isResizeMode: tool === 'select' ? prevState.drawing.isResizeMode : false,
               resizingShapeId: tool === 'select' ? prevState.drawing.resizingShapeId : null,
@@ -714,8 +765,6 @@ export const useAppStore = create<AppStore>()(
                       isWaitingForInput: false,
                       inputPosition: { x: 0, y: 0 },
                       showInput: false,
-                    inputPosition: { x: 0, y: 0 },
-                inputPosition: { x: 0, y: 0 },
                       isMultiSegment: false
                     }
                   : prevState.drawing.lineTool,
@@ -2773,9 +2822,6 @@ export const useAppStore = create<AppStore>()(
       },
 
       rotateShape: (shapeId: string, angle: number, center: Point2D) => {
-        // No need to save to history here - it was already saved in enterRotateMode
-        // Just apply the final rotation
-
         // Invalidate geometry cache for the shape being rotated
         const existingShape = get().shapes.find(shape => shape.id === shapeId);
         if (existingShape) {
@@ -2799,6 +2845,76 @@ export const useAppStore = create<AppStore>()(
           false,
           'rotateShape',
         );
+
+        // CRITICAL FIX: Save to history AFTER rotation completes
+        // This captures the rotated state so the rotation persists
+        // History was saved BEFORE rotation in enterRotateMode (pre-rotation state)
+        // Now we save AFTER to capture post-rotation state
+        get().saveToHistory();
+      },
+
+      // Cursor rotation mode actions (hover-to-rotate)
+      enterCursorRotationMode: (shapeId: string) => {
+        const state = get();
+
+        // Validate shape exists
+        const shape = state.shapes.find(s => s.id === shapeId);
+        if (!shape) {
+          logger.warn(`Cannot enter cursor rotation mode: shape ${shapeId} not found`);
+          return;
+        }
+
+        // Save current state to history before entering mode
+        state.saveToHistory();
+
+        // Enter cursor rotation mode (keep current tool as 'select')
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              cursorRotationMode: true,
+              cursorRotationShapeId: shapeId,
+            },
+            selectedShapeIds: [shapeId], // Ensure shape is selected
+          }),
+          false,
+          'enterCursorRotationMode'
+        );
+
+        logger.info(`Entered cursor rotation mode for shape ${shapeId}`);
+      },
+
+      exitCursorRotationMode: () => {
+        const state = get();
+
+        // Save final state if a shape was being rotated
+        if (state.drawing.cursorRotationShapeId) {
+          state.saveToHistory();
+        }
+
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              cursorRotationMode: false,
+              cursorRotationShapeId: null,
+            },
+          }),
+          false,
+          'exitCursorRotationMode'
+        );
+
+        logger.info('Exited cursor rotation mode');
+      },
+
+      applyCursorRotation: (shapeId: string, angle: number, center: Point2D) => {
+        const state = get();
+
+        // Apply rotation using existing rotateShape action
+        // This already saves to history at the end
+        state.rotateShape(shapeId, angle, center);
+
+        logger.info(`Cursor rotation applied: ${Math.round(angle)}°`);
       },
 
       // Measurement actions
@@ -3791,6 +3907,19 @@ export const useAppStore = create<AppStore>()(
           }),
           false,
           'updateDrawingState'
+        );
+      },
+
+      setCursorPosition: (position: Point2D | null) => {
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              cursorPosition: position
+            }
+          }),
+          false,
+          'setCursorPosition'
         );
       },
 

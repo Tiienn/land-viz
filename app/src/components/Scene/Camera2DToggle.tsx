@@ -4,10 +4,8 @@ import { useThree } from '@react-three/fiber';
 import { useAppStore } from '@/store/useAppStore';
 
 export const Camera2DToggle: React.FC = () => {
-  const { is2DMode, zoom2D } = useAppStore(state => ({
-    is2DMode: state.viewState?.is2DMode || false,
-    zoom2D: state.viewState?.zoom2D || 1
-  }));
+  const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
+  const zoom2D = useAppStore(state => state.viewState?.zoom2D || 1);
 
   const viewport = useThree(state => state.viewport);
 

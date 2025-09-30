@@ -73,6 +73,9 @@ export interface DrawingState {
   rotationStartAngle: number;
   rotationCenter: Point2D | null;
   originalRotation: ShapeRotation | null;
+  // Cursor rotation mode state (hover-to-rotate mode)
+  cursorRotationMode: boolean;
+  cursorRotationShapeId: string | null;
   // Enhanced snapping and guides system
   snapping: {
     /** Current snap configuration */
@@ -84,6 +87,8 @@ export interface DrawingState {
     /** Snap preview position */
     snapPreviewPosition: Point2D | null;
   };
+  /** Current cursor position for proximity-based filtering */
+  cursorPosition: Point2D | null;
   guides: {
     /** Static user-created guides */
     staticGuides: Guide[];
