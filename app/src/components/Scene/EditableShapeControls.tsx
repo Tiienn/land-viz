@@ -12,15 +12,24 @@ interface EditableShapeControlsProps {
 
 const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation = 0.01 }) => {
   const { camera, raycaster, gl } = useThree();
-  
-  // Get edit state from store
-  const { drawing, shapes, selectCorner, updateShapePointLive, convertRectangleToPolygonLive, saveToHistory } = useAppStore();
+
+  // PERFORMANCE OPTIMIZATION: Select individual values to avoid object creation
+  // This prevents the "getSnapshot should be cached" warning and infinite loops
+  const isEditMode = useAppStore(state => state.drawing.isEditMode);
+  const editingShapeId = useAppStore(state => state.drawing.editingShapeId);
+  const shapes = useAppStore(state => state.shapes);
+  const selectedCornerIndex = useAppStore(state => state.drawing.selectedCornerIndex);
+
+  const selectCorner = useAppStore(state => state.selectCorner);
+  const updateShapePointLive = useAppStore(state => state.updateShapePointLive);
+  const convertRectangleToPolygonLive = useAppStore(state => state.convertRectangleToPolygonLive);
+  const saveToHistory = useAppStore(state => state.saveToHistory);
 
   // Find the shape being edited
   const editingShape = useMemo(() => {
-    if (!drawing.isEditMode || !drawing.editingShapeId) return null;
-    return shapes.find(shape => shape.id === drawing.editingShapeId) || null;
-  }, [shapes, drawing.isEditMode, drawing.editingShapeId]);
+    if (!isEditMode || !editingShapeId) return null;
+    return shapes.find(shape => shape.id === editingShapeId) || null;
+  }, [shapes, isEditMode, editingShapeId]);
 
   // Simple corner points for editing
   const cornerPoints = useMemo(() => {
@@ -41,15 +50,18 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
   }, [editingShape]);
 
   // Persistent dragging state using useRef to survive re-renders
-  const dragState = useRef({ 
-    isDragging: false, 
+  const dragState = useRef({
+    isDragging: false,
     dragCornerIndex: null as number | null,
-    originalPoints: null as Point2D[] | null 
+    originalPoints: null as Point2D[] | null
   });
-  
+
+  // Track cleanup function to prevent memory leaks
+  const cleanupRef = useRef<(() => void) | null>(null);
+
   const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
 
-  const handlePointerMove = useCallback((event: PointerEvent) => {
+  const handlePointerMove = useCallback((event: PointerEvent | MouseEvent) => {
     if (!dragState.current.isDragging || dragState.current.dragCornerIndex === null) return;
 
     const rect = gl.domElement.getBoundingClientRect();
@@ -88,25 +100,28 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
     if (dragState.current.isDragging) {
       // Save to history once at the end of drag operation
       saveToHistory();
-      
+
       dragState.current.isDragging = false;
       dragState.current.dragCornerIndex = null;
       dragState.current.originalPoints = null;
-      document.removeEventListener('pointermove', handlePointerMove as any);
-      document.removeEventListener('pointerup', handlePointerUp as any);
+
+      // Clean up event listeners
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      cleanupRef.current = null; // Clear cleanup ref
     }
   }, [handlePointerMove, saveToHistory]);
 
-  // Cleanup on unmount
+  // MEMORY LEAK FIX: Cleanup on unmount using ref
   React.useEffect(() => {
     return () => {
-      document.removeEventListener('pointermove', handlePointerMove as any);
-      document.removeEventListener('pointerup', handlePointerUp as any);
+      // Call cleanup if it exists (removes listeners added during drag)
+      cleanupRef.current?.();
     };
   }, []);
 
 
-  if (!drawing.isEditMode || !editingShape || !cornerPoints.length) {
+  if (!isEditMode || !editingShape || !cornerPoints.length) {
     return null;
   }
 
@@ -114,7 +129,7 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
     <group>
       {/* Simple Corner Handles */}
       {cornerPoints.map((point, index) => {
-        const isSelected = drawing.selectedCornerIndex === index;
+        const isSelected = selectedCornerIndex === index;
         
         return (
           <Sphere
@@ -147,8 +162,16 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
                 dragState.current.isDragging = true;
                 dragState.current.dragCornerIndex = index;
                 dragState.current.originalPoints = [...originalPoints];
-                document.addEventListener('pointermove', handlePointerMove as any);
-                document.addEventListener('pointerup', handlePointerUp as any);
+
+                // Add event listeners
+                document.addEventListener('pointermove', handlePointerMove);
+                document.addEventListener('pointerup', handlePointerUp);
+
+                // MEMORY LEAK FIX: Store cleanup function for unmount
+                cleanupRef.current = () => {
+                  document.removeEventListener('pointermove', handlePointerMove);
+                  document.removeEventListener('pointerup', handlePointerUp);
+                };
               }
             }}
           >

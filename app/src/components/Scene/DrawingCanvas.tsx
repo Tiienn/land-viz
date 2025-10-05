@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo, useEffect } from 'react';
+import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react';
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Vector2, Vector3, type Mesh } from 'three';
 import { useAppStore } from '@/store/useAppStore';
@@ -6,6 +6,7 @@ import type { Point2D } from '@/types';
 import { RaycastManager } from '../../utils/RaycastManager';
 import { SnapGrid } from '../../utils/SnapGrid';
 import { alignmentService } from '../../services/alignmentService';
+import { useAdaptiveSnapRadius } from '../../hooks/useAdaptiveSnapRadius';
 
 interface DrawingCanvasProps {
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
@@ -24,7 +25,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   // Performance-optimized managers
   const raycastManager = useRef(new RaycastManager());
   const snapGrid = useRef(new SnapGrid(gridSize * 5, gridSize * 1.5));
-  
+
+  // PERFORMANCE FIX: RAF throttling for alignment detection
+  const alignmentRafRef = useRef<number | null>(null);
+
   // Cached vectors for performance
   const mousePosition = useRef(new Vector2());
   const worldPosition = useRef(new Vector3());
@@ -35,13 +39,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const currentShape = useAppStore(state => state.drawing.currentShape);
   const shapes = useAppStore(state => state.shapes);
   const snapConfig = useAppStore(state => state.drawing.snapping?.config);
+  const snapMode = useAppStore(state => state.drawing.snapping?.config?.mode || 'adaptive');
+  const screenSpacePixels = useAppStore(state => state.drawing.snapping?.config?.screenSpacePixels || 75);
 
-  // Measurement state selectors
-  const isMeasuring = useAppStore(state => state.drawing.measurement.isMeasuring);
-
-  // Line tool state selectors
-  const lineToolState = useAppStore(state => state.drawing.lineTool);
-  const isLineDrawing = useAppStore(state => state.drawing.lineTool.isDrawing);
+  // Note: Measurement and line tool state is accessed via useAppStore.getState() in callbacks
+  // to avoid stale closures. Do not create selectors here.
 
   const startDrawing = useAppStore(state => state.startDrawing);
   const addPoint = useAppStore(state => state.addPoint);
@@ -70,64 +72,84 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   // Get the entire store for updating state
   const store = useAppStore;
 
+  // Track cursor world position for adaptive snap radius
+  const [cursorWorldPos, setCursorWorldPos] = useState<Vector3 | null>(null);
+
+  // Use adaptive snap radius hook
+  useAdaptiveSnapRadius({
+    enabled: snapMode === 'adaptive',
+    screenSpacePixels,
+    cursorWorldPosition: cursorWorldPos
+  });
+
   // This old function has been removed - using the optimized version below
 
-  // Optimized alignment detection function
+  // PERFORMANCE FIX: RAF-throttled alignment detection function
   const performAlignmentDetection = useCallback((worldPos2D: Point2D) => {
     const alignmentConfig = useAppStore.getState().drawing.alignment?.config;
 
     if (!alignmentConfig?.enabled) return;
 
-    // Create a temporary shape at the current cursor position for alignment detection
-    let tempShape;
-    if (currentShape) {
-      // During drawing mode
-      tempShape = {
-        ...currentShape,
-        points: currentShape.points ? [...currentShape.points, worldPos2D] : [worldPos2D],
-        id: 'temp_drawing_shape'
-      };
-    } else {
-      // When no shape is being drawn, create a small cursor shape for alignment detection
-      tempShape = {
-        id: 'temp_cursor_shape',
-        name: 'Cursor',
-        type: 'circle' as const,
-        color: '#3b82f6',
-        visible: true,
-        layerId: 'main',
-        created: new Date(),
-        modified: new Date(),
-        points: [
-          worldPos2D, // Center point
-          { x: worldPos2D.x + 2, y: worldPos2D.y } // Small radius for detection
-        ]
-      };
+    // Cancel any pending alignment detection
+    if (alignmentRafRef.current !== null) {
+      cancelAnimationFrame(alignmentRafRef.current);
     }
 
-    // Get other shapes for alignment detection (limit for performance)
-    const otherShapes = shapes.slice(0, 8); // Limit to 8 shapes for performance
-    
-    // Detect alignment guides with performance limits
-    const guides = alignmentService.detectAlignmentGuides(
-      tempShape,
-      otherShapes,
-      alignmentConfig
-    ).slice(0, 4); // Limit to 4 guides max for performance
+    // Schedule alignment detection on next animation frame (60fps throttle)
+    alignmentRafRef.current = requestAnimationFrame(() => {
+      alignmentRafRef.current = null;
 
-
-    // Update the store with alignment guides
-    store.setState((state) => ({
-      ...state,
-      drawing: {
-        ...state.drawing,
-        alignment: {
-          ...state.drawing.alignment,
-          activeGuides: guides,
-          draggingShapeId: tempShape.id
-        }
+      // Create a temporary shape at the current cursor position for alignment detection
+      let tempShape;
+      if (currentShape) {
+        // During drawing mode
+        tempShape = {
+          ...currentShape,
+          points: currentShape.points ? [...currentShape.points, worldPos2D] : [worldPos2D],
+          id: 'temp_drawing_shape'
+        };
+      } else {
+        // When no shape is being drawn, create a small cursor shape for alignment detection
+        tempShape = {
+          id: 'temp_cursor_shape',
+          name: 'Cursor',
+          type: 'circle' as const,
+          color: '#3b82f6',
+          visible: true,
+          layerId: 'main',
+          created: new Date(),
+          modified: new Date(),
+          points: [
+            worldPos2D, // Center point
+            { x: worldPos2D.x + 2, y: worldPos2D.y } // Small radius for detection
+          ]
+        };
       }
-    }));
+
+      // Get other shapes for alignment detection (limit for performance)
+      const otherShapes = shapes.slice(0, 8); // Limit to 8 shapes for performance
+
+      // Detect alignment guides with performance limits
+      const guides = alignmentService.detectAlignmentGuides(
+        tempShape,
+        otherShapes,
+        alignmentConfig
+      ).slice(0, 4); // Limit to 4 guides max for performance
+
+
+      // Update the store with alignment guides
+      store.setState((state) => ({
+        ...state,
+        drawing: {
+          ...state.drawing,
+          alignment: {
+            ...state.drawing.alignment,
+            activeGuides: guides,
+            draggingShapeId: tempShape.id
+          }
+        }
+      }));
+    });
   }, [shapes, store, currentShape]);
 
   // Optimized snap detection function
@@ -144,7 +166,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             ...state.drawing.snapping,
             availableSnapPoints: [],
             activeSnapPoint: null,
-            snapPreviewPosition: null
+            snapPreviewPosition: null,
+            lastHoverWorldPos: null,
+            lastActiveSnapPoint: null,
           }
         }
       }));
@@ -171,8 +195,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const viewState = useAppStore.getState().viewState;
     const is2DMode = viewState?.is2DMode || false;
     const baseSnapRadius = snapConfig.snapRadius || 15;
-    // In 2D mode, use very precise radius for CAD-like behavior. 0.05m = 5cm snap radius
-    const snapRadius = is2DMode ? 0.05 : baseSnapRadius;
+    // Use user's snap radius setting directly (respect UI controls)
+    const snapRadius = baseSnapRadius;
 
     // Synchronize SnapGrid's internal snap distance with the actual radius being used
     snapGrid.current.setSnapDistance(snapRadius);
@@ -191,7 +215,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       snapRadius
     );
 
+    // Determine the final active snap point
+    const finalActiveSnapPoint = nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint : null;
+
     // Update store with both available snap points (for indicators) and active snap point
+    // Also store sticky snap data for accurate click behavior
     store.setState((state) => ({
       ...state,
       drawing: {
@@ -199,15 +227,18 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         snapping: {
           ...state.drawing.snapping,
           availableSnapPoints: filteredSnapPoints, // Show indicators for all nearby snap points
-          activeSnapPoint: nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint : null,
-          snapPreviewPosition: nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint.position : null
+          activeSnapPoint: finalActiveSnapPoint,
+          snapPreviewPosition: finalActiveSnapPoint ? finalActiveSnapPoint.position : null,
+          // Sticky snap: Store last hover position and active snap point
+          lastHoverWorldPos: worldPos2D,
+          lastActiveSnapPoint: finalActiveSnapPoint,
         }
       }
     }));
 
     // Return snap position if we have an active snap point
-    if (nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type)) {
-      return nearestSnapPoint.position;
+    if (finalActiveSnapPoint) {
+      return finalActiveSnapPoint.position;
     }
 
     return worldPos2D;
@@ -224,7 +255,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     return new Vector3(snappedX, 0, snappedZ);
   }, [gridSnap, gridSize]);
 
-  const getWorldPosition = useCallback((event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): Vector3 | null => {
+  // Get raw world position WITHOUT grid snapping (for smart snap priority)
+  const getRawWorldPosition = useCallback((event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): Vector3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
     const mouse = new Vector2();
 
@@ -233,14 +265,19 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
     // Use RaycastManager for optimized ground plane intersection
-    const intersection = raycastManager.current.intersectGroundPlane(camera, mouse, 0);
+    return raycastManager.current.intersectGroundPlane(camera, mouse, 0);
+  }, [camera, gl.domElement]);
+
+  // Get world position WITH grid snapping (for hover/move operations)
+  const getWorldPosition = useCallback((event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): Vector3 | null => {
+    const intersection = getRawWorldPosition(event);
 
     if (intersection) {
       return snapToGridPoint(intersection);
     }
 
     return null;
-  }, [camera, gl.domElement, snapToGridPoint]);
+  }, [getRawWorldPosition, snapToGridPoint]);
 
   const worldPositionToScreenPosition = useCallback((worldPos: Vector3): Point2D => {
     // Project 3D world position to screen coordinates
@@ -257,6 +294,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const worldPos = getWorldPosition(event);
 
     if (worldPos) {
+      // Update cursor world position for adaptive snap radius
+      setCursorWorldPos(worldPos);
+
       const rect = gl.domElement.getBoundingClientRect();
       const screenPos: Point2D = {
         x: event.clientX - rect.left,
@@ -275,6 +315,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       const snappedPos = performSnapDetection(worldPos2D);
       performAlignmentDetection(snappedPos);
 
+      // Get fresh state to avoid stale closures
+      const currentState = useAppStore.getState();
+      const isMeasuring = currentState.drawing.measurement.isMeasuring;
+      const isLineDrawing = currentState.drawing.lineTool.isDrawing;
+
       // Handle measurement preview when measuring
       if (activeTool === 'measure' && isMeasuring) {
         updateMeasurementPreview(snappedPos);
@@ -289,11 +334,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         onCoordinateChange(worldPos2D, screenPos);
       }
     }
-  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, isMeasuring, updateMeasurementPreview, isLineDrawing, updateLinePreview, setCursorPosition]);
+  }, [getWorldPosition, onCoordinateChange, gl.domElement, performSnapDetection, performAlignmentDetection, activeTool, updateMeasurementPreview, updateLinePreview, setCursorPosition]);
 
   const handlePointerLeave = useCallback(() => {
     // Clear cursor position when leaving canvas
     setCursorPosition(null);
+    setCursorWorldPos(null);
 
     // Clear hover state when mouse leaves the drawing area
     if (activeTool === 'select') {
@@ -312,7 +358,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           ...state.drawing.snapping,
           availableSnapPoints: [],
           activeSnapPoint: null,
-          snapPreviewPosition: null
+          snapPreviewPosition: null,
+          lastHoverWorldPos: null,
+          lastActiveSnapPoint: null,
         },
         alignment: {
           ...state.drawing.alignment,
@@ -337,16 +385,61 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       return;
     }
 
-    const worldPos = getWorldPosition(event);
-    if (!worldPos) return;
+    // Get RAW world position (without grid snapping) for smart snap priority
+    const rawWorldPos = getRawWorldPosition(event);
+    if (!rawWorldPos) return;
 
-    const point2D: Point2D = {
-      x: worldPos.x,
-      y: worldPos.z, // Using Z as Y for 2D mapping
+    const rawPoint2D: Point2D = {
+      x: rawWorldPos.x,
+      y: rawWorldPos.z, // Using Z as Y for 2D mapping
     };
 
-    // Apply snapping for precise measurements
-    const snappedPos = performSnapDetection(point2D);
+    // STICKY SNAP SYSTEM:
+    // Use the snap point shown during hover if the click is close to the hover position
+    // This ensures clicking on a visible SNAP indicator actually snaps to it
+    let snappedPos: Point2D;
+
+    // Get sticky snap data from the last hover
+    const currentState = useAppStore.getState();
+    const lastHoverPos = currentState.drawing.snapping.lastHoverWorldPos;
+    const lastSnapPoint = currentState.drawing.snapping.lastActiveSnapPoint;
+
+    // Calculate distance between click position and last hover position
+    const clickToHoverDistance = lastHoverPos ? Math.sqrt(
+      Math.pow(rawPoint2D.x - lastHoverPos.x, 2) +
+      Math.pow(rawPoint2D.y - lastHoverPos.y, 2)
+    ) : Infinity;
+
+    // Sticky snap threshold: 0.5 meters in world space
+    // This allows for slight mouse movement between hover and click
+    const stickySnapThreshold = 0.5;
+
+    if (lastSnapPoint && clickToHoverDistance < stickySnapThreshold) {
+      // STICKY SNAP: Use the snap point that was shown during hover
+      // This is what the user expects - clicking on the SNAP indicator snaps to it
+      snappedPos = lastSnapPoint.position;
+    } else {
+      // Either no snap point during hover, or mouse moved significantly
+      // Recalculate snap detection at the actual click position
+      const shapeSnappedPos = performSnapDetection(rawPoint2D);
+
+      // Check if shape snap was found (position changed from raw)
+      const hasShapeSnap =
+        shapeSnappedPos.x !== rawPoint2D.x ||
+        shapeSnappedPos.y !== rawPoint2D.y;
+
+      if (hasShapeSnap) {
+        // Shape snap found - use it
+        snappedPos = shapeSnappedPos;
+      } else {
+        // No shape snap - apply grid snap as fallback
+        const gridSnappedPos = snapToGridPoint(rawWorldPos);
+        snappedPos = {
+          x: gridSnappedPos.x,
+          y: gridSnappedPos.z
+        };
+      }
+    }
 
     switch (activeTool) {
       case 'line':
@@ -411,13 +504,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       case 'polyline': // Multi-point line drawing
         if (!isDrawing) {
           startDrawing();
-          addPoint(point2D);
+          addPoint(snappedPos); // Use snapped position for 0.000m precision
         } else {
           // Check if clicking close to the first point to close polyline (3+ points required)
           if (currentShape?.points && currentShape.points.length >= 3) {
             const firstPoint = currentShape.points[0];
             const distance = Math.sqrt(
-              Math.pow(point2D.x - firstPoint.x, 2) + Math.pow(point2D.y - firstPoint.y, 2)
+              Math.pow(snappedPos.x - firstPoint.x, 2) + Math.pow(snappedPos.y - firstPoint.y, 2)
             );
 
             const closeThreshold = gridSize * 2.0; // Same threshold as cursor change
@@ -427,20 +520,20 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             }
           }
 
-          addPoint(point2D);
+          addPoint(snappedPos); // Use snapped position for 0.000m precision
         }
         break;
 
       case 'rectangle':
         if (!isDrawing) {
           startDrawing();
-          addPoint(point2D); // First corner
+          addPoint(snappedPos); // First corner - use snapped position for 0.000m precision
         } else if (currentShape?.points && currentShape.points.length === 1) {
           const firstPoint = currentShape.points[0];
-          // Add the remaining 3 points to complete rectangle
-          addPoint({ x: point2D.x, y: firstPoint.y });     // Top-right
-          addPoint({ x: point2D.x, y: point2D.y });        // Bottom-right
-          addPoint({ x: firstPoint.x, y: point2D.y });     // Bottom-left
+          // Add the remaining 3 points to complete rectangle - use snapped position
+          addPoint({ x: snappedPos.x, y: firstPoint.y });     // Top-right
+          addPoint({ x: snappedPos.x, y: snappedPos.y });     // Bottom-right
+          addPoint({ x: firstPoint.x, y: snappedPos.y });     // Bottom-left
           finishDrawing();
         }
         break;
@@ -448,11 +541,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       case 'circle':
         if (!isDrawing) {
           startDrawing();
-          addPoint(point2D); // Center point
+          addPoint(snappedPos); // Center point - use snapped position for 0.000m precision
         } else if (currentShape?.points && currentShape.points.length === 1) {
           const center = currentShape.points[0];
           const radius = Math.sqrt(
-            Math.pow(point2D.x - center.x, 2) + Math.pow(point2D.y - center.y, 2)
+            Math.pow(snappedPos.x - center.x, 2) + Math.pow(snappedPos.y - center.y, 2)
           );
 
           // Generate circle points with adaptive segment count for performance
@@ -478,12 +571,20 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     isDrawing,
     currentShape,
     gridSize,
-    getWorldPosition,
+    getRawWorldPosition,
+    snapToGridPoint,
     startDrawing,
     addPoint,
     finishDrawing,
     clearSelection,
     exitRotateMode,
+    performSnapDetection,
+    startMeasurement,
+    completeMeasurement,
+    updateMeasurementPreview,
+    startLineDrawing,
+    showDistanceInput,
+    // Note: isMeasuring and isLineDrawing removed - using fresh state via useAppStore.getState()
   ]);
 
   const handleDoubleClick = useCallback(() => {
@@ -500,7 +601,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const freshIsMeasuring = freshState.drawing.measurement.isMeasuring;
     const freshIsLineDrawing = freshState.drawing.lineTool.isDrawing;
 
-
     if (freshIsDrawing) {
       cancelDrawing();
     } else if (freshIsMeasuring) {
@@ -508,7 +608,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     } else if (freshIsLineDrawing) {
       cancelLineDrawing();
     }
-  }, [isDrawing, cancelDrawing, isMeasuring, cancelMeasurement, isLineDrawing, cancelLineDrawing]);
+  }, [cancelDrawing, cancelMeasurement, cancelLineDrawing]);
 
   // Clear snap state when tool changes (defensive state clearing)
   useEffect(() => {
@@ -525,17 +625,55 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           ...state.drawing.snapping,
           availableSnapPoints: [],
           activeSnapPoint: null,
-          snapPreviewPosition: null
+          snapPreviewPosition: null,
+          lastHoverWorldPos: null,
+          lastActiveSnapPoint: null,
         }
       }
     }));
   }, [activeTool, store, setCursorPosition]);
+
+  // Task 4.2: Add Shift key event listeners for snap override
+  useEffect(() => {
+    const setShiftKey = useAppStore.getState().setShiftKey;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setShiftKey(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setShiftKey(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      // Reset shift key state on cleanup
+      setShiftKey(false);
+    };
+  }, []);
 
   // Cleanup on component unmount
   useEffect(() => {
     return () => {
       raycastManager.current.dispose();
       snapGrid.current.dispose();
+    };
+  }, []);
+
+  // PERFORMANCE FIX: Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (alignmentRafRef.current !== null) {
+        cancelAnimationFrame(alignmentRafRef.current);
+      }
     };
   }, []);
 

@@ -5,18 +5,18 @@ import { useAppStore } from '../../store/useAppStore';
 
 // Centralized size constants for different view modes
 const INDICATOR_SIZES = {
-  GRID_3D: 0.03,
-  GRID_2D: 0.003
+  GRID_3D: 0.06,
+  GRID_2D: 0.006
 } as const;
 
 export const ActiveSnapIndicator: React.FC = () => {
   const meshRef = useRef<THREE.Mesh | THREE.Line>(null);
   const outerRingRef = useRef<THREE.Mesh>(null);
-  const { drawing, viewState } = useAppStore();
-  const snapping = drawing.snapping;
 
-  // Get 2D mode state with safe default
-  const is2DMode = viewState?.is2DMode || false;
+  // PERFORMANCE OPTIMIZATION: Select individual values to avoid object creation
+  // This prevents the "getSnapshot should be cached" warning and infinite loops
+  const snapping = useAppStore(state => state.drawing.snapping);
+  const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
   
   // Enhanced geometries for active indicator with 2D mode sizing
   const geometries = useMemo(() => {
@@ -24,12 +24,12 @@ export const ActiveSnapIndicator: React.FC = () => {
     const gridSize = is2DMode ? INDICATOR_SIZES.GRID_2D : INDICATOR_SIZES.GRID_3D;
 
     return {
-    grid: new THREE.PlaneGeometry(gridSize, gridSize), // Smaller in 2D mode
-    endpoint: new THREE.CircleGeometry(0.3, 12), // Much smaller
-    midpoint: new THREE.RingGeometry(0.2, 0.3, 4, 1, Math.PI / 4), // Much smaller
+    grid: new THREE.PlaneGeometry(gridSize * 2, gridSize * 2), // 2x larger
+    endpoint: new THREE.CircleGeometry(0.6, 12), // 2x larger
+    midpoint: new THREE.RingGeometry(0.4, 0.6, 4, 1, Math.PI / 4), // 2x larger
     center: (() => {
       const geometry = new THREE.BufferGeometry();
-      const centerSize = is2DMode ? 0.015 : 0.3; // Much smaller in 2D mode
+      const centerSize = is2DMode ? 0.03 : 0.6; // 2x larger in both modes
       const vertices = new Float32Array([
         -centerSize, 0, 0,  centerSize, 0, 0,  // Horizontal line (scaled for 2D)
         0, -centerSize, 0,  0, centerSize, 0   // Vertical line (scaled for 2D)
@@ -37,13 +37,13 @@ export const ActiveSnapIndicator: React.FC = () => {
       geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
       return geometry;
     })(),
-    quadrant: new THREE.CircleGeometry(0.25, 12), // Much smaller
-    intersection: new THREE.RingGeometry(0.15, 0.3, 6), // Much smaller
-    perpendicular: new THREE.PlaneGeometry(0.4, 0.08), // Much smaller
-    extension: new THREE.PlaneGeometry(0.5, 0.05), // Much smaller
-    tangent: new THREE.CircleGeometry(0.2, 8), // Much smaller
-    edge: new THREE.PlaneGeometry(0.3, 0.05), // Much smaller
-    outerRing: new THREE.RingGeometry(0.35, 0.5, 16) // Much smaller
+    quadrant: new THREE.CircleGeometry(0.5, 12), // 2x larger
+    intersection: new THREE.RingGeometry(0.3, 0.6, 6), // 2x larger
+    perpendicular: new THREE.PlaneGeometry(0.8, 0.16), // 2x larger
+    extension: new THREE.PlaneGeometry(1.0, 0.1), // 2x larger
+    tangent: new THREE.CircleGeometry(0.4, 8), // 2x larger
+    edge: new THREE.PlaneGeometry(0.6, 0.1), // 2x larger
+    outerRing: new THREE.RingGeometry(0.7, 1.0, 16) // 2x larger
   };
   }, [is2DMode]); // Include is2DMode in memoization dependencies
 
@@ -109,10 +109,13 @@ export const ActiveSnapIndicator: React.FC = () => {
   }), []);
 
   // Get active snap point - only show if the snap type is active
-  const activeSnapPoint = snapping.config.enabled && 
+  // EXCLUDE 'grid' type from active indicator (grid is everywhere, too distracting)
+  // Only show for important snap points: endpoint, midpoint, center, etc.
+  const activeSnapPoint = snapping.config.enabled &&
                           snapping.activeSnapPoint &&
+                          snapping.activeSnapPoint.type !== 'grid' && // Don't show for grid points
                           snapping.config.activeTypes?.has?.(snapping.activeSnapPoint.type)
-    ? snapping.activeSnapPoint 
+    ? snapping.activeSnapPoint
     : null;
 
   // Pulsing animation
