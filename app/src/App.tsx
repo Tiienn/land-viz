@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import SceneManager, { type SceneManagerRef } from './components/Scene/SceneManager';
 import LayerPanel from './components/LayerPanel';
 import AppHeader from './components/Layout/AppHeader';
@@ -15,9 +15,9 @@ import { MeasurementOverlay } from './components/MeasurementOverlay';
 import { DistanceInput } from './components/DistanceInput/DistanceInput';
 import ComparisonPanel from './components/ComparisonPanel';
 import { ConvertPanel } from './components/ConvertPanel';
+import { ToolsPanel } from './components/ToolsPanel';
 import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer';
 import { ObjectPositioner } from './utils/objectPositioning';
-// import PropertiesPanel from './components/PropertiesPanel';
 import AlignmentControls from './components/UI/AlignmentControls';
 import { View2DToggleButton } from './components/UI/View2DToggleButton';
 import Icon from './components/Icon';
@@ -62,6 +62,7 @@ function App(): React.JSX.Element {
   const [propertiesExpanded, setPropertiesExpanded] = useState(false);
   const [layersExpanded, setLayersExpanded] = useState(false);
   const [calculatorExpanded, setCalculatorExpanded] = useState(false);
+  const [toolsPanelExpanded, setToolsPanelExpanded] = useState(false);
   const [insertAreaModalOpen, setInsertAreaModalOpen] = useState(false);
   const [comparisonExpanded, setComparisonExpanded] = useState(false);
   const [convertExpanded, setConvertExpanded] = useState(false);
@@ -136,6 +137,14 @@ function App(): React.JSX.Element {
   // Line tool state
   const lineToolState = useAppStore(state => state.drawing.lineTool);
 
+  // Calculate left panel offset for modals (smart positioning to avoid overlap)
+  const leftPanelOffset = useMemo(() => {
+    const isAnyLeftPanelExpanded = comparisonExpanded || convertExpanded || toolsPanelExpanded || calculatorExpanded || layersExpanded || tidyUpExpanded;
+    if (isAnyLeftPanelExpanded) {
+      return 380 + 16; // Panel width (380px) + gap (16px)
+    }
+    return 0;
+  }, [comparisonExpanded, convertExpanded, toolsPanelExpanded, calculatorExpanded, layersExpanded, tidyUpExpanded]);
 
   // Sync local state with store state when store changes
   useEffect(() => {
@@ -1756,6 +1765,7 @@ function App(): React.JSX.Element {
                     setLayersExpanded(false);
                     setConvertExpanded(false);
                     setTidyUpExpanded(false);
+                    setToolsPanelExpanded(false);
 
                     // If comparison is not expanded, expand the panel if needed and show comparison
                     if (!leftPanelExpanded) {
@@ -1856,6 +1866,7 @@ function App(): React.JSX.Element {
                     setLayersExpanded(false);
                     setComparisonExpanded(false);
                     setTidyUpExpanded(false);
+                    setToolsPanelExpanded(false);
 
                     // If convert is not expanded, expand the panel if needed and show convert
                     if (!leftPanelExpanded) {
@@ -1904,36 +1915,58 @@ function App(): React.JSX.Element {
                 </span>
               </button>
             
-              <button style={{ 
-                padding: leftPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '8px', 
-                background: 'transparent', 
-                border: 'none', 
-                cursor: 'pointer', 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '4px',
-                width: '100%',
-                textAlign: 'center',
-                transition: 'all 0.2s ease',
-                color: '#374151'
-              }} 
-              title="Quick Tools"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.transform = 'translateY(0px)';
-              }}
+              <button
+                onClick={() => {
+                  if (toolsPanelExpanded) {
+                    setToolsPanelExpanded(false);
+                    setLeftPanelExpanded(false);
+                  } else {
+                    // Close other overlays
+                    setLayersExpanded(false);
+                    setComparisonExpanded(false);
+                    setConvertExpanded(false);
+                    setCalculatorExpanded(false);
+
+                    if (!leftPanelExpanded) {
+                      setLeftPanelExpanded(true);
+                    }
+                    setToolsPanelExpanded(true);
+                  }
+                }}
+                style={{
+                  padding: leftPanelExpanded ? '12px 16px' : '8px',
+                  borderRadius: '8px',
+                  background: toolsPanelExpanded ? '#3b82f6' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '4px',
+                  width: '100%',
+                  textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                  color: toolsPanelExpanded ? '#ffffff' : '#374151'
+                }}
+                title="Quick Tools"
+                onMouseEnter={(e) => {
+                  if (!toolsPanelExpanded) {
+                    e.currentTarget.style.background = '#f3f4f6';
+                  }
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!toolsPanelExpanded) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                  e.currentTarget.style.transform = 'translateY(0px)';
+                }}
               >
-                <Icon name="quickTools" size={20} color="#000000" />
-                <span style={{ 
-                  fontSize: '10px', 
-                  fontWeight: '500', 
-                  color: '#374151',
+                <Icon name="quickTools" size={20} color={toolsPanelExpanded ? "#ffffff" : "#000000"} />
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: '500',
+                  color: toolsPanelExpanded ? '#ffffff' : '#374151',
                   lineHeight: '1'
                 }}>
                   Tools
@@ -1951,6 +1984,7 @@ function App(): React.JSX.Element {
                     setComparisonExpanded(false);
                     setConvertExpanded(false);
                     setTidyUpExpanded(false);
+                    setToolsPanelExpanded(false);
 
                     if (!leftPanelExpanded) {
                       setLeftPanelExpanded(true);
@@ -2010,6 +2044,7 @@ function App(): React.JSX.Element {
                   setComparisonExpanded(false);
                   setConvertExpanded(false);
                   setTidyUpExpanded(false);
+                  setToolsPanelExpanded(false);
 
                   // If layers are not expanded, expand the panel if needed and show layers
                   if (!leftPanelExpanded) {
@@ -2070,6 +2105,7 @@ function App(): React.JSX.Element {
                     setLayersExpanded(false);
                     setConvertExpanded(false);
                     setComparisonExpanded(false);
+                    setToolsPanelExpanded(false);
                     // If TidyUp is not expanded, expand the panel if needed and show TidyUp
                     if (!leftPanelExpanded) {
                       setLeftPanelExpanded(true);
@@ -2177,6 +2213,33 @@ function App(): React.JSX.Element {
                   setLayersExpanded(false);
                   setLeftPanelExpanded(false);
                 }}
+              />
+            </UIErrorBoundary>
+          </div>
+        )}
+
+        {/* Tools Expansion Panel - Inline */}
+        {toolsPanelExpanded && (
+          <div style={{
+            position: 'absolute',
+            left: '50px',
+            top: 0,
+            bottom: 0,
+            width: '420px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            overflowY: 'auto',
+            zIndex: 20
+          }}>
+            <UIErrorBoundary componentName="ToolsPanel" showMinimalError={true}>
+              <ToolsPanel
+                isExpanded={true}
+                onClose={() => {
+                  setToolsPanelExpanded(false);
+                  setLeftPanelExpanded(false);
+                }}
+                inline={true}
               />
             </UIErrorBoundary>
           </div>
@@ -2334,20 +2397,21 @@ function App(): React.JSX.Element {
           />
 
           {/* Status overlay - shows active tool and current measurements */}
-          <div style={{ 
-            position: 'absolute', 
-            bottom: '16px', 
-            left: '16px', 
-            background: isProfessionalMode ? 'rgba(59, 130, 246, 0.95)' : 'rgba(255,255,255,0.95)', 
-            padding: '12px 16px', 
-            borderRadius: '8px', 
+          <div style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: `${16 + leftPanelOffset}px`,
+            background: isProfessionalMode ? 'rgba(59, 130, 246, 0.95)' : 'rgba(255,255,255,0.95)',
+            padding: '12px 16px',
+            borderRadius: '8px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             fontSize: '14px',
             color: isProfessionalMode ? 'white' : '#374151',
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            border: isProfessionalMode ? '2px solid #3b82f6' : 'none'
+            border: isProfessionalMode ? '2px solid #3b82f6' : 'none',
+            transition: 'left 0.2s ease'
           }}>
             {isProfessionalMode && (
               <>
@@ -2388,11 +2452,12 @@ function App(): React.JSX.Element {
             <div style={{
               position: 'absolute',
               bottom: '80px', // Above the status overlay
-              left: '16px',
+              left: `${16 + leftPanelOffset}px`,
               display: 'flex',
               gap: '12px',
               alignItems: 'flex-start',
-              zIndex: 100
+              zIndex: 100,
+              transition: 'left 0.2s ease'
             }}>
               {/* Mouse Position Display */}
               <div style={{
@@ -2705,10 +2770,598 @@ function App(): React.JSX.Element {
               </button>
             </div>
             {/* Content */}
-            <div style={{ flex: 1, padding: '16px' }}>
-              <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#6b7280' }}>
-                Configure drawing properties and settings here.
-              </p>
+            <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
+              {/* Current Tool Section */}
+              <div style={{
+                background: '#f0f9ff',
+                border: '1px solid #0ea5e9',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '20px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '12px'
+                }}>
+                  <span style={{ fontSize: '24px' }}>
+                    {activeTool === 'rectangle' ? '⬜' :
+                     activeTool === 'circle' ? '⭕' :
+                     activeTool === 'polyline' ? '📐' :
+                     activeTool === 'measure' ? '📏' :
+                     activeTool === 'line' ? '📏' :
+                     '↖'}
+                  </span>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: '#0c4a6e'
+                  }}>
+                    {activeTool === 'rectangle' ? 'Rectangle Tool' :
+                     activeTool === 'circle' ? 'Circle Tool' :
+                     activeTool === 'polyline' ? 'Polyline Tool' :
+                     activeTool === 'measure' ? 'Measure Tool' :
+                     activeTool === 'line' ? 'Line Tool' :
+                     'Select Tool'}
+                  </h3>
+                  {drawing.isDrawing && (
+                    <span style={{
+                      background: '#22c55e',
+                      color: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      fontWeight: '600'
+                    }}>
+                      DRAWING
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{
+                    margin: '0 0 8px 0',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: '#374151'
+                  }}>
+                    How to Use:
+                  </h4>
+                  <ol style={{
+                    margin: 0,
+                    paddingLeft: '16px',
+                    color: '#6b7280',
+                    fontSize: '13px'
+                  }}>
+                    {activeTool === 'rectangle' && (
+                      <>
+                        <li style={{ marginBottom: '4px' }}>
+                          {drawing.isDrawing
+                            ? 'Click to set the opposite corner of your rectangle'
+                            : 'Click on the 3D scene to set the first corner of your rectangle'}
+                        </li>
+                        <li style={{ marginBottom: '4px' }}>
+                          The rectangle will be drawn with straight edges between the two corners
+                        </li>
+                      </>
+                    )}
+                    {activeTool === 'circle' && (
+                      <>
+                        <li style={{ marginBottom: '4px' }}>
+                          {drawing.isDrawing
+                            ? 'Click to set the radius of your circle'
+                            : 'Click on the 3D scene to set the center of your circle'}
+                        </li>
+                        <li style={{ marginBottom: '4px' }}>
+                          Move your mouse to adjust the radius
+                        </li>
+                      </>
+                    )}
+                    {activeTool === 'polyline' && (
+                      <>
+                        <li style={{ marginBottom: '4px' }}>
+                          {drawing.isDrawing
+                            ? 'Click to add more points to your line'
+                            : 'Click on the 3D scene to start drawing your line'}
+                        </li>
+                        <li style={{ marginBottom: '4px' }}>
+                          Continue clicking to add additional points
+                        </li>
+                        <li style={{ marginBottom: '4px' }}>
+                          Click near the start point to close the shape
+                        </li>
+                      </>
+                    )}
+                    {activeTool === 'select' && (
+                      <>
+                        <li style={{ marginBottom: '4px' }}>
+                          Click on shapes to select and edit them
+                        </li>
+                        <li style={{ marginBottom: '4px' }}>
+                          Use the drawing tools above to create new shapes
+                        </li>
+                      </>
+                    )}
+                  </ol>
+                </div>
+              </div>
+
+              {/* Grid Settings */}
+              <div style={{
+                background: '#f9fafb',
+                border: '1px solid #e5e5e5',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '20px'
+              }}>
+                <h3 style={{
+                  margin: '0 0 12px 0',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#111827'
+                }}>
+                  Grid Settings
+                </h3>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={drawing.snapToGrid}
+                      onChange={() => {
+                        const newValue = !drawing.snapToGrid;
+                        useAppStore.setState((state) => ({
+                          drawing: {
+                            ...state.drawing,
+                            snapToGrid: newValue
+                          }
+                        }));
+                      }}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        cursor: 'pointer'
+                      }}
+                    />
+                    Enable Grid Snap
+                  </label>
+                  <p style={{
+                    margin: '4px 0 0 24px',
+                    fontSize: '12px',
+                    color: '#6b7280'
+                  }}>
+                    Snap cursor to grid points for precise measurements
+                  </p>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '4px'
+                  }}>
+                    Grid Size: {drawing.gridSize}m
+                  </label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="10"
+                    step="0.5"
+                    value={drawing.gridSize}
+                    onChange={(e) => {
+                      const newValue = parseFloat(e.target.value);
+                      useAppStore.setState((state) => ({
+                        drawing: {
+                          ...state.drawing,
+                          gridSize: newValue
+                        }
+                      }));
+                    }}
+                    style={{
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '11px',
+                    color: '#6b7280',
+                    marginTop: '2px'
+                  }}>
+                    <span>0.5m</span>
+                    <span>10m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shape Snapping Controls */}
+              <div style={{
+                background: '#f9fafb',
+                border: '1px solid #e5e5e5',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '20px'
+              }}>
+                <div style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#111827',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>Shape Snapping</span>
+                  <div
+                    title="Snap to corners, edges, and centers of existing shapes"
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '50%',
+                      background: '#9CA3AF',
+                      color: 'white',
+                      fontSize: '11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'help',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    ?
+                  </div>
+                </div>
+
+                {/* Master Toggle */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '14px',
+                  color: '#374151',
+                  marginBottom: '12px',
+                  cursor: 'pointer'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={drawing.snapping?.config?.enabled ?? true}
+                    onChange={() => {
+                      const currentEnabled = drawing.snapping?.config?.enabled ?? true;
+                      useAppStore.setState((state) => ({
+                        drawing: {
+                          ...state.drawing,
+                          snapping: {
+                            ...state.drawing.snapping,
+                            config: {
+                              ...state.drawing.snapping.config,
+                              enabled: !currentEnabled
+                            }
+                          }
+                        }
+                      }));
+                    }}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <span>Enable Shape Snapping</span>
+                </label>
+
+                {/* Snap Mode and Radius Controls */}
+                {(drawing.snapping?.config?.enabled ?? true) && (
+                  <>
+                    {/* Snap Mode Selection - Adaptive vs Fixed */}
+                    <div style={{
+                      marginBottom: '16px',
+                      paddingBottom: '12px',
+                      borderBottom: '1px solid #E5E7EB'
+                    }}>
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#6B7280',
+                        marginBottom: '8px'
+                      }}>
+                        Snap Detection Mode:
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        gap: '16px'
+                      }}>
+                        <label style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          color: '#4B5563'
+                        }}>
+                          <input
+                            type="radio"
+                            checked={(drawing.snapping?.config?.mode ?? 'adaptive') === 'adaptive'}
+                            onChange={() => {
+                              useAppStore.setState((state) => ({
+                                drawing: {
+                                  ...state.drawing,
+                                  snapping: {
+                                    ...state.drawing.snapping,
+                                    config: {
+                                      ...state.drawing.snapping.config,
+                                      mode: 'adaptive'
+                                    }
+                                  }
+                                }
+                              }));
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <span>Adaptive</span>
+                        </label>
+                        <label style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          color: '#4B5563'
+                        }}>
+                          <input
+                            type="radio"
+                            checked={(drawing.snapping?.config?.mode ?? 'adaptive') === 'fixed'}
+                            onChange={() => {
+                              useAppStore.setState((state) => ({
+                                drawing: {
+                                  ...state.drawing,
+                                  snapping: {
+                                    ...state.drawing.snapping,
+                                    config: {
+                                      ...state.drawing.snapping.config,
+                                      mode: 'fixed'
+                                    }
+                                  }
+                                }
+                              }));
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <span>Fixed</span>
+                        </label>
+                      </div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#9CA3AF',
+                        marginTop: '6px',
+                        fontStyle: 'italic'
+                      }}>
+                        {(drawing.snapping?.config?.mode ?? 'adaptive') === 'adaptive'
+                          ? 'Auto-adjusts with zoom for consistent detection distance'
+                          : 'Manual control of snap radius in meters'}
+                      </div>
+                    </div>
+
+                    {/* Adaptive Mode Controls */}
+                    {(drawing.snapping?.config?.mode ?? 'adaptive') === 'adaptive' && (
+                      <div style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#6B7280',
+                          marginBottom: '8px'
+                        }}>
+                          Screen Distance: <strong>{drawing.snapping?.config?.screenSpacePixels ?? 75}px</strong>
+                        </div>
+                        <input
+                          type="range"
+                          min="30"
+                          max="150"
+                          step="5"
+                          value={drawing.snapping?.config?.screenSpacePixels ?? 75}
+                          onChange={(e) => {
+                            const newValue = Number(e.target.value);
+                            useAppStore.setState((state) => ({
+                              drawing: {
+                                ...state.drawing,
+                                snapping: {
+                                  ...state.drawing.snapping,
+                                  config: {
+                                    ...state.drawing.snapping.config,
+                                    screenSpacePixels: newValue
+                                  }
+                                }
+                              }
+                            }));
+                          }}
+                          style={{
+                            width: '100%',
+                            marginBottom: '8px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <div style={{
+                          fontSize: '11px',
+                          color: '#9CA3AF',
+                          display: 'flex',
+                          justifyContent: 'space-between'
+                        }}>
+                          <span>Precise (30px)</span>
+                          <span>Relaxed (150px)</span>
+                        </div>
+                        <div style={{
+                          fontSize: '11px',
+                          color: '#6B7280',
+                          marginTop: '8px',
+                          padding: '6px 8px',
+                          background: '#F3F4F6',
+                          borderRadius: '4px'
+                        }}>
+                          World Radius: <strong>{(drawing.snapping?.config?.snapRadius ?? 5).toFixed(2)}m</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fixed Mode Controls */}
+                    {(drawing.snapping?.config?.mode ?? 'adaptive') === 'fixed' && (
+                      <div style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#6B7280',
+                          marginBottom: '8px'
+                        }}>
+                          Snap Radius: <strong>{drawing.snapping?.config?.snapRadius ?? 5}m</strong>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="20"
+                          step="1"
+                          value={drawing.snapping?.config?.snapRadius ?? 5}
+                          onChange={(e) => {
+                            const newValue = Number(e.target.value);
+                            useAppStore.setState((state) => ({
+                              drawing: {
+                                ...state.drawing,
+                                snapping: {
+                                  ...state.drawing.snapping,
+                                  config: {
+                                    ...state.drawing.snapping.config,
+                                    snapRadius: newValue
+                                  }
+                                }
+                              }
+                            }));
+                          }}
+                          style={{
+                            width: '100%',
+                            marginBottom: '8px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <div style={{
+                          fontSize: '11px',
+                          color: '#9CA3AF',
+                          display: 'flex',
+                          justifyContent: 'space-between'
+                        }}>
+                          <span>1m</span>
+                          <span>20m</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Snap Type Checkboxes */}
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#6B7280',
+                      marginBottom: '8px'
+                    }}>
+                      Snap Types:
+                    </div>
+
+                    {([
+                      { type: 'endpoint' as const, label: '🔵 Corners', color: '#3B82F6' },
+                      { type: 'midpoint' as const, label: '🟠 Edges', color: '#F59E0B' },
+                      { type: 'center' as const, label: '🟢 Centers', color: '#22C55E' },
+                      { type: 'grid' as const, label: '◇ Grid', color: '#9CA3AF' }
+                    ] as const).map(({ type, label, color }) => (
+                      <label
+                        key={type}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '12px',
+                          color: '#4B5563',
+                          marginBottom: '6px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={drawing.snapping?.config?.activeTypes?.has(type) ?? true}
+                          onChange={() => {
+                            const currentTypes = drawing.snapping?.config?.activeTypes ?? new Set(['endpoint', 'midpoint', 'center', 'grid']);
+                            const newTypes = new Set(currentTypes);
+                            if (newTypes.has(type)) {
+                              newTypes.delete(type);
+                            } else {
+                              newTypes.add(type);
+                            }
+                            useAppStore.setState((state) => ({
+                              drawing: {
+                                ...state.drawing,
+                                snapping: {
+                                  ...state.drawing.snapping,
+                                  config: {
+                                    ...state.drawing.snapping.config,
+                                    activeTypes: newTypes
+                                  }
+                                }
+                              }
+                            }));
+                          }}
+                          style={{
+                            width: '14px',
+                            height: '14px',
+                            cursor: 'pointer',
+                            accentColor: color
+                          }}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {/* Mouse Coordinates */}
+              <div style={{
+                background: '#f0fdf4',
+                border: '1px solid #22c55e',
+                borderRadius: '8px',
+                padding: '16px'
+              }}>
+                <h3 style={{
+                  margin: '0 0 12px 0',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#15803d'
+                }}>
+                  Mouse Coordinates
+                </h3>
+                <div style={{ fontSize: '14px', color: '#166534' }}>
+                  <p style={{ margin: '0 0 4px 0' }}>
+                    Real-time coordinates are displayed in the 3D scene
+                  </p>
+                  <p style={{ margin: '0 0 8px 0' }}>
+                    <strong>Format:</strong> X: [meters], Z: [meters]
+                  </p>
+                  <div style={{
+                    background: 'rgba(34, 197, 94, 0.1)',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontFamily: 'monospace'
+                  }}>
+                    Grid snap: {drawing.snapToGrid ? `ON (${drawing.gridSize}m)` : 'OFF'}
+                    <br />
+                    Shape snap: {drawing.snapping?.config?.enabled ? 'ON' : 'OFF'}
+                    <br />
+                    Units: Meters (m)
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -2733,13 +3386,6 @@ function App(): React.JSX.Element {
           initialFormat={exportSettingsFormat}
         />
       </DataErrorBoundary>
-
-      {/* Properties Panel - Now using horizontal expansion instead */}
-      {/* <PropertiesPanel
-        isOpen={propertiesPanelOpen}
-        onClose={() => setPropertiesPanelOpen(false)}
-      /> */}
-
 
       {/* Insert Area Modal */}
       <InsertAreaModal
