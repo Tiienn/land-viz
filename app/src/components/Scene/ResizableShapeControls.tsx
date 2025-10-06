@@ -125,7 +125,14 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   // Find the shape being resized
   const resizingShape = useMemo(() => {
     if (!drawing.isResizeMode || !drawing.resizingShapeId || activeTool !== 'select') return null;
-    return shapes.find(shape => shape.id === drawing.resizingShapeId) || null;
+    const shape = shapes.find(shape => shape.id === drawing.resizingShapeId) || null;
+
+    // Don't show resize handles for locked shapes
+    if (shape?.locked) {
+      return null;
+    }
+
+    return shape;
   }, [shapes, drawing.isResizeMode, drawing.resizingShapeId, activeTool]);
 
   // Generate resize handles based on shape type
@@ -197,60 +204,49 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     
     // For circles, create 4 resize handles on cardinal directions
     if (resizingShape.type === 'circle') {
-      if (resizingShape.points.length >= 3) {
-        // SIMPLIFIED: Apply transforms in correct order: rotate first, then drag
+      if (resizingShape.points.length >= 2) {
         const circlePoints = resizingShape.points;
-        let transformedCirclePoints = circlePoints;
-        
+
+        // UPDATED: Handle 2-point circle format [center, edge]
+        let originalCenter: Point2D;
+        let radiusX: number, radiusY: number;
+
+        if (circlePoints.length === 2) {
+          // 2-point format: [center, edge point]
+          originalCenter = circlePoints[0];
+          const edgePoint = circlePoints[1];
+          const radius = Math.sqrt(
+            Math.pow(edgePoint.x - originalCenter.x, 2) +
+            Math.pow(edgePoint.y - originalCenter.y, 2)
+          );
+          radiusX = radius;
+          radiusY = radius;
+        } else {
+          // Legacy multi-point format (perimeter points)
+          originalCenter = {
+            x: circlePoints.reduce((sum, p) => sum + p.x, 0) / circlePoints.length,
+            y: circlePoints.reduce((sum, p) => sum + p.y, 0) / circlePoints.length
+          };
+
+          const minX = Math.min(...circlePoints.map(p => p.x));
+          const maxX = Math.max(...circlePoints.map(p => p.x));
+          const minY = Math.min(...circlePoints.map(p => p.y));
+          const maxY = Math.max(...circlePoints.map(p => p.y));
+
+          radiusX = (maxX - minX) / 2;
+          radiusY = (maxY - minY) / 2;
+        }
+
         // Apply drag offset if shape is being dragged
         const isBeingDragged = globalDragState.isDragging && globalDragState.draggedShapeId === resizingShape.id;
         if (isBeingDragged && globalDragState.startPosition && globalDragState.currentPosition) {
           const offsetX = globalDragState.currentPosition.x - globalDragState.startPosition.x;
           const offsetY = globalDragState.currentPosition.y - globalDragState.startPosition.y;
-          
-          // First apply rotation to original points (if any)
-          const rotatedCirclePoints = applyRotationTransform(circlePoints, resizingShape.rotation);
-          
-          // Then apply drag offset to rotated points
-          transformedCirclePoints = rotatedCirclePoints.map(point => ({
-            x: point.x + offsetX,
-            y: point.y + offsetY
-          }));
-        } else {
-          // Normal case: just apply rotation to original points
-          transformedCirclePoints = applyRotationTransform(circlePoints, resizingShape.rotation);
+          originalCenter = {
+            x: originalCenter.x + offsetX,
+            y: originalCenter.y + offsetY
+          };
         }
-        
-        // For rotated ellipses, we need to work with the original (unrotated) shape first
-        // and then apply transformations to the handle positions
-        let originalCirclePoints = circlePoints;
-        let originalCenter = { x: 0, y: 0 };
-        
-        // Apply drag offset to original points if needed
-        if (isBeingDragged && globalDragState.startPosition && globalDragState.currentPosition) {
-          const offsetX = globalDragState.currentPosition.x - globalDragState.startPosition.x;
-          const offsetY = globalDragState.currentPosition.y - globalDragState.startPosition.y;
-          originalCirclePoints = circlePoints.map(point => ({
-            x: point.x + offsetX,
-            y: point.y + offsetY
-          }));
-        }
-        
-        // Calculate center and radii from original (unrotated but possibly dragged) points
-        originalCenter = { 
-          x: originalCirclePoints.reduce((sum, p) => sum + p.x, 0) / originalCirclePoints.length,
-          y: originalCirclePoints.reduce((sum, p) => sum + p.y, 0) / originalCirclePoints.length
-        };
-        
-        // Calculate bounding box of original ellipse shape
-        const minX = Math.min(...originalCirclePoints.map(p => p.x));
-        const maxX = Math.max(...originalCirclePoints.map(p => p.x));
-        const minY = Math.min(...originalCirclePoints.map(p => p.y));
-        const maxY = Math.max(...originalCirclePoints.map(p => p.y));
-        
-        // Calculate radii for ellipse (may be different for X and Y axes)
-        const radiusX = (maxX - minX) / 2;
-        const radiusY = (maxY - minY) / 2;
         
         // Generate handle positions relative to original center, then apply rotation
         let cornerHandles = [
@@ -394,33 +390,32 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     handleIndex: number,
     newPoint: Point2D
   ): Point2D[] => {
-    if (originalPoints.length < 3) return originalPoints;
-    
-    // Circle is stored as array of points forming the circle perimeter
-    // Calculate center as the average of all points
-    const center = { 
-      x: originalPoints.reduce((sum, p) => sum + p.x, 0) / originalPoints.length,
-      y: originalPoints.reduce((sum, p) => sum + p.y, 0) / originalPoints.length
-    };
-    
+    if (originalPoints.length < 2) return originalPoints;
+
+    // Determine center based on format
+    let center: Point2D;
+    if (originalPoints.length === 2) {
+      // 2-point format: [center, edge]
+      center = originalPoints[0];
+    } else {
+      // Legacy multi-point format
+      center = {
+        x: originalPoints.reduce((sum, p) => sum + p.x, 0) / originalPoints.length,
+        y: originalPoints.reduce((sum, p) => sum + p.y, 0) / originalPoints.length
+      };
+    }
+
     // Calculate new radius as distance from center to mouse position
     const newRadius = Math.sqrt(
       Math.pow(newPoint.x - center.x, 2) +
       Math.pow(newPoint.y - center.y, 2)
     );
-    
-    // Generate new circle points with the same number of segments
-    const circlePoints: Point2D[] = [];
-    const segments = originalPoints.length - 1; // Subtract 1 because last point equals first
-    for (let i = 0; i <= segments; i++) {
-      const angle = (i / segments) * Math.PI * 2;
-      circlePoints.push({
-        x: center.x + Math.cos(angle) * newRadius,
-        y: center.y + Math.sin(angle) * newRadius,
-      });
-    }
-    
-    return circlePoints;
+
+    // Return in 2-point format: [center, edge point]
+    return [
+      center,
+      { x: center.x + newRadius, y: center.y }
+    ];
   }, []);
 
   // Calculate new ellipse points when resizing circle edge handles
@@ -429,46 +424,64 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     handleIndex: number,
     newPoint: Point2D
   ): Point2D[] => {
-    if (originalPoints.length < 3) return originalPoints;
-    
-    // Calculate center as the average of all points
-    const center = { 
-      x: originalPoints.reduce((sum, p) => sum + p.x, 0) / originalPoints.length,
-      y: originalPoints.reduce((sum, p) => sum + p.y, 0) / originalPoints.length
-    };
-    
-    // Calculate current radii from original circle
-    const originalRadius = Math.sqrt(
-      Math.pow(originalPoints[0].x - center.x, 2) +
-      Math.pow(originalPoints[0].y - center.y, 2)
-    );
-    
-    // Start with equal radii (circle)
-    let radiusX = originalRadius;
-    let radiusY = originalRadius;
-    
-    // Adjust radius based on which edge handle is being dragged
-    if (handleIndex === 0) { // Top handle - adjust Y radius
-      radiusY = Math.abs(newPoint.y - center.y);
-    } else if (handleIndex === 1) { // Right handle - adjust X radius
-      radiusX = Math.abs(newPoint.x - center.x);
-    } else if (handleIndex === 2) { // Bottom handle - adjust Y radius
-      radiusY = Math.abs(newPoint.y - center.y);
-    } else if (handleIndex === 3) { // Left handle - adjust X radius
-      radiusX = Math.abs(newPoint.x - center.x);
+    if (originalPoints.length < 2) return originalPoints;
+
+    // Determine center and current radius
+    let center: Point2D;
+    let currentRadiusX: number, currentRadiusY: number;
+
+    if (originalPoints.length === 2) {
+      // 2-point format: [center, edge]
+      center = originalPoints[0];
+      const edgePoint = originalPoints[1];
+      const radius = Math.sqrt(
+        Math.pow(edgePoint.x - center.x, 2) +
+        Math.pow(edgePoint.y - center.y, 2)
+      );
+      currentRadiusX = radius;
+      currentRadiusY = radius;
+    } else {
+      // Multi-point format (ellipse perimeter points)
+      center = {
+        x: originalPoints.reduce((sum, p) => sum + p.x, 0) / originalPoints.length,
+        y: originalPoints.reduce((sum, p) => sum + p.y, 0) / originalPoints.length
+      };
+
+      const minX = Math.min(...originalPoints.map(p => p.x));
+      const maxX = Math.max(...originalPoints.map(p => p.x));
+      const minY = Math.min(...originalPoints.map(p => p.y));
+      const maxY = Math.max(...originalPoints.map(p => p.y));
+
+      currentRadiusX = (maxX - minX) / 2;
+      currentRadiusY = (maxY - minY) / 2;
     }
-    
-    // Generate ellipse points
+
+    // Adjust radius based on which edge handle is being dragged
+    let newRadiusX = currentRadiusX;
+    let newRadiusY = currentRadiusY;
+
+    if (handleIndex === 0) { // Top handle - adjust Y radius
+      newRadiusY = Math.abs(newPoint.y - center.y);
+    } else if (handleIndex === 1) { // Right handle - adjust X radius
+      newRadiusX = Math.abs(newPoint.x - center.x);
+    } else if (handleIndex === 2) { // Bottom handle - adjust Y radius
+      newRadiusY = Math.abs(newPoint.y - center.y);
+    } else if (handleIndex === 3) { // Left handle - adjust X radius
+      newRadiusX = Math.abs(newPoint.x - center.x);
+    }
+
+    // Generate ellipse perimeter points (return multi-point format for ellipses)
+    const segments = 48; // Smooth ellipse
     const ellipsePoints: Point2D[] = [];
-    const segments = originalPoints.length - 1;
-    for (let i = 0; i <= segments; i++) {
+
+    for (let i = 0; i < segments; i++) {
       const angle = (i / segments) * Math.PI * 2;
       ellipsePoints.push({
-        x: center.x + Math.cos(angle) * radiusX,
-        y: center.y + Math.sin(angle) * radiusY,
+        x: center.x + Math.cos(angle) * newRadiusX,
+        y: center.y + Math.sin(angle) * newRadiusY,
       });
     }
-    
+
     return ellipsePoints;
   }, []);
 

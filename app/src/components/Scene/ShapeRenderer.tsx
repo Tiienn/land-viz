@@ -29,9 +29,10 @@ const MeshWithDynamicGeometry: React.FC<{
   onPointerDown?: (event: any) => void;
   onPointerEnter?: (event: any) => void;
   onPointerLeave?: (event: any) => void;
+  onContextMenu?: (event: any) => void;
   cursor: string;
   material: any;
-}> = ({ shapeId, geometry, position, onClick, onDoubleClick, onPointerDown, onPointerEnter, onPointerLeave, cursor, material }) => {
+}> = ({ shapeId, geometry, position, onClick, onDoubleClick, onPointerDown, onPointerEnter, onPointerLeave, onContextMenu, cursor, material }) => {
   const meshRef = useRef<any>();
   const lastGeometryRef = useRef<BufferGeometry | null>(null);
   const materialRef = useRef<any>();
@@ -121,6 +122,7 @@ const MeshWithDynamicGeometry: React.FC<{
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
+      onContextMenu={onContextMenu}
       cursor={cursor}
     >
       <meshBasicMaterial
@@ -358,6 +360,45 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     drawing.liveResizePoints
   ]);
 
+  // Helper function for fallback geometry creation (MUST BE BEFORE shapeGeometries)
+  const createFallbackGeometry = useCallback((shape: Shape, elevation: number): BufferGeometry => {
+    const geometry = new THREE.BufferGeometry();
+
+    // Create minimal geometry based on shape type
+    if (shape.type === 'rectangle') {
+      const center = shape.points?.[0] || { x: 0, y: 0 };
+      const size = 1;
+      const vertices = new Float32Array([
+        center.x - size, elevation, center.y - size,
+        center.x + size, elevation, center.y - size,
+        center.x + size, elevation, center.y + size,
+        center.x - size, elevation, center.y + size
+      ]);
+      const indices = [0, 1, 2, 0, 2, 3];
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+    } else {
+      // For other shapes, create a simple triangle
+      const center = shape.points?.[0] || { x: 0, y: 0 };
+      const vertices = new Float32Array([
+        center.x, elevation, center.y,
+        center.x + 1, elevation, center.y,
+        center.x + 0.5, elevation, center.y + 1
+      ]);
+      const indices = [0, 1, 2];
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+    }
+
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    return geometry;
+  }, []);
+
   // Helper function for fresh rectangle geometry creation
   const createFreshRectangleGeometry = useCallback((points: Point2D[], elevation: number): BufferGeometry => {
     const geometry = new THREE.BufferGeometry();
@@ -563,46 +604,6 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     drawing.liveResizePoints, // Add this to dependencies for proper updates
     renderTrigger // Force re-render when explicitly triggered
   ]);
-  
-  
-  // Helper function for fallback geometry creation
-  const createFallbackGeometry = useCallback((shape: Shape, elevation: number): BufferGeometry => {
-    const geometry = new THREE.BufferGeometry();
-    
-    // Create minimal geometry based on shape type
-    if (shape.type === 'rectangle') {
-      const center = shape.points?.[0] || { x: 0, y: 0 };
-      const size = 1;
-      const vertices = new Float32Array([
-        center.x - size, elevation, center.y - size,
-        center.x + size, elevation, center.y - size,
-        center.x + size, elevation, center.y + size,
-        center.x - size, elevation, center.y + size
-      ]);
-      const indices = [0, 1, 2, 0, 2, 3];
-      
-      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-      geometry.setIndex(indices);
-    } else {
-      // For other shapes, create a simple triangle
-      const center = shape.points?.[0] || { x: 0, y: 0 };
-      const vertices = new Float32Array([
-        center.x, elevation, center.y,
-        center.x + 1, elevation, center.y,
-        center.x + 0.5, elevation, center.y + 1
-      ]);
-      const indices = [0, 1, 2];
-      
-      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-      geometry.setIndex(indices);
-    }
-    
-    geometry.computeVertexNormals();
-    geometry.computeBoundingBox();
-    geometry.computeBoundingSphere();
-    
-    return geometry;
-  }, []);
 
   // Separate material calculations
   const shapeMaterials = useMemo(() => {
@@ -764,6 +765,30 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     }
   }, [activeTool, hoverShape]);
 
+  // Context menu handler
+  const handleShapeContextMenu = useCallback((shapeId: string) => (event: any) => {
+    // Stop both Three.js event and native DOM event propagation
+    event.stopPropagation();
+    if (event.nativeEvent) {
+      event.nativeEvent.preventDefault();
+      event.nativeEvent.stopPropagation();
+      event.nativeEvent.stopImmediatePropagation();
+    }
+
+    const { selectedShapeIds, openContextMenu } = useAppStore.getState();
+
+    // Determine menu type based on selection
+    const menuType =
+      selectedShapeIds.length > 1 && selectedShapeIds.includes(shapeId)
+        ? 'multi-selection'
+        : 'shape';
+
+    openContextMenu(menuType, {
+      x: event.nativeEvent.clientX,
+      y: event.nativeEvent.clientY,
+    }, shapeId);
+  }, []);
+
   // Drag handlers
   const handlePointerDown = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
@@ -773,6 +798,12 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
 
     if (activeTool !== 'select' || selectedShapeId !== shapeId) {
       return; // Only allow dragging selected shapes in select mode
+    }
+
+    // CRITICAL: Prevent shape dragging if shape is locked
+    const shape = shapes.find(s => s.id === shapeId);
+    if (shape?.locked) {
+      return; // Don't allow movement of locked shapes
     }
 
     // CRITICAL: Prevent shape dragging during rotation mode
@@ -837,7 +868,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         return null;
       }
 
-      // Get transformed points and ensure rectangles are in 4-point format for outline rendering
+      // Get transformed points and ensure rectangles/circles are in proper format for outline rendering
       let transformedPoints = transform.points;
 
       // CRITICAL FIX: Convert 2-point rectangles to 4-point format for proper outline rendering
@@ -855,6 +886,35 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
           converted: transformedPoints
         });
       }
+
+      // CRITICAL FIX: Convert 2-point circles to perimeter points for proper outline rendering
+      if (shape.type === 'circle' && transformedPoints.length === 2) {
+        const center = transformedPoints[0];
+        const edgePoint = transformedPoints[1];
+        const radius = Math.sqrt(
+          Math.pow(edgePoint.x - center.x, 2) + Math.pow(edgePoint.y - center.y, 2)
+        );
+
+        // Generate circle perimeter points for outline
+        const circlePoints: Point2D[] = [];
+        const segments = Math.max(32, Math.min(64, Math.floor(radius * 4))); // Adaptive segments
+
+        for (let i = 0; i < segments; i++) {
+          const angle = (i / segments) * Math.PI * 2;
+          circlePoints.push({
+            x: center.x + Math.cos(angle) * radius,
+            y: center.y + Math.sin(angle) * radius,
+          });
+        }
+
+        transformedPoints = circlePoints;
+        logger.log(`🔧 Converted 2-point circle to ${segments} perimeter points for outline rendering:`, {
+          shapeId: shape.id,
+          radius,
+          segments
+        });
+      }
+
       let points3D = convertPointsWithElevation(transformedPoints, shape.layerId);
 
       // Close the shape for certain types
@@ -880,8 +940,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
 
       return (
         <group key={`${shape.id}_${shape.modified?.getTime?.() || 0}`}>
-          {/* Optimized Shape fill using cached geometry - allow polylines with 3+ points to have fill */}
-          {transformedPoints.length >= 3 && !(shape.type === 'polyline' && shape.points.length <= 2) && geometry && (
+          {/* Optimized Shape fill using cached geometry - allow circles and polylines with 3+ points to have fill */}
+          {(transformedPoints.length >= 3 || shape.type === 'circle') && !(shape.type === 'polyline' && shape.points.length <= 2) && geometry && (
             <MeshWithDynamicGeometry
               key={`fill_${shape.id}_${shape.modified?.getTime?.() || 0}_${JSON.stringify(shape.points)}`}
               shapeId={shape.id}
@@ -895,7 +955,14 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
               onPointerDown={activeTool === 'select' && isSelected ? handlePointerDown(shape.id) : undefined}
               onPointerEnter={activeTool === 'select' ? handleShapeHover(shape.id) : undefined}
               onPointerLeave={activeTool === 'select' ? handleShapeLeave : undefined}
-              cursor={activeTool === 'select' && isSelected ? 'move' : activeTool === 'select' ? 'pointer' : 'default'}
+              onContextMenu={handleShapeContextMenu(shape.id)}
+              cursor={
+                activeTool === 'select' && isSelected
+                  ? (shape.locked ? 'not-allowed' : 'move')
+                  : activeTool === 'select'
+                    ? 'pointer'
+                    : 'default'
+              }
               material={{
                 fillColor: material.fillColor,
                 opacity: Math.max(material.opacity, 0.1)
@@ -928,11 +995,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
             />
           )}
           
-          {/* Dimensions */}
+          {/* Dimensions - ALWAYS use original points, not transformed/rotated points */}
           {shape.visible && showDimensions && !hideDimensions && (
             <ShapeDimensions
-              key={`${shape.id}-${JSON.stringify(transformedPoints)}-${shape.modified?.getTime() || 0}-${renderTrigger}`}
-              shape={{...shape, points: transformedPoints}}
+              key={`${shape.id}-${JSON.stringify(shape.points)}-${shape.modified?.getTime() || 0}-${renderTrigger}`}
+              shape={shape}
               elevation={elevation}
               isSelected={isSelected}
               isResizeMode={drawing.isResizeMode && drawing.resizingShapeId === shape.id}

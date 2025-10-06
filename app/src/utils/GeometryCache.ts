@@ -179,25 +179,57 @@ export class GeometryCache {
   private static createCircleGeometry(points: Point2D[], elevation: number): BufferGeometry {
     const geometry = new BufferGeometry();
 
-    if (points.length < 3) return geometry;
+    if (points.length < 2) {
+      logger.warn('⚠️ Circle needs at least 2 points (center and edge)');
+      return this.createFallbackGeometry(elevation);
+    }
 
     const vertices: number[] = [];
     const indices: number[] = [];
 
+    // Handle 2-point format: [center, edge] -> generate circle perimeter
+    let circlePoints: Point2D[];
+    let center: Point2D;
+
+    if (points.length === 2) {
+      // Circle stored as [center, edge point]
+      center = points[0];
+      const edgePoint = points[1];
+      const radius = Math.sqrt(
+        Math.pow(edgePoint.x - center.x, 2) + Math.pow(edgePoint.y - center.y, 2)
+      );
+
+      // Generate circle perimeter points
+      circlePoints = [];
+      const segments = Math.max(32, Math.min(64, Math.floor(radius * 4))); // Adaptive segments
+
+      for (let i = 0; i < segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        circlePoints.push({
+          x: center.x + Math.cos(angle) * radius,
+          y: center.y + Math.sin(angle) * radius,
+        });
+      }
+    } else {
+      // Circle with pre-generated points
+      circlePoints = points;
+      center = this.calculateCenter(points);
+    }
+
     // Add center vertex
-    const center = this.calculateCenter(points);
     vertices.push(center.x, elevation, center.y);
 
     // Add perimeter vertices
-    points.forEach(point => {
+    circlePoints.forEach(point => {
       vertices.push(point.x, elevation, point.y);
     });
 
-    // Create triangular faces
-    for (let i = 1; i < points.length; i++) {
+    // Create triangular faces (fan triangulation from center)
+    for (let i = 1; i < circlePoints.length; i++) {
       indices.push(0, i, i + 1);
     }
-    indices.push(0, points.length, 1);
+    // Close the circle
+    indices.push(0, circlePoints.length, 1);
 
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(vertices), 3));
     geometry.setIndex(indices);

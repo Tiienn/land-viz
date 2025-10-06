@@ -20,9 +20,17 @@ import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer'
 import { ObjectPositioner } from './utils/objectPositioning';
 import AlignmentControls from './components/UI/AlignmentControls';
 import { View2DToggleButton } from './components/UI/View2DToggleButton';
+import { ShortcutsHelpButton } from './components/UI/ShortcutsHelpButton';
 import Icon from './components/Icon';
 import logger from './utils/logger';
 import type { Point2D, AreaUnit } from './types';
+import { useKeyboardShortcuts, useKeyboardShortcutListener } from './hooks/useKeyboardShortcuts';
+import { KeyboardShortcutHelp } from './components/KeyboardShortcutHelp';
+import type { KeyboardShortcut } from './types/shortcuts';
+import { ContextMenu } from './components/ContextMenu/ContextMenu';
+import DimensionInputToolbar from './components/DimensionInput/DimensionInputToolbar';
+import LiveDistanceLabel from './components/DimensionInput/LiveDistanceLabel';
+import PrecisionSettingsPanel from './components/DimensionInput/PrecisionSettingsPanel';
 
 /**
  * Root React component for the Land Visualizer application.
@@ -67,6 +75,7 @@ function App(): React.JSX.Element {
   const [comparisonExpanded, setComparisonExpanded] = useState(false);
   const [convertExpanded, setConvertExpanded] = useState(false);
   const [tidyUpExpanded, setTidyUpExpanded] = useState(false);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
   // Connect to the 3D scene store
   const {
@@ -154,19 +163,98 @@ function App(): React.JSX.Element {
   }, [drawing.activeTool, activeTool]);
 
 
-  // Keyboard shortcuts for undo/redo
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if we're not in an input field
-      const target = event.target as HTMLElement;
-      const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true';
-      
-      if (isInputField) return;
+  // Global keyboard shortcut listener
+  useKeyboardShortcutListener();
 
-      // Undo: Ctrl+Z (Windows/Linux) or Cmd+Z (Mac)
-      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
-        event.preventDefault();
-        
+  // Define all keyboard shortcuts
+  const shortcuts: KeyboardShortcut[] = useMemo(() => [
+    // Tool shortcuts
+    {
+      id: 'tool-select',
+      key: 's',
+      description: 'Select tool',
+      category: 'tools',
+      action: () => {
+        setActiveTool('select');
+        setStoreActiveTool('select');
+      },
+    },
+    {
+      id: 'tool-rectangle',
+      key: 'r',
+      description: 'Rectangle tool',
+      category: 'tools',
+      action: () => {
+        setActiveTool('rectangle');
+        setStoreActiveTool('rectangle');
+      },
+    },
+    {
+      id: 'tool-circle',
+      key: 'c',
+      description: 'Circle tool',
+      category: 'tools',
+      action: () => {
+        setActiveTool('circle');
+        setStoreActiveTool('circle');
+      },
+    },
+    {
+      id: 'tool-polyline',
+      key: 'p',
+      description: 'Polyline tool',
+      category: 'tools',
+      action: () => {
+        setActiveTool('polyline');
+        setStoreActiveTool('polyline');
+      },
+    },
+    {
+      id: 'tool-line',
+      key: 'l',
+      description: 'Line tool',
+      category: 'tools',
+      action: () => {
+        setActiveTool('line');
+        setStoreActiveTool('line');
+      },
+    },
+    {
+      id: 'tool-measure',
+      key: 'm',
+      description: 'Measurement tool',
+      category: 'tools',
+      action: () => {
+        if (drawing.measurement?.isActive) {
+          deactivateMeasurementTool();
+        } else {
+          activateMeasurementTool();
+        }
+      },
+    },
+    {
+      id: 'tool-edit',
+      key: 'e',
+      description: 'Toggle edit mode',
+      category: 'tools',
+      action: () => {
+        if (selectedShapeId) {
+          if (drawing.isEditMode) {
+            exitEditMode();
+          } else {
+            enterEditMode(selectedShapeId);
+          }
+        }
+      },
+    },
+    // Editing shortcuts
+    {
+      id: 'undo',
+      key: 'z',
+      ctrl: true,
+      description: 'Undo',
+      category: 'editing',
+      action: () => {
         // Priority 1: If actively drawing a polyline with points, do point-level undo
         if (drawing.isDrawing && drawing.activeTool === 'polyline' && drawing.currentShape?.points && drawing.currentShape.points.length > 0) {
           removeLastPoint();
@@ -179,68 +267,151 @@ function App(): React.JSX.Element {
         else if (canUndo()) {
           undo();
         }
-        // Priority 3: If no undo available and drawing other tools, ignore silently
-      }
-      
-      // Redo: Ctrl+Y (Windows/Linux) or Cmd+Shift+Z (Mac) or Ctrl+Shift+Z
-      if (
-        ((event.ctrlKey || event.metaKey) && event.key === 'y') ||
-        ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'z')
-      ) {
-        event.preventDefault();
+      },
+    },
+    {
+      id: 'redo',
+      key: 'y',
+      ctrl: true,
+      description: 'Redo',
+      category: 'editing',
+      action: () => {
         if (canRedo()) {
           redo();
         }
-      }
-
-      // Delete/Backspace key: Delete selected shape or measurement
-      if ((event.key === 'Delete' || event.key === 'Backspace')) {
+      },
+    },
+    {
+      id: 'duplicate',
+      key: 'd',
+      ctrl: true,
+      description: 'Duplicate selected shape',
+      category: 'editing',
+      action: () => {
         if (selectedShapeId) {
-          event.preventDefault();
+          const shape = shapes.find(s => s.id === selectedShapeId);
+          if (shape) {
+            const duplicatedShape = {
+              ...shape,
+              id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              name: `${shape.name} Copy`,
+              points: shape.points.map((p) => ({ x: p.x + 2, y: p.y + 2 })),
+              created: new Date(),
+              modified: new Date(),
+            };
+            // Add the duplicated shape
+            const addShape = useAppStore.getState().addShape;
+            addShape(duplicatedShape);
+          }
+        }
+      },
+    },
+    {
+      id: 'delete',
+      key: 'Delete',
+      description: 'Delete selected',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeId) {
           deleteShape(selectedShapeId);
         } else if (drawing.measurement?.selectedMeasurementId) {
-          event.preventDefault();
           deleteMeasurement(drawing.measurement.selectedMeasurementId);
         }
-      }
-      // V key: Toggle 2D/3D view
-      if (event.key === 'v' || event.key === 'V') {
-        event.preventDefault();
+      },
+    },
+    {
+      id: 'delete-backspace',
+      key: 'Backspace',
+      description: 'Delete selected (alt)',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeId) {
+          deleteShape(selectedShapeId);
+        } else if (drawing.measurement?.selectedMeasurementId) {
+          deleteMeasurement(drawing.measurement.selectedMeasurementId);
+        }
+      },
+    },
+    // View shortcuts
+    {
+      id: 'toggle-view',
+      key: 'v',
+      description: 'Toggle 2D/3D view',
+      category: 'view',
+      action: () => {
         toggleViewMode();
-      }
-
-      // L key: Activate line tool
-      if (event.key === 'l' || event.key === 'L') {
-        event.preventDefault();
-        setActiveTool('line');
-        setStoreActiveTool('line');
-      }
-
-      // ESC key: Cancel all active operations
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        cancelAll();
-      }
-
-      // Line tool specific shortcuts
-      if (drawing.activeTool === 'line') {
-        // Tab: Toggle multi-segment mode
-        if (event.key === 'Tab') {
-          event.preventDefault();
+      },
+    },
+    {
+      id: 'escape',
+      key: 'Escape',
+      description: 'Cancel operation',
+      category: 'drawing',
+      action: () => {
+        // Check if keyboard help modal is currently open by checking the DOM
+        const isHelpOpen = document.body.hasAttribute('data-keyboard-help-open');
+        if (isHelpOpen) {
+          setShortcutHelpOpen(false);
+        } else {
+          cancelAll();
+        }
+      },
+    },
+    // Line tool specific
+    {
+      id: 'line-toggle-multi',
+      key: 'Tab',
+      description: 'Toggle multi-segment mode (Line tool)',
+      category: 'drawing',
+      action: () => {
+        if (drawing.activeTool === 'line') {
           toggleMultiSegmentMode();
         }
-
-        // Space: Complete multi-segment line (if in multi-segment mode with segments)
-        if (event.key === ' ' && lineToolState.isMultiSegment && lineToolState.segments.length > 0) {
-          event.preventDefault();
+      },
+      enabled: drawing.activeTool === 'line',
+    },
+    {
+      id: 'line-complete',
+      key: ' ',
+      description: 'Complete line (Line tool)',
+      category: 'drawing',
+      action: () => {
+        if (drawing.activeTool === 'line' && lineToolState.isMultiSegment && lineToolState.segments.length > 0) {
           completeLine();
         }
-      }
-    };
+      },
+      enabled: drawing.activeTool === 'line' && lineToolState.isMultiSegment && lineToolState.segments.length > 0,
+    },
+    // Help overlay
+    {
+      id: 'help',
+      key: '?',
+      description: 'Toggle keyboard shortcuts',
+      category: 'view',
+      action: () => {
+        // Check current state from DOM to avoid stale closure
+        const isOpen = document.body.hasAttribute('data-keyboard-help-open');
+        setShortcutHelpOpen(!isOpen);
+      },
+    },
+  ], [
+    drawing.activeTool,
+    drawing.isEditMode,
+    drawing.measurement?.isActive,
+    drawing.measurement?.selectedMeasurementId,
+    drawing.isDrawing,
+    drawing.currentShape,
+    selectedShapeId,
+    canUndo,
+    canRedo,
+    lineToolState.isMultiSegment,
+    lineToolState.segments.length,
+    shapes,
+    // Note: shortcutHelpOpen removed from deps - Esc handler checks DOM directly
+  ]);
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, removeLastPoint, removeLastLineSegment, deleteShape, selectedShapeId, deleteMeasurement, drawing.measurement?.selectedMeasurementId, cancelAll, drawing.isDrawing, drawing.activeTool, drawing.currentShape, startLineDrawing, toggleMultiSegmentMode, completeLine, lineToolState.isMultiSegment, lineToolState.segments]);
+  // Register all shortcuts
+  useKeyboardShortcuts(shortcuts);
 
   // 3D Scene event handlers
   const handleCoordinateChange = (worldPos: Point2D) => {
@@ -394,17 +565,46 @@ function App(): React.JSX.Element {
     // Remove scroll bars from body and html
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
-    
+
     // Ensure no margin/padding on body
     document.body.style.margin = '0';
     document.body.style.padding = '0';
     document.documentElement.style.margin = '0';
     document.documentElement.style.padding = '0';
-    
+
     return () => {
       // Restore default overflow on cleanup
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
+    };
+  }, []);
+
+  // Prevent default browser context menu globally
+  React.useEffect(() => {
+    const preventContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener('contextmenu', preventContextMenu);
+
+    return () => {
+      document.removeEventListener('contextmenu', preventContextMenu);
+    };
+  }, []);
+
+  // Reset camera event listener (triggered from context menu)
+  React.useEffect(() => {
+    const handleResetCamera = () => {
+      // Access camera controller through scene manager ref
+      if (sceneManagerRef.current?.cameraController?.current) {
+        sceneManagerRef.current.cameraController.current.resetCamera(1000);
+      }
+    };
+
+    window.addEventListener('resetCamera', handleResetCamera);
+
+    return () => {
+      window.removeEventListener('resetCamera', handleResetCamera);
     };
   }, []);
 
@@ -897,6 +1097,16 @@ function App(): React.JSX.Element {
               height: '70px',
               background: '#e5e7eb',
               margin: '0 8px'
+            }}></div>
+
+            {/* Dimension Input Toolbar */}
+            <DimensionInputToolbar />
+
+            <div style={{
+              width: '1px',
+              alignSelf: 'stretch',
+              background: 'linear-gradient(to bottom, transparent, #e2e8f0, transparent)',
+              margin: '0 12px'
             }}></div>
 
             {/* Display */}
@@ -2396,6 +2606,9 @@ function App(): React.JSX.Element {
             onUndoLastSegment={removeLastLineSegment}
           />
 
+          {/* Live distance label for dimension input */}
+          <LiveDistanceLabel />
+
           {/* Status overlay - shows active tool and current measurements */}
           <div style={{
             position: 'absolute',
@@ -2713,6 +2926,50 @@ function App(): React.JSX.Element {
             >
               <Icon name="properties" size={20} color={propertiesExpanded ? "#ffffff" : "#000000"} />
               <span style={{ fontWeight: '500', color: propertiesExpanded ? '#ffffff' : '#374151' }}>Properties</span>
+            </button>
+
+            {/* Reset Camera Button */}
+            <button
+              onClick={() => {
+                if (sceneManagerRef.current?.cameraController?.current) {
+                  sceneManagerRef.current.cameraController.current.resetCamera(1000);
+                }
+              }}
+              style={{
+                padding: '8px',
+                borderRadius: '8px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '11px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                width: '100%',
+                textAlign: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                color: '#374151',
+                fontWeight: '500'
+              }}
+              title="Reset Camera View (Shortcut: 0)"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0px)';
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M8 16H3v5"/>
+              </svg>
+              <span style={{ fontWeight: '500', color: '#374151' }}>Reset View</span>
             </button>
           </div>
 
@@ -3411,6 +3668,18 @@ function App(): React.JSX.Element {
 
       {/* Floating 2D/3D Toggle Button */}
       <View2DToggleButton />
+
+      {/* Floating Help Button */}
+      <ShortcutsHelpButton onClick={() => setShortcutHelpOpen(true)} />
+
+      {/* Keyboard Shortcut Help Overlay */}
+      <KeyboardShortcutHelp
+        isOpen={shortcutHelpOpen}
+        onClose={() => setShortcutHelpOpen(false)}
+      />
+
+      {/* Context Menu */}
+      <ContextMenu />
     </div>
   );
 }

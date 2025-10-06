@@ -1,4 +1,4 @@
-import { useRef, useImperativeHandle, forwardRef, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useImperativeHandle, forwardRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { OrbitControls } from '@react-three/drei';
@@ -41,6 +41,29 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
     const { camera, gl } = useThree();
     const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
     const setZoom2D = useAppStore(state => state.setZoom2D);
+
+    // Store initial camera positions for both 3D and 2D modes
+    const initial3DCameraState = useRef<{
+      position: Vector3;
+      target: Vector3;
+      captured: boolean;
+    }>({
+      position: new Vector3(),
+      target: new Vector3(),
+      captured: false,
+    });
+
+    const initial2DCameraState = useRef<{
+      position: Vector3;
+      target: Vector3;
+      captured: boolean;
+    }>({
+      position: new Vector3(),
+      target: new Vector3(),
+      captured: false,
+    });
+
+    const [lastMode, setLastMode] = useState<boolean>(is2DMode);
 
     const animationRef = useRef<{
       isAnimating: boolean;
@@ -91,7 +114,45 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
 
     useFrame(() => {
       const animation = animationRef.current;
-      
+
+      // Capture initial camera state for current mode on first frame
+      if (controlsRef.current) {
+        if (is2DMode && !initial2DCameraState.current.captured) {
+          initial2DCameraState.current.position.copy(camera.position);
+          initial2DCameraState.current.target.copy(controlsRef.current.target);
+          initial2DCameraState.current.captured = true;
+        } else if (!is2DMode && !initial3DCameraState.current.captured) {
+          initial3DCameraState.current.position.copy(camera.position);
+          initial3DCameraState.current.target.copy(controlsRef.current.target);
+          initial3DCameraState.current.captured = true;
+        }
+
+        // Detect mode change and capture initial state for new mode if not already captured
+        if (lastMode !== is2DMode) {
+          setLastMode(is2DMode);
+
+          // When switching modes, capture the default state for the new mode if not already captured
+          if (is2DMode && !initial2DCameraState.current.captured) {
+            // Wait a frame for the camera to update to 2D position
+            setTimeout(() => {
+              if (controlsRef.current) {
+                initial2DCameraState.current.position.copy(camera.position);
+                initial2DCameraState.current.target.copy(controlsRef.current.target);
+                initial2DCameraState.current.captured = true;
+              }
+            }, 100);
+          } else if (!is2DMode && !initial3DCameraState.current.captured) {
+            setTimeout(() => {
+              if (controlsRef.current) {
+                initial3DCameraState.current.position.copy(camera.position);
+                initial3DCameraState.current.target.copy(controlsRef.current.target);
+                initial3DCameraState.current.captured = true;
+              }
+            }, 100);
+          }
+        }
+      }
+
       if (animation.isAnimating && controlsRef.current) {
         const elapsed = performance.now() - animation.startTime;
         const progress = Math.min(elapsed / animation.duration, 1);
@@ -122,12 +183,39 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
       },
 
       resetCamera: (duration = 1000) => {
-        const defaultViewpoint = viewpoints.isometric;
-        animateCamera(
-          new Vector3(defaultViewpoint.position.x, defaultViewpoint.position.y, defaultViewpoint.position.z),
-          new Vector3(defaultViewpoint.target.x, defaultViewpoint.target.y, defaultViewpoint.target.z),
-          duration
-        );
+        // Reset to the initial camera position based on current mode
+        if (is2DMode && initial2DCameraState.current.captured) {
+          // Reset to initial 2D camera state
+          animateCamera(
+            initial2DCameraState.current.position.clone(),
+            initial2DCameraState.current.target.clone(),
+            duration
+          );
+        } else if (!is2DMode && initial3DCameraState.current.captured) {
+          // Reset to initial 3D camera state
+          animateCamera(
+            initial3DCameraState.current.position.clone(),
+            initial3DCameraState.current.target.clone(),
+            duration
+          );
+        } else {
+          // Fallback to default positions if initial state not captured yet
+          if (is2DMode) {
+            // Default 2D orthographic view from top
+            animateCamera(
+              new Vector3(0, 100, 0.1),
+              new Vector3(0, 0, 0),
+              duration
+            );
+          } else {
+            // Default 3D perspective view
+            animateCamera(
+              new Vector3(0, 80, 80),
+              new Vector3(0, 0, 0),
+              duration
+            );
+          }
+        }
       },
 
       setViewpoint: (viewpoint: CameraViewpoint, duration = 1000) => {

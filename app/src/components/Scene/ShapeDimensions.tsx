@@ -20,7 +20,22 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
 }) => {
   const { camera } = useThree();
   const renderTrigger = useAppStore(state => state.renderTrigger);
-  
+
+  // Don't render dimensions if keyboard shortcuts modal is open (z-index conflict)
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkModal = () => {
+      const isOpen = document.body.hasAttribute('data-keyboard-help-open');
+      setIsModalOpen(isOpen);
+    };
+
+    checkModal();
+    // Check frequently for modal state changes
+    const interval = setInterval(checkModal, 50);
+    return () => clearInterval(interval);
+  }, []);
+
   // Calculate scale factor based on camera distance for consistent sizing
   const scaleInfo = useMemo(() => {
     // Get camera distance from ground plane
@@ -52,7 +67,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         const center = shape.points[0];
         const radiusPoint = shape.points[1];
         const radius = precisionCalculator.calculateDistance(center, radiusPoint);
-        
+
         // Show radius line midpoint
         let midX = (center.x + radiusPoint.x) / 2;
         let midZ = (center.y + radiusPoint.y) / 2;
@@ -223,7 +238,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
     let area = 0;
     if (shape.type === 'circle' && shape.points.length >= 2) {
       const radius = Math.sqrt(
-        Math.pow(shape.points[1].x - shape.points[0].x, 2) + 
+        Math.pow(shape.points[1].x - shape.points[0].x, 2) +
         Math.pow(shape.points[1].y - shape.points[0].y, 2)
       );
       area = Math.PI * radius * radius;
@@ -273,6 +288,9 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
       </Html>
     );
   }, [shape, shape.points, shape.modified, elevation, isSelected, isResizeMode, scaleInfo, renderTrigger]);
+
+  // Don't render if modal is open (must be after all hooks)
+  if (isModalOpen) return null;
 
   return (
     <group>

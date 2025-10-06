@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Keyboard Event Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        #output {
+            background: white;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .event {
+            padding: 10px;
+            margin: 5px 0;
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+            font-family: monospace;
+        }
+        h1 { color: #333; }
+        .instruction {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 3px solid #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <h1>Keyboard Event Test</h1>
+    <div class="instruction">
+        <strong>Instructions:</strong> Press Shift+/ (question mark) to see the keyboard event details
+    </div>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        document.addEventListener('keydown', (event) => {
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'event';
+            eventDiv.innerHTML = `
+                <div><strong>Key pressed:</strong> ${event.key}</div>
+                <div><strong>Code:</strong> ${event.code}</div>
+                <div><strong>Shift:</strong> ${event.shiftKey}</div>
+                <div><strong>Ctrl:</strong> ${event.ctrlKey}</div>
+                <div><strong>Alt:</strong> ${event.altKey}</div>
+                <div><strong>Meta:</strong> ${event.metaKey}</div>
+                <div><strong>Generated shortcut key:</strong>
+                    ${[
+                        event.ctrlKey ? 'ctrl' : '',
+                        event.shiftKey ? 'shift' : '',
+                        event.altKey ? 'alt' : '',
+                        event.metaKey ? 'meta' : '',
+                        event.key.toLowerCase()
+                    ].filter(Boolean).join('+')}
+                </div>
+            `;
+            output.insertBefore(eventDiv, output.firstChild);
+        });
+    </script>
+</body>
+</html>

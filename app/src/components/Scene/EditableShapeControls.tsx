@@ -28,7 +28,14 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
   // Find the shape being edited
   const editingShape = useMemo(() => {
     if (!isEditMode || !editingShapeId) return null;
-    return shapes.find(shape => shape.id === editingShapeId) || null;
+    const shape = shapes.find(shape => shape.id === editingShapeId) || null;
+
+    // Don't show edit controls for locked shapes
+    if (shape?.locked) {
+      return null;
+    }
+
+    return shape;
   }, [shapes, isEditMode, editingShapeId]);
 
   // Simple corner points for editing

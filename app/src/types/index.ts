@@ -40,6 +40,7 @@ export interface Shape {
   created: Date;
   modified: Date;
   rotation?: ShapeRotation;
+  locked?: boolean; // Whether the shape position is locked
 }
 
 export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline' | 'line';
@@ -49,6 +50,159 @@ export type { ViewState };
 
 // Drawing tool types
 export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate' | 'measure' | 'line';
+
+// ================================
+// WORKFLOW SYSTEM TYPES
+// ================================
+
+/**
+ * All possible action types for workflows
+ * Format: category:action
+ */
+export type ActionType =
+  // Tool actions
+  | 'tool:rectangle'
+  | 'tool:circle'
+  | 'tool:polyline'
+  | 'tool:line'
+  | 'tool:select'
+  | 'tool:edit'
+  | 'tool:rotate'
+  | 'tool:measure'
+  // Panel actions
+  | 'panel:compare'
+  | 'panel:convert'
+  | 'panel:layers'
+  | 'panel:properties'
+  // Shape actions
+  | 'shape:duplicate'
+  | 'shape:delete'
+  | 'shape:align'
+  // View actions
+  | 'view:toggle2d'
+  | 'view:toggle3d'
+  | 'view:zoom-in'
+  | 'view:zoom-out';
+
+/**
+ * Valid action types as an array for validation
+ */
+export const VALID_ACTION_TYPES: ActionType[] = [
+  // Tool actions
+  'tool:rectangle',
+  'tool:circle',
+  'tool:polyline',
+  'tool:line',
+  'tool:select',
+  'tool:edit',
+  'tool:rotate',
+  'tool:measure',
+  // Panel actions
+  'panel:compare',
+  'panel:convert',
+  'panel:layers',
+  'panel:properties',
+  // Shape actions
+  'shape:duplicate',
+  'shape:delete',
+  'shape:align',
+  // View actions
+  'view:toggle2d',
+  'view:toggle3d',
+  'view:zoom-in',
+  'view:zoom-out',
+];
+
+/**
+ * User prompt configuration for workflow steps
+ */
+export interface WorkflowPrompt {
+  message: string;
+  type: 'number' | 'text' | 'select';
+  options?: string[];
+  defaultValue?: any;
+}
+
+/**
+ * Validation requirements for workflow steps
+ */
+export interface WorkflowValidation {
+  requiresSelection?: boolean;
+  requiresShape?: boolean;
+}
+
+/**
+ * Individual step in a workflow
+ */
+export interface WorkflowStep {
+  id: string;
+  action: ActionType;
+  params?: Record<string, any>;
+  prompt?: WorkflowPrompt;
+  validation?: WorkflowValidation;
+}
+
+/**
+ * Complete workflow definition
+ */
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  isBuiltIn: boolean;
+  steps: WorkflowStep[];
+  createdAt: number;
+  usageCount: number;
+  lastUsed?: number;
+}
+
+/**
+ * Tracked action for history
+ */
+export interface TrackedAction {
+  type: ActionType;
+  timestamp: number;
+  params?: Record<string, any>;
+}
+
+/**
+ * Tool usage statistics
+ */
+export interface ToolUsageStats {
+  [key: string]: {
+    actionType: ActionType;
+    count: number;
+    lastUsed: number;
+    isPinned: boolean;
+  };
+}
+
+/**
+ * Workflow execution state
+ */
+export interface WorkflowExecutionState {
+  workflowId: string | null;
+  currentStep: number;
+  isExecuting: boolean;
+  isPaused: boolean;
+  executionHistory: Array<{
+    stepId: string;
+    timestamp: number;
+    success: boolean;
+    error?: string;
+  }>;
+}
+
+/**
+ * Workflow recording state
+ */
+export interface RecordingState {
+  isRecording: boolean;
+  recordedSteps: WorkflowStep[];
+  startTime: number;
+  isPaused: boolean;
+}
 
 export interface DrawingState {
   activeTool: DrawingTool;
@@ -337,6 +491,7 @@ export interface AppState {
   shapes: Shape[];
   layers: Layer[];
   selectedShapeId: string | null;
+  selectedShapeIds: string[]; // Multi-selection support
   hoveredShapeId: string | null;
   dragState: DragState;
   activeLayerId: string;
@@ -348,6 +503,8 @@ export interface AppState {
   comparison: import('./referenceObjects').ComparisonState; // Visual comparison tool state
   conversion: import('./conversion').ConversionState; // Unit conversion tool state
   viewState: ViewState; // 2D/3D view state
+  contextMenu: import('./contextMenu').ContextMenuState; // Context menu state
+  shiftKeyPressed: boolean; // Shift key state for snapping override
 }
 
 export interface DragState {
@@ -733,3 +890,18 @@ export interface SnapGuidePresets {
     grid: Partial<GridConfig>;
   };
 }
+
+// ================================
+// DIMENSION INPUT SYSTEM TYPES
+// ================================
+
+export type {
+  ParsedDimension,
+  PrecisionSettings,
+  DimensionInputState,
+  InlineEditState,
+  LiveDistanceState,
+  ValidationResult,
+  FormattedDimension,
+  ParsedPolarCoordinate
+} from './dimension';

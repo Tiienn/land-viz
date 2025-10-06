@@ -172,7 +172,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       {/* Snap Indicators - Dynamic distance based on view mode */}
       <SnapIndicator maxDistance={snapIndicatorDistance} />
-      <ActiveSnapIndicator />
+      {/* <ActiveSnapIndicator /> */} {/* Disabled - large pulsing indicator is too distracting */}
 
       {/* Professional Alignment Guides - New Smart System */}
       {/* <AlignmentGuides /> */}

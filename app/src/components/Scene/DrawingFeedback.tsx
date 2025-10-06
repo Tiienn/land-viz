@@ -104,53 +104,10 @@ const DrawingFeedback: React.FC<DrawingFeedbackProps> = ({ elevation = 0.05, onD
     };
   }, [activeTool, camera, raycaster, gl, snapToGrid, gridSize]);
 
-  // Create snap indicator at mouse position
+  // Create snap indicator at mouse position - DISABLED (all cursor indicators removed)
   const snapIndicator = useMemo(() => {
-    if (activeTool === 'select' || !isMouseOver3D) return null;
-    
-    return (
-      <group>
-        {/* Main snap point */}
-        <Html
-          key={`snap-main-${mousePosition.x}-${mousePosition.y}`}
-          position={[mousePosition.x, elevation + 0.1, mousePosition.y]}
-          center
-          distanceFactor={4}
-        >
-          <div style={{
-            width: '8px',
-            height: '8px',
-            background: snapToGrid ? '#22c55e' : '#3b82f6',
-            border: '2px solid white',
-            borderRadius: '50%',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            animation: 'pulse 2s infinite'
-          }} />
-        </Html>
-        
-        {/* Grid snap indicator */}
-        {snapToGrid && (
-          <Html
-            key={`snap-grid-${mousePosition.x}-${mousePosition.y}`}
-            position={[mousePosition.x, elevation + 0.05, mousePosition.y]}
-            center
-            distanceFactor={6}
-          >
-            <div style={{
-              width: '16px',
-              height: '16px',
-              border: '2px solid #22c55e',
-              background: 'transparent',
-              borderRadius: '2px',
-              opacity: 0.6,
-              transform: 'rotate(45deg)'
-            }} />
-          </Html>
-        )}
-        
-        {/* Coordinate display removed - now in UI overlay */}
-      </group>
-    );
+    // All cursor indicators disabled for cleaner UI
+    return null;
   }, [activeTool, isMouseOver3D, mousePosition.x, mousePosition.y, snapToGrid, elevation]);
 
   // Create preview lines for current drawing

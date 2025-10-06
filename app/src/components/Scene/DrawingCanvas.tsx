@@ -2,11 +2,13 @@ import React, { useRef, useCallback, useMemo, useEffect, useState } from 'react'
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Vector2, Vector3, type Mesh } from 'three';
 import { useAppStore } from '@/store/useAppStore';
+import { useDimensionStore } from '@/store/useDimensionStore';
 import type { Point2D } from '@/types';
 import { RaycastManager } from '../../utils/RaycastManager';
 import { SnapGrid } from '../../utils/SnapGrid';
 import { alignmentService } from '../../services/alignmentService';
 import { useAdaptiveSnapRadius } from '../../hooks/useAdaptiveSnapRadius';
+import { parseDimension, convertToMeters } from '@/services/dimensionParser';
 
 interface DrawingCanvasProps {
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
@@ -216,7 +218,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     );
 
     // Determine the final active snap point
-    const finalActiveSnapPoint = nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint : null;
+    // EXCLUDE grid type from active indicator (grid is everywhere, too distracting)
+    const finalActiveSnapPoint = nearestSnapPoint &&
+                                   nearestSnapPoint.type !== 'grid' &&
+                                   snapConfig.activeTypes?.has?.(nearestSnapPoint.type) ? nearestSnapPoint : null;
 
     // Update store with both available snap points (for indicators) and active snap point
     // Also store sticky snap data for accurate click behavior
@@ -525,7 +530,41 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         break;
 
       case 'rectangle':
-        if (!isDrawing) {
+        // Check if dimension input is active
+        const { dimensionInput, clearDimensionInput, setInputError } = useDimensionStore.getState();
+
+        if (!isDrawing && dimensionInput.isDimensionInputActive && dimensionInput.inputWidth && dimensionInput.inputHeight) {
+          // Create rectangle with exact dimensions from input
+          const inputStr = `${dimensionInput.inputWidth}x${dimensionInput.inputHeight}`;
+          const parsed = parseDimension(inputStr);
+
+          if (parsed.valid) {
+            // Use the dropdown unit (inputUnit) instead of parsed unit
+            // This ensures "33" with "ft" dropdown correctly uses feet
+            const unit = dimensionInput.inputUnit || parsed.unit;
+            const width = convertToMeters(parsed.width, unit);
+            const height = convertToMeters(parsed.height, unit);
+
+            // Create rectangle centered at click position
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
+
+            // Start drawing and add all 4 points
+            startDrawing();
+            addPoint({ x: snappedPos.x - halfWidth, y: snappedPos.y - halfHeight });  // Top-left
+            addPoint({ x: snappedPos.x + halfWidth, y: snappedPos.y - halfHeight });  // Top-right
+            addPoint({ x: snappedPos.x + halfWidth, y: snappedPos.y + halfHeight });  // Bottom-right
+            addPoint({ x: snappedPos.x - halfWidth, y: snappedPos.y + halfHeight });  // Bottom-left
+            finishDrawing();
+
+            // Clear dimension input after creation
+            clearDimensionInput();
+          } else {
+            // Show error
+            setInputError(parsed.error || 'Invalid input');
+          }
+        } else if (!isDrawing) {
+          // Normal rectangle drawing (no dimension input)
           startDrawing();
           addPoint(snappedPos); // First corner - use snapped position for 0.000m precision
         } else if (currentShape?.points && currentShape.points.length === 1) {
@@ -539,7 +578,71 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         break;
 
       case 'circle':
-        if (!isDrawing) {
+        // Check if dimension input is active for circle radius
+        const circleStore = useDimensionStore.getState();
+        const circleInput = circleStore.dimensionInput;
+
+
+        if (!isDrawing && circleInput.isDimensionInputActive && circleInput.inputRadius) {
+          // Create circle with exact value from input
+          const inputValue = parseFloat(circleInput.inputRadius);
+
+          if (!isNaN(inputValue) && inputValue > 0) {
+            // Get unit from dropdown
+            const unit = circleInput.inputUnit || 'm';
+
+            // Convert to meters first
+            let valueInMeters = convertToMeters(inputValue, unit);
+
+            // Apply radius/diameter mode
+            const radiusMode = circleInput.inputRadiusMode || 'r';
+            let radius = valueInMeters;
+
+            if (radiusMode === 'd') {
+              // User input is diameter, convert to radius
+              radius = valueInMeters / 2;
+            }
+
+
+            // Start drawing and add center point
+            startDrawing();
+            addPoint(snappedPos); // Center point
+
+            // Generate circle points with adaptive segment count for performance
+            const circlePoints: Point2D[] = [];
+            const segments = Math.max(16, Math.min(64, Math.floor(radius * 2))); // Adaptive segments
+
+            for (let i = 0; i <= segments; i++) {
+              const angle = (i / segments) * Math.PI * 2;
+              circlePoints.push({
+                x: snappedPos.x + Math.cos(angle) * radius,
+                y: snappedPos.y + Math.sin(angle) * radius,
+              });
+            }
+
+            // Store center as first point, edge point as second (for radius calculation)
+            // This matches the format expected by ShapeDimensions
+            const freshState = useAppStore.getState();
+            const freshShape = freshState.drawing.currentShape;
+            if (freshShape) {
+              const edgePoint = { x: snappedPos.x + radius, y: snappedPos.y };
+              freshShape.points = [
+                snappedPos, // Center point
+                edgePoint // Edge point for radius
+              ];
+            }
+
+            finishDrawing();
+
+
+            // Clear dimension input after creation
+            circleStore.clearDimensionInput();
+          } else {
+            // Show error
+            circleStore.setInputError('Invalid number');
+          }
+        } else if (!isDrawing) {
+          // Normal circle drawing (no dimension input)
           startDrawing();
           addPoint(snappedPos); // Center point - use snapped position for 0.000m precision
         } else if (currentShape?.points && currentShape.points.length === 1) {
@@ -548,20 +651,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             Math.pow(snappedPos.x - center.x, 2) + Math.pow(snappedPos.y - center.y, 2)
           );
 
-          // Generate circle points with adaptive segment count for performance
-          const circlePoints: Point2D[] = [];
-          const segments = Math.max(16, Math.min(64, Math.floor(radius * 2))); // Adaptive segments
 
-          for (let i = 0; i <= segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            circlePoints.push({
-              x: center.x + Math.cos(angle) * radius,
-              y: center.y + Math.sin(angle) * radius,
-            });
-          }
-
-          // Replace center with circle points
-          currentShape.points = circlePoints;
+          // Store center and edge point (not full circle points for now)
+          // This matches dimension calculation expectations
+          currentShape.points = [
+            center, // Center point
+            snappedPos // Edge point
+          ];
           finishDrawing();
         }
         break;
@@ -594,6 +690,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handleContextMenu = useCallback((event: ThreeEvent<MouseEvent>) => {
     event.nativeEvent.preventDefault();
+    event.stopPropagation(); // Prevent event from bubbling to parent handlers
 
     // Get fresh state to avoid stale selector issues
     const freshState = useAppStore.getState();
@@ -601,6 +698,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const freshIsMeasuring = freshState.drawing.measurement.isMeasuring;
     const freshIsLineDrawing = freshState.drawing.lineTool.isDrawing;
 
+    // Cancel any active drawing/measurement operations
     if (freshIsDrawing) {
       cancelDrawing();
     } else if (freshIsMeasuring) {
@@ -608,6 +706,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     } else if (freshIsLineDrawing) {
       cancelLineDrawing();
     }
+
+    // Open canvas context menu (empty space right-click)
+    const { openContextMenu } = useAppStore.getState();
+    openContextMenu('canvas', {
+      x: event.nativeEvent.clientX,
+      y: event.nativeEvent.clientY,
+    });
   }, [cancelDrawing, cancelMeasurement, cancelLineDrawing]);
 
   // Clear snap state when tool changes (defensive state clearing)

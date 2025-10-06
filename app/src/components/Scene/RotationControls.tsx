@@ -125,22 +125,27 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
   // Find the shape being rotated or show rotation handle for selected shape
   const targetShape = useMemo(() => {
+    let shape = null;
+
     // Cursor rotation mode: show handle for the shape being rotated
     if (cursorRotationMode && cursorRotationShapeId) {
-      return shapes.find(shape => shape.id === cursorRotationShapeId) || null;
+      shape = shapes.find(s => s.id === cursorRotationShapeId) || null;
     }
-
-    if (drawing.isRotateMode && drawing.rotatingShapeId) {
-      return shapes.find(shape => shape.id === drawing.rotatingShapeId) || null;
+    else if (drawing.isRotateMode && drawing.rotatingShapeId) {
+      shape = shapes.find(s => s.id === drawing.rotatingShapeId) || null;
     }
-
     // Show rotation handle for selected shape (when not in edit mode)
     // Allow rotation handles to show even if just finished drawing or in resize mode
-    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
-      return shapes.find(shape => shape.id === selectedShapeId) || null;
+    else if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
+      shape = shapes.find(s => s.id === selectedShapeId) || null;
     }
 
-    return null;
+    // Don't show rotation controls for locked shapes
+    if (shape?.locked) {
+      return null;
+    }
+
+    return shape;
   }, [shapes, cursorRotationMode, cursorRotationShapeId, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing, shapes.length]);
 
   // Calculate rotation handle position and rotation center

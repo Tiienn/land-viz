@@ -9,12 +9,18 @@
 - Professional ribbon with SVG icons and tool grouping
 - Full Three.js/React Three Fiber 3D scene
 - Drawing tools: Rectangle, circle, polyline (with imaginary line)
+- **📐 Direct Dimension Input: Enter exact sizes before creating shapes**
+  - Rectangle: Width × Height input (e.g., "10x15", "33ft x 50ft")
+  - Circle: Radius/Diameter mode with unit selection (r/d toggle)
+  - Auto-activation when typing numbers
+  - Real-time validation and error handling
 - **Direct Distance Entry Line Tool: AutoCAD-style precision line drawing with multi-line mode**
 - **Measurement tool: Point-to-point distance measurement with precision**
 - **Visual Comparison Tool: Compare land size to 16+ reference objects (inline panel)**
 - **Comprehensive Unit Conversion: 12 area units including historical French/British measurements**
 - **Unified Sidebar Architecture: All features use inline panels for consistency**
 - **🎯 Canva-Style Equal Spacing System: Professional alignment with magnetic snapping**
+- **⌨️ Comprehensive Keyboard Shortcuts: SmartDraw-inspired productivity shortcuts (Press ? for help)**
 - Shape editing with draggable sphere corners
 - **Professional resize/rotation with angle snapping**
 - **🎯 Cursor-Based Rotation Mode: Hover-to-rotate with Shift snapping and visual guides**
@@ -267,6 +273,28 @@ npm run test:coverage       # Generate coverage report
 **Rotate (Cursor Mode):** Rotate button → move cursor to rotate → left-click to confirm (Shift for 45° snap, ESC to exit)
 **Panels:** Click to expand horizontally, triangle to collapse
 **Grid:** Toggle in Properties (shows "1m snap" or "Free move")
+
+**Keyboard Shortcuts:**
+- **Tools:** S (select), R (rectangle), C (circle), P (polyline), L (line), M (measure), E (edit)
+- **Editing:** Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+D (duplicate), Delete/Backspace (delete)
+- **View:** V (toggle 2D/3D), ? (show shortcuts help), ESC (cancel)
+- **Press ? anytime** to see full keyboard shortcut reference
+
+## Recent Updates & Bug Fixes
+
+### January 2025
+**Circle Dimension Input Bug Fix**
+- Fixed incorrect radius/area calculations when using dimension input (D=10m, r=10m)
+- Root cause: ShapeDimensions was receiving rotated/transformed points instead of original points
+- Solution: Pass original shape data to dimension calculations (visual transforms don't affect size)
+- See `CIRCLE_DIMENSION_BUG_FIX.md` for detailed analysis and prevention guidelines
+
+**Direct Dimension Input Feature**
+- Added rectangle dimension input with width × height format
+- Implemented circle radius/diameter mode with unit selection
+- Auto-activation when typing numbers (no button click needed)
+- Real-time validation with error messages
+- Supports multiple units: meters, feet, yards
 
 ## Security Implementation
 **Security Rating: 9.8/10**

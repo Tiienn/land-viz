@@ -23,7 +23,9 @@ The application features a **Canva-inspired modern UI** with professional CAD fu
 ### ✨ Key Features
 
 - **🎨 Smart Drawing** - Click to draw property boundaries with automatic shape completion
+- **📐 Direct Dimension Input** - Type exact sizes before creating shapes (rectangles: "10x15", circles: r/d mode)
 - **📏 Instant Calculations** - Real-time area, perimeter, and dimension measurements
+- **⌨️ Keyboard Shortcuts** - SmartDraw-inspired productivity shortcuts (Press ? for help)
 - **🔧 Expandable Panels** - Collapsible/expandable left and right sidebars with smooth animations
 - **🎛️ Professional Ribbon** - Clean tool grouping with SVG icons and visual separators
 - **🔄 Comprehensive Unit Conversion** - 12 area units including historical French/British measurements (perches, arpent)
@@ -130,12 +132,14 @@ land-visualizer/app/src/
 
 ### Basic Drawing
 1. Select a drawing tool: **Rectangle**, **Circle**, or **Polyline**
-2. Click on the 3D canvas to start drawing
-3. For rectangles: Click two diagonal corners
-4. For circles: Click center, then click radius point  
-5. For polylines: Click multiple points, then click near start to close
-6. Crosshair cursor shows exact drawing position
-7. Real-time dimensions display during drawing
+2. **Option A - Direct Input:** Type exact dimensions (e.g., "10x15" for rectangles, "d20" for circles)
+3. **Option B - Manual Drawing:** Click on the 3D canvas to draw freely
+   - For rectangles: Click two diagonal corners
+   - For circles: Click center, then click radius point
+   - For polylines: Click multiple points, then click near start to close
+4. Crosshair cursor shows exact drawing position
+5. Real-time dimensions display during drawing
+6. Press **?** anytime to see keyboard shortcuts
 
 ### Viewing Measurements
 1. Green area labels show total area for closed shapes
@@ -213,23 +217,34 @@ We love contributions! See [CONTRIBUTING.md](docs/guides/CONTRIBUTING.md) for gu
 
 See [ROADMAP.md](docs/project/ROADMAP.md) for detailed plans.
 
-## ✅ Recent Fixes
+## ✅ Recent Fixes & Updates
 
+### January 2025
+- **NEW**: Direct Dimension Input feature - type exact sizes before creating shapes
+  - Rectangle: Width × Height format (e.g., "10x15", "33ft x 50ft")
+  - Circle: Radius/Diameter mode with unit selection (r/d toggle)
+  - Auto-activation when typing numbers
+- **FIXED**: Circle dimension calculation bug - dimensions now show correct values
+  - Issue: D=10m showed r=1.0m instead of r=5.0m
+  - Cause: Rotation transforms affecting measurement calculations
+  - Solution: Use original points for dimensions, not transformed points
+  - Documentation: See `CIRCLE_DIMENSION_BUG_FIX.md` for details
+- **NEW**: Comprehensive keyboard shortcuts (SmartDraw-inspired)
+  - Tools: S (select), R (rectangle), C (circle), P (polyline), L (line), M (measure)
+  - Editing: Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+D (duplicate), Delete
+  - View: V (toggle 2D/3D), ? (shortcuts help), ESC (cancel)
+
+### Previous Updates
 - Rectangle area calculations now work for both default and newly drawn shapes
 - Enhanced polyline drawing with imaginary line following cursor
 - Added crosshair cursor for drawing modes with special closing indicator
 - Improved dimension text scaling that responds properly to camera zoom
 - Moved coordinate display to bottom-left corner for better UX
 - Added Properties panel with tool-specific instructions and grid controls
-- Removed polygon tool as requested by users
-- Fixed circle dimensions to show radius only instead of segment dimensions
 - **NEW**: Added expandable/collapsible left and right sidebar panels
 - **NEW**: Implemented professional ribbon toolbar with clean SVG icons
-- **NEW**: Integrated Land-Visualizer512.png logo replacing emoji
-- **NEW**: Removed terrain elevation section for cleaner interface
-- **CRITICAL**: Fixed rotation-drag cursor following issue - shapes now follow cursor exactly after rotation
+- **CRITICAL**: Fixed rotation-drag cursor following issue - shapes now follow cursor exactly
 - **ENHANCED**: Dynamic Shift key snapping during rotation - press/release for instant 45° snapping
-- **FIXED**: Solved coordinate system conflicts preventing accurate drag behavior
 
 ## 🐛 Known Issues
 

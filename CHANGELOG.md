@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Direct Dimension Input Feature (2025-01-10)
+- **Rectangle Dimension Input**: Enter exact sizes before creating rectangles
+  - Width × Height format (e.g., "10x15", "10 x 15", "33ft x 50ft")
+  - Auto-activation when typing numbers (no button click needed)
+  - Real-time validation with error messages
+  - Supports meters (m), feet (ft), and yards (yd)
+  - Click to place rectangle with exact dimensions
+
+- **Circle Dimension Input**: Precision circle creation with radius/diameter modes
+  - Radius mode: Direct radius input (e.g., "10", "r10", "5m")
+  - Diameter mode: Diameter input auto-converts to radius (e.g., "d20")
+  - Unit selection dropdown (m, ft, yd)
+  - r/d toggle for switching between radius and diameter modes
+  - Auto-focus input field when typing numbers
+  - Real-time conversion and validation
+
+- **Enhanced Toolbar UI**: Professional dimension input interface
+  - Canva-inspired styling with smooth transitions
+  - Fixed positioning beside Tools & Functions ribbon
+  - Clear visual feedback for active/inactive states
+  - Error messages with helpful validation hints
+  - Clear button to reset input quickly
+
+- **Integration Features**: Seamless connection with existing drawing workflow
+  - Works with grid snapping for precise placement
+  - Compatible with alignment guides and magnetic snapping
+  - Proper unit conversion to meters for internal storage
+  - Dimension calculations use original points (not rotated/transformed)
+
+### Fixed
+
+#### Circle Dimension Calculation Bug (2025-01-10)
+- **Issue**: Incorrect radius and area displayed when using dimension input
+  - D=10m showed r=1.0m, area=3 m² (expected: r=5.0m, area=78.54 m²)
+  - r=10m showed r=1.6m, area=8 m² (expected: r=10.0m, area=314.16 m²)
+  - Affected both 2D and 3D view modes
+
+- **Root Cause**: ShapeDimensions component receiving rotated/transformed points
+  - Visual rendering applies rotation transforms for display
+  - Dimension calculations were using transformed points instead of original stored points
+  - Rotation transforms should only affect visual mesh, not measurements
+
+- **Solution**: Pass original shape data to ShapeDimensions (ShapeRenderer.tsx:1002)
+  - Changed from: `shape={{...shape, points: transformedPoints}}`
+  - Changed to: `shape={shape}`
+  - Ensures dimension calculations always use untransformed points
+  - Maintains separation between visual transforms and data calculations
+
+- **Documentation**: Complete debugging process and prevention guidelines in `CIRCLE_DIMENSION_BUG_FIX.md`
+
+### Added
+
 #### Direct Distance Entry Line Tool with Multi-Line Mode (2025-09-26)
 - **AutoCAD-Style Precision Line Drawing**: Professional CAD workflow with exact distance input
   - Single line mode: Click first point → enter distance → creates precise line in cursor direction

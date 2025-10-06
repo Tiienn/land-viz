@@ -78,7 +78,11 @@
       "Bash(npm run test:coverage:*)",
       "Bash(claude --version)",
       "Bash(claude update)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "WebFetch(domain:www.smartdraw.com)",
+      "WebFetch(domain:smartdraw.zendesk.com)",
+      "Bash(start C:\\Users\\Tien\\Documents\\land-viz\\test-keyboard.html)",
+      "Bash(npx playwright install:*)"
     ],
     "deny": [],
     "ask": []

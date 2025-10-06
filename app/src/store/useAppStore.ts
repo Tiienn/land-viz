@@ -19,6 +19,7 @@ import { loadCustomPresets, saveCustomPresets } from '../utils/presetStorage';
 import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, SnapType, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState, LineSegment } from '../types';
 import type { AreaPreset, PresetsState, PresetCategory } from '../types/presets';
 import type { ConversionActions } from '../types/conversion';
+import type { ContextMenuState, ContextMenuType } from '../types/contextMenu';
 
 interface AppStore extends AppState {
   // Layer actions
@@ -219,6 +220,14 @@ interface AppStore extends AppState {
 
   // Task 4.2: Shift key override for snapping
   setShiftKey: (pressed: boolean) => void;
+
+  // Context menu actions
+  openContextMenu: (
+    type: ContextMenuType,
+    position: { x: number; y: number },
+    targetShapeId?: string
+  ) => void;
+  closeContextMenu: () => void;
 }
 
 const generateId = (): string => {
@@ -488,6 +497,12 @@ const createInitialState = (): AppState => {
       },
     },
     shiftKeyPressed: false, // Task 4.2: Shift key state for disabling snapping
+    contextMenu: {
+      isOpen: false,
+      type: null,
+      position: { x: 0, y: 0 },
+      targetShapeId: null,
+    },
   };
   
   // Set the present state to JSON representation of the base state
@@ -1015,7 +1030,6 @@ export const useAppStore = create<AppStore>()(
             ...(state.drawing.currentShape as Omit<Shape, 'id' | 'created' | 'modified' | 'layerId'>),
             color: shapeColor, // Apply the type-specific color
           };
-
 
           set(
             prevState => ({
@@ -1747,13 +1761,18 @@ export const useAppStore = create<AppStore>()(
         const state = get();
         const shape = state.shapes.find(s => s.id === shapeId);
 
+        // CRITICAL: Don't allow dragging locked shapes
+        if (shape?.locked) {
+          return; // Silently ignore drag attempts on locked shapes
+        }
+
         // Set alignment to active
         // const alignmentStore = useAlignmentStore.getState();
         // alignmentStore.setIsAligning(true);
-        
+
         // Store the current shape points as they are (may include rotation already applied)
         const currentPoints = shape?.points ? [...shape.points] : null;
-        
+
         set({
           dragState: {
             isDragging: true,
@@ -2399,8 +2418,16 @@ export const useAppStore = create<AppStore>()(
 
       // Edit mode actions
       enterEditMode: (shapeId: string) => {
+        const state = get();
+        const shape = state.shapes.find(s => s.id === shapeId);
+
+        // CRITICAL: Don't allow editing locked shapes
+        if (shape?.locked) {
+          return; // Silently ignore edit attempts on locked shapes
+        }
+
         set(
-          state => ({
+          {
             drawing: {
               ...state.drawing,
               activeTool: 'edit',
@@ -2415,7 +2442,7 @@ export const useAppStore = create<AppStore>()(
               maintainAspectRatio: false,
             },
             selectedShapeId: shapeId,
-          }),
+          },
           false,
           'enterEditMode',
         );
@@ -4429,6 +4456,37 @@ export const useAppStore = create<AppStore>()(
       // Task 4.2: Shift key override for snapping
       setShiftKey: (pressed: boolean) => {
         set({ shiftKeyPressed: pressed }, false, 'setShiftKey');
+      },
+
+      // Context menu actions
+      openContextMenu: (type, position, targetShapeId) => {
+        set(
+          {
+            contextMenu: {
+              isOpen: true,
+              type,
+              position,
+              targetShapeId: targetShapeId || null,
+            },
+          },
+          false,
+          'openContextMenu'
+        );
+      },
+
+      closeContextMenu: () => {
+        set(
+          {
+            contextMenu: {
+              isOpen: false,
+              type: null,
+              position: { x: 0, y: 0 },
+              targetShapeId: null,
+            },
+          },
+          false,
+          'closeContextMenu'
+        );
       },
     }),
     {
