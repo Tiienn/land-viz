@@ -39,7 +39,7 @@ const normalizeAngleRadian = (angle: number): number => {
 
 const calculateShapeCenter = (shape: any): Point2D => {
   if (!shape.points || shape.points.length === 0) return { x: 0, y: 0 };
-  
+
   if (shape.type === 'circle') {
     // For circles, calculate center from all perimeter points
     return {
@@ -47,7 +47,7 @@ const calculateShapeCenter = (shape: any): Point2D => {
       y: shape.points.reduce((sum: number, p: Point2D) => sum + p.y, 0) / shape.points.length
     };
   }
-  
+
   if (shape.type === 'rectangle' && shape.points.length === 2) {
     // For rectangles stored as 2 points, calculate center
     const [topLeft, bottomRight] = shape.points;
@@ -56,11 +56,50 @@ const calculateShapeCenter = (shape: any): Point2D => {
       y: (topLeft.y + bottomRight.y) / 2
     };
   }
-  
+
   // For other shapes, use centroid
   return {
     x: shape.points.reduce((sum: number, p: Point2D) => sum + p.x, 0) / shape.points.length,
     y: shape.points.reduce((sum: number, p: Point2D) => sum + p.y, 0) / shape.points.length
+  };
+};
+
+/**
+ * Calculate the center of a group of shapes (bounding box center)
+ * For Canva-style group rotation
+ */
+const calculateGroupCenter = (shapes: any[]): Point2D => {
+  if (shapes.length === 0) return { x: 0, y: 0 };
+  if (shapes.length === 1) return calculateShapeCenter(shapes[0]);
+
+  // Collect all points from all shapes
+  const allPoints: Point2D[] = [];
+  shapes.forEach(shape => {
+    let points = shape.points;
+
+    // Expand rectangle format if needed
+    if (shape.type === 'rectangle' && points.length === 2) {
+      const [topLeft, bottomRight] = points;
+      points = [
+        topLeft,
+        { x: bottomRight.x, y: topLeft.y },
+        bottomRight,
+        { x: topLeft.x, y: bottomRight.y }
+      ];
+    }
+
+    allPoints.push(...points);
+  });
+
+  // Calculate bounding box center
+  const minX = Math.min(...allPoints.map(p => p.x));
+  const maxX = Math.max(...allPoints.map(p => p.x));
+  const minY = Math.min(...allPoints.map(p => p.y));
+  const maxY = Math.max(...allPoints.map(p => p.y));
+
+  return {
+    x: (minX + maxX) / 2,
+    y: (minY + maxY) / 2
   };
 };
 
@@ -72,6 +111,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   const shapes = useAppStore(state => state.shapes);
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const selectedShapeId = useAppStore(state => state.selectedShapeId);
+  const selectedShapeIds = useAppStore(state => state.selectedShapeIds); // For group rotation
   const originalRotation = useAppStore(state => state.drawing.originalRotation);
   const enterRotateMode = useAppStore(state => state.enterRotateMode);
   const rotateShape = useAppStore(state => state.rotateShape);
@@ -152,23 +192,44 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   const rotationHandlePosition = useMemo(() => {
     if (!targetShape) return null;
 
-    // Calculate the ORIGINAL center (without any rotation applied) for rotation center
+    // Canva-style grouping: Check if we're rotating a group
+    const isGroupRotation = targetShape.groupId && selectedShapeIds && selectedShapeIds.length > 1;
+    let originalCenter: Point2D;
+
+    if (isGroupRotation) {
+      // Get all shapes in the group
+      const groupShapes = shapes.filter(s => selectedShapeIds.includes(s.id));
+      // Calculate group center (bounding box center) for rotation
+      originalCenter = calculateGroupCenter(groupShapes);
+    } else {
+      // Single shape rotation - use shape's own center
+      let originalPoints = targetShape.points;
+      if (targetShape.type === 'rectangle' && targetShape.points.length === 2) {
+        // Convert 2-point format to 4-point format for center calculation
+        const [topLeft, bottomRight] = targetShape.points;
+        originalPoints = [
+          { x: topLeft.x, y: topLeft.y },      // Top left
+          { x: bottomRight.x, y: topLeft.y },  // Top right
+          { x: bottomRight.x, y: bottomRight.y }, // Bottom right
+          { x: topLeft.x, y: bottomRight.y }   // Bottom left
+        ];
+      }
+      // Calculate original center without any transformations
+      originalCenter = calculateShapeCenter({...targetShape, points: originalPoints});
+    }
+
+    // Calculate display position for handle (always use primary shape for handle position)
     let originalPoints = targetShape.points;
     if (targetShape.type === 'rectangle' && targetShape.points.length === 2) {
-      // Convert 2-point format to 4-point format for center calculation
       const [topLeft, bottomRight] = targetShape.points;
       originalPoints = [
-        { x: topLeft.x, y: topLeft.y },      // Top left
-        { x: bottomRight.x, y: topLeft.y },  // Top right
-        { x: bottomRight.x, y: bottomRight.y }, // Bottom right
-        { x: topLeft.x, y: bottomRight.y }   // Bottom left
+        { x: topLeft.x, y: topLeft.y },
+        { x: bottomRight.x, y: topLeft.y },
+        { x: bottomRight.x, y: bottomRight.y },
+        { x: topLeft.x, y: bottomRight.y }
       ];
     }
 
-    // Calculate original center without any transformations
-    const originalCenter = calculateShapeCenter({...targetShape, points: originalPoints});
-
-    // Calculate display position (with transforms) for handle positioning
     let transformedPoints = originalPoints;
 
     // Apply drag offset if shape is being dragged
@@ -230,10 +291,10 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     return {
       x: displayCenter.x,
       y: displayCenter.y + handleOffset,
-      center: originalCenter, // Use original center for rotation calculations
+      center: originalCenter, // Use original center (single shape OR group center) for rotation calculations
       displayCenter: displayCenter // Use display center for visual positioning
     };
-  }, [targetShape, globalDragState]);
+  }, [targetShape, globalDragState, selectedShapeIds, shapes]);
 
   // Handle pointer events
   const handlePointerMove = useCallback((event: PointerEvent) => {

@@ -41,6 +41,7 @@ export interface Shape {
   modified: Date;
   rotation?: ShapeRotation;
   locked?: boolean; // Whether the shape position is locked
+  groupId?: string; // ID of the group this shape belongs to (Canva-style grouping)
 }
 
 export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline' | 'line';
@@ -493,6 +494,8 @@ export interface AppState {
   selectedShapeId: string | null;
   selectedShapeIds: string[]; // Multi-selection support
   hoveredShapeId: string | null;
+  hoveredGroupId: string | null; // ID of the group being hovered (Canva-style)
+  highlightedShapeId: string | null; // Specific shape highlighted within a group
   dragState: DragState;
   activeLayerId: string;
   drawing: DrawingState;
@@ -512,7 +515,8 @@ export interface DragState {
   draggedShapeId: string | null;
   startPosition: Point2D | null;
   currentPosition: Point2D | null;
-  originalShapePoints: Point2D[] | null;
+  originalShapePoints: Point2D[] | null; // Legacy: for single shape
+  originalShapesData?: Map<string, { points: Point2D[]; rotation?: { angle: number; center: Point2D } }>; // Canva-style grouping: for multiple shapes
 }
 
 export interface HistoryState {

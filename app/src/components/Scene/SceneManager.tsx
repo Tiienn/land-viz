@@ -19,6 +19,7 @@ import SimpleAlignmentGuides from './SimpleAlignmentGuides';
 import DraggableShapes from './DraggableShapes';
 import ResizableShapeControls from './ResizableShapeControls';
 import RulerSystem from './RulerSystem';
+import { GroupBoundaryManager } from './GroupBoundaryManager';
 import type { SceneSettings, Point3D, Point2D } from '@/types';
 
 export interface SceneManagerRef {
@@ -160,6 +161,9 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <DrawingFeedback elevation={0.05} onDimensionChange={onDimensionChange} onPolylineStartProximity={onPolylineStartProximity} />
 
       <ShapeRenderer elevation={0.01} hideDimensions={hideDimensions} />
+
+      {/* Group boundaries for Canva-style grouping */}
+      <GroupBoundaryManager />
 
       {/* Measurement visualization */}
       <MeasurementRenderer elevation={0.03} />

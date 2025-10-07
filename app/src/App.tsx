@@ -93,6 +93,7 @@ function App(): React.JSX.Element {
     exportToPDF,
     downloadExport,
     selectedShapeId,
+    selectedShapeIds,
     enterEditMode,
     exitEditMode,
     addShapeCorner,
@@ -120,6 +121,7 @@ function App(): React.JSX.Element {
     canRedo,
     removeLastPoint,
     deleteShape,
+    duplicateShape,
     activateMeasurementTool,
     deactivateMeasurementTool,
     deleteMeasurement,
@@ -141,6 +143,23 @@ function App(): React.JSX.Element {
     // updateLayer,
     // selectShape,
     // enterResizeMode
+    // Keyboard shortcut functions
+    nudgeShape,
+    selectAllShapes,
+    groupShapes,
+    ungroupShapes,
+    alignShapesLeft,
+    alignShapesRight,
+    alignShapesTop,
+    alignShapesBottom,
+    alignShapesCenter,
+    alignShapesMiddle,
+    distributeShapesHorizontally,
+    distributeShapesVertically,
+    bringShapeToFront,
+    sendShapeToBack,
+    bringShapeForward,
+    sendShapeBackward,
   } = useAppStore();
 
   // Line tool state
@@ -288,21 +307,13 @@ function App(): React.JSX.Element {
       description: 'Duplicate selected shape',
       category: 'editing',
       action: () => {
-        if (selectedShapeId) {
-          const shape = shapes.find(s => s.id === selectedShapeId);
-          if (shape) {
-            const duplicatedShape = {
-              ...shape,
-              id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              name: `${shape.name} Copy`,
-              points: shape.points.map((p) => ({ x: p.x + 2, y: p.y + 2 })),
-              created: new Date(),
-              modified: new Date(),
-            };
-            // Add the duplicated shape
-            const addShape = useAppStore.getState().addShape;
-            addShape(duplicatedShape);
-          }
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+
+        if (targetId) {
+          duplicateShape(targetId);
         }
       },
     },
@@ -312,8 +323,13 @@ function App(): React.JSX.Element {
       description: 'Delete selected',
       category: 'editing',
       action: () => {
-        if (selectedShapeId) {
-          deleteShape(selectedShapeId);
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+
+        if (targetId) {
+          deleteShape(targetId);
         } else if (drawing.measurement?.selectedMeasurementId) {
           deleteMeasurement(drawing.measurement.selectedMeasurementId);
         }
@@ -325,8 +341,13 @@ function App(): React.JSX.Element {
       description: 'Delete selected (alt)',
       category: 'editing',
       action: () => {
-        if (selectedShapeId) {
-          deleteShape(selectedShapeId);
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+
+        if (targetId) {
+          deleteShape(targetId);
         } else if (drawing.measurement?.selectedMeasurementId) {
           deleteMeasurement(drawing.measurement.selectedMeasurementId);
         }
@@ -382,6 +403,335 @@ function App(): React.JSX.Element {
       },
       enabled: drawing.activeTool === 'line' && lineToolState.isMultiSegment && lineToolState.segments.length > 0,
     },
+    // Arrow key nudging
+    {
+      id: 'nudge-up',
+      key: 'ArrowUp',
+      description: 'Nudge shape down (0.5m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'down', 0.5);
+        }
+      },
+    },
+    {
+      id: 'nudge-down',
+      key: 'ArrowDown',
+      description: 'Nudge shape up (0.5m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'up', 0.5);
+        }
+      },
+    },
+    {
+      id: 'nudge-left',
+      key: 'ArrowLeft',
+      description: 'Nudge shape left (0.5m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'left', 0.5);
+        }
+      },
+    },
+    {
+      id: 'nudge-right',
+      key: 'ArrowRight',
+      description: 'Nudge shape right (0.5m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'right', 0.5);
+        }
+      },
+    },
+    // Shift + Arrow large nudge
+    {
+      id: 'nudge-up-large',
+      key: 'ArrowUp',
+      shift: true,
+      description: 'Nudge shape down (1m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'down', 1);
+        }
+      },
+    },
+    {
+      id: 'nudge-down-large',
+      key: 'ArrowDown',
+      shift: true,
+      description: 'Nudge shape up (1m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'up', 1);
+        }
+      },
+    },
+    {
+      id: 'nudge-left-large',
+      key: 'ArrowLeft',
+      shift: true,
+      description: 'Nudge shape left (1m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'left', 1);
+        }
+      },
+    },
+    {
+      id: 'nudge-right-large',
+      key: 'ArrowRight',
+      shift: true,
+      description: 'Nudge shape right (1m)',
+      category: 'editing',
+      action: () => {
+        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+        const targetId = selectedShapeIds && selectedShapeIds.length > 0
+          ? selectedShapeIds[0]
+          : selectedShapeId;
+        if (targetId) {
+          nudgeShape(targetId, 'right', 1);
+        }
+      },
+    },
+    // Grouping shortcuts
+    {
+      id: 'group',
+      key: 'g',
+      ctrl: true,
+      description: 'Group selected shapes',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 2) {
+          groupShapes();
+        }
+      },
+    },
+    {
+      id: 'ungroup',
+      key: 'g',
+      ctrl: true,
+      shift: true,
+      description: 'Ungroup shapes',
+      category: 'editing',
+      action: () => {
+        // ungroupShapes now works with selectedShapeIds automatically
+        ungroupShapes();
+      },
+    },
+    // Select all
+    {
+      id: 'select-all',
+      key: 'a',
+      ctrl: true,
+      description: 'Select all shapes',
+      category: 'selection',
+      action: () => {
+        selectAllShapes();
+      },
+    },
+    // Zoom and camera controls
+    {
+      id: 'zoom-in',
+      key: '=',
+      description: 'Zoom in',
+      category: 'view',
+      action: () => {
+        if (sceneManagerRef.current?.camera) {
+          const camera = sceneManagerRef.current.camera;
+          if (camera.isPerspectiveCamera) {
+            camera.position.z = Math.max(camera.position.z * 0.9, 5);
+          }
+        }
+      },
+    },
+    {
+      id: 'zoom-out',
+      key: '-',
+      description: 'Zoom out',
+      category: 'view',
+      action: () => {
+        if (sceneManagerRef.current?.camera) {
+          const camera = sceneManagerRef.current.camera;
+          if (camera.isPerspectiveCamera) {
+            camera.position.z = Math.min(camera.position.z * 1.1, 200);
+          }
+        }
+      },
+    },
+    {
+      id: 'reset-camera',
+      key: '0',
+      description: 'Reset camera view',
+      category: 'view',
+      action: () => {
+        if (sceneManagerRef.current?.cameraController?.current) {
+          sceneManagerRef.current.cameraController.current.resetCamera(1000);
+        }
+      },
+    },
+    // Alignment shortcuts
+    {
+      id: 'align-left',
+      key: 'l',
+      ctrl: true,
+      description: 'Align left edges',
+      category: 'alignment',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 2) {
+          alignShapesLeft(selectedShapeIds);
+        }
+      },
+    },
+    {
+      id: 'align-right',
+      key: 'r',
+      ctrl: true,
+      shift: true,
+      description: 'Align right edges',
+      category: 'alignment',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 2) {
+          alignShapesRight(selectedShapeIds);
+        }
+      },
+    },
+    {
+      id: 'align-top',
+      key: 't',
+      ctrl: true,
+      description: 'Align top edges',
+      category: 'alignment',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 2) {
+          alignShapesTop(selectedShapeIds);
+        }
+      },
+    },
+    {
+      id: 'align-bottom',
+      key: 'b',
+      ctrl: true,
+      description: 'Align bottom edges',
+      category: 'alignment',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 2) {
+          alignShapesBottom(selectedShapeIds);
+        }
+      },
+    },
+    // Distribution shortcuts
+    {
+      id: 'distribute-horizontal',
+      key: 'h',
+      ctrl: true,
+      shift: true,
+      description: 'Distribute horizontally',
+      category: 'alignment',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 3) {
+          distributeShapesHorizontally(selectedShapeIds);
+        }
+      },
+    },
+    {
+      id: 'distribute-vertical',
+      key: 'v',
+      alt: true,
+      description: 'Distribute vertically',
+      category: 'alignment',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length >= 3) {
+          distributeShapesVertically(selectedShapeIds);
+        }
+      },
+    },
+    // Z-order shortcuts
+    {
+      id: 'bring-to-front',
+      key: ']',
+      ctrl: true,
+      description: 'Bring to front',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeId) {
+          bringShapeToFront(selectedShapeId);
+        }
+      },
+    },
+    {
+      id: 'send-to-back',
+      key: '[',
+      ctrl: true,
+      description: 'Send to back',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeId) {
+          sendShapeToBack(selectedShapeId);
+        }
+      },
+    },
+    {
+      id: 'bring-forward',
+      key: ']',
+      ctrl: true,
+      shift: true,
+      description: 'Bring forward',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeId) {
+          bringShapeForward(selectedShapeId);
+        }
+      },
+    },
+    {
+      id: 'send-backward',
+      key: '[',
+      ctrl: true,
+      shift: true,
+      description: 'Send backward',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeId) {
+          sendShapeBackward(selectedShapeId);
+        }
+      },
+    },
     // Help overlay
     {
       id: 'help',
@@ -402,11 +752,45 @@ function App(): React.JSX.Element {
     drawing.isDrawing,
     drawing.currentShape,
     selectedShapeId,
+    selectedShapeIds,
     canUndo,
     canRedo,
     lineToolState.isMultiSegment,
     lineToolState.segments.length,
     shapes,
+    // Store action functions
+    setActiveTool,
+    setStoreActiveTool,
+    activateMeasurementTool,
+    deactivateMeasurementTool,
+    enterEditMode,
+    exitEditMode,
+    removeLastPoint,
+    removeLastLineSegment,
+    undo,
+    redo,
+    deleteShape,
+    deleteMeasurement,
+    toggleViewMode,
+    cancelAll,
+    toggleMultiSegmentMode,
+    completeLine,
+    nudgeShape,
+    groupShapes,
+    ungroupShapes,
+    selectAllShapes,
+    alignShapesLeft,
+    alignShapesRight,
+    alignShapesTop,
+    alignShapesBottom,
+    distributeShapesHorizontally,
+    distributeShapesVertically,
+    bringShapeToFront,
+    sendShapeToBack,
+    bringShapeForward,
+    sendShapeBackward,
+    setShortcutHelpOpen,
+    sceneManagerRef,
     // Note: shortcutHelpOpen removed from deps - Esc handler checks DOM directly
   ]);
 
@@ -714,10 +1098,13 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Select</span>
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setActiveTool('rectangle');
                     setStoreActiveTool('rectangle');
+                    // Auto-open Properties panel for dimension input
+                    setPropertiesExpanded(true);
+                    setRightPanelExpanded(true);
                   }}
                   style={{ 
                     display: 'flex', 
@@ -802,10 +1189,13 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Polyline</span>
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setActiveTool('circle');
                     setStoreActiveTool('circle');
+                    // Auto-open Properties panel for dimension input
+                    setPropertiesExpanded(true);
+                    setRightPanelExpanded(true);
                   }}
                   style={{ 
                     display: 'flex', 
@@ -1099,9 +1489,6 @@ function App(): React.JSX.Element {
               margin: '0 8px'
             }}></div>
 
-            {/* Dimension Input Toolbar */}
-            <DimensionInputToolbar />
-
             <div style={{
               width: '1px',
               alignSelf: 'stretch',
@@ -1307,13 +1694,18 @@ function App(): React.JSX.Element {
                 </button>
                 <button
                   onClick={() => {
-                    if (selectedShapeId) {
-                      deleteShape(selectedShapeId);
+                    // Check selectedShapeIds first (for groups), fallback to selectedShapeId
+                    const targetId = selectedShapeIds && selectedShapeIds.length > 0
+                      ? selectedShapeIds[0]
+                      : selectedShapeId;
+
+                    if (targetId) {
+                      deleteShape(targetId);
                     } else if (drawing.measurement?.selectedMeasurementId) {
                       deleteMeasurement(drawing.measurement.selectedMeasurementId);
                     }
                   }}
-                  disabled={!selectedShapeId && !drawing.measurement?.selectedMeasurementId}
+                  disabled={!selectedShapeId && !selectedShapeIds?.length && !drawing.measurement?.selectedMeasurementId}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -3076,6 +3468,13 @@ function App(): React.JSX.Element {
                     </span>
                   )}
                 </div>
+
+                {/* Dimension Input - Only show for rectangle and circle tools */}
+                {(activeTool === 'rectangle' || activeTool === 'circle') && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <DimensionInputToolbar />
+                  </div>
+                )}
 
                 <div style={{ marginBottom: '16px' }}>
                   <h4 style={{

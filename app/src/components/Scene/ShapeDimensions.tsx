@@ -3,7 +3,25 @@ import { Html } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import { useAppStore } from '@/store/useAppStore';
 import { precisionCalculator } from '@/services/precisionCalculations';
-import type { Shape } from '@/types';
+import type { Shape, Point2D } from '@/types';
+
+// Utility function to apply rotation transform to a single point
+const applyRotationToPoint = (point: Point2D, rotation?: { angle: number; center: Point2D }): Point2D => {
+  if (!rotation || rotation.angle === 0) return point;
+
+  const { angle, center } = rotation;
+  const angleRadians = (angle * Math.PI) / 180;
+  const cos = Math.cos(angleRadians);
+  const sin = Math.sin(angleRadians);
+
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+
+  return {
+    x: center.x + (dx * cos - dy * sin),
+    y: center.y + (dx * sin + dy * cos)
+  };
+};
 
 interface ShapeDimensionsProps {
   shape: Shape;
@@ -69,27 +87,29 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         const radius = precisionCalculator.calculateDistance(center, radiusPoint);
 
         // Show radius line midpoint
-        let midX = (center.x + radiusPoint.x) / 2;
-        let midZ = (center.y + radiusPoint.y) / 2;
-        
+        let midPoint = { x: (center.x + radiusPoint.x) / 2, y: (center.y + radiusPoint.y) / 2 };
+
         // In resize mode, move radius text outward to avoid handles
         if (isResizeMode) {
           const dx = radiusPoint.x - center.x;
           const dz = radiusPoint.y - center.y;
           const length = Math.sqrt(dx * dx + dz * dz);
-          
+
           if (length > 0) {
             const pushDistance = 2; // Units to push outward from radius line
-            midX += (dx / length) * pushDistance;
-            midZ += (dz / length) * pushDistance;
+            midPoint.x += (dx / length) * pushDistance;
+            midPoint.y += (dz / length) * pushDistance;
           }
         }
-        
+
+        // Apply rotation transformation if shape is rotated
+        const rotatedMidPoint = applyRotationToPoint(midPoint, shape.rotation);
+
         return (
           <group>
             <Html
               key={`radius-${shape.id}`}
-              position={[midX, elevation + 0.15, midZ]}
+              position={[rotatedMidPoint.x, elevation + 0.15, rotatedMidPoint.y]}
               center
               sprite
               occlude={false}
@@ -145,11 +165,10 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
       
       // Calculate distance between points
       const distance = precisionCalculator.calculateDistance(currentPoint, nextPoint);
-      
+
       // Calculate midpoint for label placement
-      let midX = (currentPoint.x + nextPoint.x) / 2;
-      let midZ = (currentPoint.y + nextPoint.y) / 2;
-      
+      let midPoint = { x: (currentPoint.x + nextPoint.x) / 2, y: (currentPoint.y + nextPoint.y) / 2 };
+
       // In resize mode, move dimension text outward to avoid handles
       if (isResizeMode) {
         // Calculate the vector from shape center to midpoint
@@ -167,24 +186,27 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
             y: points.reduce((sum, p) => sum + p.y, 0) / points.length
           };
         }
-        
+
         // Vector from center to midpoint
-        const dx = midX - shapeCenter.x;
-        const dz = midZ - shapeCenter.y;
+        const dx = midPoint.x - shapeCenter.x;
+        const dz = midPoint.y - shapeCenter.y;
         const length = Math.sqrt(dx * dx + dz * dz);
-        
+
         // Move dimension text outward by a fixed distance
         if (length > 0) {
           const pushDistance = 3; // Units to push outward
-          midX += (dx / length) * pushDistance;
-          midZ += (dz / length) * pushDistance;
+          midPoint.x += (dx / length) * pushDistance;
+          midPoint.y += (dz / length) * pushDistance;
         }
       }
-      
+
+      // Apply rotation transformation if shape is rotated
+      const rotatedMidPoint = applyRotationToPoint(midPoint, shape.rotation);
+
       labels.push(
         <Html
           key={`dimension-${shape.id}-${i}`}
-          position={[midX, elevation + 0.15, midZ]}
+          position={[rotatedMidPoint.x, elevation + 0.15, rotatedMidPoint.y]}
           center
           sprite
           occlude={false}
@@ -213,7 +235,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
     }
     
     return <group>{labels}</group>;
-  }, [shape, elevation, isSelected, isResizeMode, scaleInfo]);
+  }, [shape, shape.rotation?.angle, elevation, isSelected, isResizeMode, scaleInfo]);
 
   // Add area label for closed shapes
   const areaLabel = useMemo(() => {
@@ -223,17 +245,17 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
     // Only skip area calculation for true 2-point lines, not polylines with 3+ points
     if (shape.type === 'polyline' && shape.points.length <= 2) return null;
     
-    // Calculate center position of shape
-    let centerX = 0, centerY = 0;
-    
+    // Calculate center position of shape (in original, unrotated coordinates)
+    let centerPoint = { x: 0, y: 0 };
+
     if (shape.type === 'circle' && shape.points.length >= 2) {
-      centerX = shape.points[0].x;
-      centerY = shape.points[0].y;
+      centerPoint.x = shape.points[0].x;
+      centerPoint.y = shape.points[0].y;
     } else if (shape.points.length > 0) {
-      centerX = shape.points.reduce((sum, p) => sum + p.x, 0) / shape.points.length;
-      centerY = shape.points.reduce((sum, p) => sum + p.y, 0) / shape.points.length;
+      centerPoint.x = shape.points.reduce((sum, p) => sum + p.x, 0) / shape.points.length;
+      centerPoint.y = shape.points.reduce((sum, p) => sum + p.y, 0) / shape.points.length;
     }
-    
+
     // Calculate area
     let area = 0;
     if (shape.type === 'circle' && shape.points.length >= 2) {
@@ -256,16 +278,19 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
       const width = Math.abs(shape.points[1].x - shape.points[0].x);
       const height = Math.abs(shape.points[1].y - shape.points[0].y);
       area = width * height;
-      centerX = (shape.points[0].x + shape.points[1].x) / 2;
-      centerY = (shape.points[0].y + shape.points[1].y) / 2;
+      centerPoint.x = (shape.points[0].x + shape.points[1].x) / 2;
+      centerPoint.y = (shape.points[0].y + shape.points[1].y) / 2;
     }
-    
+
     if (area < 0.1) return null; // Don't show for very small areas
-    
+
+    // Apply rotation transformation if shape is rotated
+    const rotatedCenter = applyRotationToPoint(centerPoint, shape.rotation);
+
     return (
       <Html
         key={`area-${shape.id}`}
-        position={[centerX, elevation + 0.2, centerY]}
+        position={[rotatedCenter.x, elevation + 0.2, rotatedCenter.y]}
         center
         sprite
         occlude={false}
@@ -287,7 +312,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         </div>
       </Html>
     );
-  }, [shape, shape.points, shape.modified, elevation, isSelected, isResizeMode, scaleInfo, renderTrigger]);
+  }, [shape, shape.points, shape.rotation?.angle, shape.modified, elevation, isSelected, isResizeMode, scaleInfo, renderTrigger]);
 
   // Don't render if modal is open (must be after all hooks)
   if (isModalOpen) return null;

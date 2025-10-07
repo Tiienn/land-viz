@@ -82,7 +82,9 @@
       "WebFetch(domain:www.smartdraw.com)",
       "WebFetch(domain:smartdraw.zendesk.com)",
       "Bash(start C:\\Users\\Tien\\Documents\\land-viz\\test-keyboard.html)",
-      "Bash(npx playwright install:*)"
+      "Bash(npx playwright install:*)",
+      "Bash(tasklist)",
+      "Bash(npx playwright test:*)"
     ],
     "deny": [],
     "ask": []

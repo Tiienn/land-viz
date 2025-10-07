@@ -169,13 +169,17 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   const selectedShapeId = useAppStore(state => state.selectedShapeId);
   const selectedShapeIds = useAppStore(state => state.selectedShapeIds);
   const hoveredShapeId = useAppStore(state => state.hoveredShapeId);
+  const highlightedShapeId = useAppStore(state => state.highlightedShapeId);
   const dragState = useAppStore(state => state.dragState);
   const showDimensions = useAppStore(state => state.drawing.showDimensions);
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const renderTrigger = useAppStore(state => state.renderTrigger);
   const selectShape = useAppStore(state => state.selectShape);
+  const selectMultipleShapes = useAppStore(state => state.selectMultipleShapes);
   const toggleShapeSelection = useAppStore(state => state.toggleShapeSelection);
   const hoverShape = useAppStore(state => state.hoverShape);
+  const setHighlightedShapeId = useAppStore(state => state.setHighlightedShapeId);
+  const setHoveredGroupId = useAppStore(state => state.setHoveredGroupId);
   const startDragging = useAppStore(state => state.startDragging);
   const updateDragPosition = useAppStore(state => state.updateDragPosition);
   const finishDragging = useAppStore(state => state.finishDragging);
@@ -290,7 +294,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     logger.log('🎨 Visible shapes count:', visibleShapes.length);
     
     const transforms = visibleShapes.map(shape => {
-      const isDragging = dragState.isDragging && dragState.draggedShapeId === shape.id;
+      // Canva-style grouping: Check if shape is being dragged (single shape OR part of group drag)
+      const isDragging = dragState.isDragging && (
+        dragState.draggedShapeId === shape.id || // Primary dragged shape
+        dragState.originalShapesData?.has(shape.id) // Part of group being dragged
+      );
       const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
       
       logger.log(`🎨 Processing shape ${shape.id}:`, {
@@ -354,6 +362,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     dragState.startPosition?.y,
     dragState.currentPosition?.x,
     dragState.currentPosition?.y,
+    Array.from(dragState.originalShapesData?.keys() || []).join('|'), // Group drag shape IDs
     visibleShapes.map(s => s.rotation?.angle || 0).join('|'),
     drawing.isResizeMode,
     drawing.resizingShapeId,
@@ -613,6 +622,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected; // Multi-selected but not primary
       const isSelected = isPrimarySelected || isMultiSelected; // Any kind of selection
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
+      const isHighlighted = shape.id === highlightedShapeId; // Canva-style grouping: highlighted shape within group
       const isDragging = shapeTransforms[index]?.isDragging;
       const isBeingResized = shapeTransforms[index]?.isBeingResized;
       const layer = layers.find(l => l.id === shape.layerId);
@@ -627,6 +637,13 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         opacity = 0.8 * layerOpacity;
         lineOpacity = 1 * layerOpacity;
         lineWidth = 5;
+      } else if (isHighlighted) {
+        // Canva-style grouping: Highlighted shape gets strongest visual (purple with glow)
+        fillColor = "#9333EA"; // Purple to match group boundary
+        lineColor = "#9333EA";
+        opacity = 0.8 * layerOpacity;
+        lineOpacity = 1 * layerOpacity;
+        lineWidth = 5; // Thicker than normal selection
       } else if (isPrimarySelected) {
         // Primary selection - bright blue with stronger effect
         fillColor = "#1D4ED8";
@@ -674,6 +691,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     selectedShapeId,
     selectedShapeIds?.join(',') || '',
     hoveredShapeId,
+    highlightedShapeId,
     activeTool,
     layers.map(l => `${l.id}_${l.opacity}`).join('|'),
     shapeTransforms.map(t => t.isDragging).join('|')
@@ -705,35 +723,61 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     event.stopPropagation();
 
     if (activeTool === 'select') {
+      // Get the clicked shape to check for groupId
+      const clickedShape = shapes.find(s => s.id === shapeId);
+
       // Check if Shift key is pressed for multi-selection
       if (event.shiftKey) {
         // Multi-selection mode: toggle shape selection
         toggleShapeSelection(shapeId);
       } else {
-        // Single selection mode
-        if (selectedShapeId === shapeId) {
-          // Shape already selected - enter resize mode for quick interaction
-          if (!drawing.isEditMode && !drawing.isResizeMode) {
-            enterResizeMode(shapeId);
-          }
+        // Check if shape is part of a group (Canva-style grouping)
+        if (clickedShape?.groupId) {
+          // Find all shapes in this group
+          const groupMembers = shapes.filter(s => s.groupId === clickedShape.groupId);
+          const groupMemberIds = groupMembers.map(s => s.id);
+
+          // CRITICAL FIX: Set both selectedShapeIds (for group operations) AND selectedShapeId (for rotation/drag handles)
+          // Don't use selectShape() as it overwrites selectedShapeIds with only 1 shape!
+          useAppStore.setState({
+            selectedShapeIds: groupMemberIds,
+            selectedShapeId: shapeId, // Primary shape for rotation/drag handles
+          });
+
+          // Highlight the clicked shape within the group
+          setHighlightedShapeId(shapeId);
+
+          logger.info(`Selected group: ${clickedShape.groupId} (${groupMemberIds.length} shapes)`);
         } else {
-          // Select the shape first
-          selectShape(shapeId);
-        // Enter resize mode after selection for immediate productivity - force resize mode for all shapes
-        setTimeout(() => {
-          const currentDrawing = useAppStore.getState().drawing;
-          // CRITICAL: Only enter resize mode if not transitioning to rotation mode
-          if (!currentDrawing.isEditMode &&
-              !currentDrawing.isRotateMode &&
-              !currentDrawing.isResizeMode &&
-              currentDrawing.activeTool === 'select') {
-            enterResizeMode(shapeId);
+          // Non-grouped shape - use existing single selection logic
+          // Clear highlighted shape since this is not a group selection
+          setHighlightedShapeId(null);
+
+          // Single selection mode
+          if (selectedShapeId === shapeId) {
+            // Shape already selected - enter resize mode for quick interaction
+            if (!drawing.isEditMode && !drawing.isResizeMode) {
+              enterResizeMode(shapeId);
+            }
+          } else {
+            // Select the shape first
+            selectShape(shapeId);
+          // Enter resize mode after selection for immediate productivity - force resize mode for all shapes
+          setTimeout(() => {
+            const currentDrawing = useAppStore.getState().drawing;
+            // CRITICAL: Only enter resize mode if not transitioning to rotation mode
+            if (!currentDrawing.isEditMode &&
+                !currentDrawing.isRotateMode &&
+                !currentDrawing.isResizeMode &&
+                currentDrawing.activeTool === 'select') {
+              enterResizeMode(shapeId);
+            }
+          }, 50); // Longer timeout to ensure state updates properly
           }
-        }, 50); // Longer timeout to ensure state updates properly
         }
       }
     }
-  }, [activeTool, selectShape, selectedShapeId, drawing.isEditMode, drawing.isResizeMode, drawing.isRotateMode, enterResizeMode]);
+  }, [activeTool, selectShape, selectMultipleShapes, setHighlightedShapeId, selectedShapeId, drawing.isEditMode, drawing.isResizeMode, drawing.isRotateMode, enterResizeMode, shapes, toggleShapeSelection]);
 
   const handleShapeDoubleClick = useCallback((shapeId: string) => (event: any) => {
     // Only respond to left mouse button (button 0)
@@ -755,15 +799,27 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     event.stopPropagation();
     if (activeTool === 'select') {
       hoverShape(shapeId);
+
+      // Canva-style grouping: Set hoveredGroupId when hovering over grouped shape
+      const hoveredShape = shapes.find(s => s.id === shapeId);
+      if (hoveredShape?.groupId) {
+        setHoveredGroupId(hoveredShape.groupId);
+      } else {
+        setHoveredGroupId(null);
+      }
     }
-  }, [activeTool, hoverShape]);
+  }, [activeTool, hoverShape, setHoveredGroupId, shapes]);
 
   const handleShapeLeave = useCallback((event: any) => {
     event.stopPropagation();
     if (activeTool === 'select') {
       hoverShape(null);
+
+      // Canva-style grouping: Clear hoveredGroupId when mouse leaves
+      // (unless the group is selected - boundary will still show)
+      setHoveredGroupId(null);
     }
-  }, [activeTool, hoverShape]);
+  }, [activeTool, hoverShape, setHoveredGroupId]);
 
   // Context menu handler
   const handleShapeContextMenu = useCallback((shapeId: string) => (event: any) => {

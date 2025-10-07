@@ -31,13 +31,13 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]): void {
       shortcutManager.register(shortcut);
     });
 
-    // Cleanup: unregister shortcuts when component unmounts
+    // Cleanup: unregister shortcuts when component unmounts or shortcuts change
     return () => {
       shortcuts.forEach(shortcut => {
         shortcutManager.unregister(shortcut.id);
       });
     };
-  }, []); // Empty deps - only register once on mount
+  }, [shortcuts]); // Re-register when shortcuts array changes
 }
 
 /**

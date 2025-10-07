@@ -9,6 +9,7 @@ import { useToolHistoryStore } from './useToolHistoryStore';
 // import { useAlignmentStore } from './useAlignmentStore';
 import { GeometryCache } from '../utils/GeometryCache';
 import { logger } from '../utils/logger';
+import { getWorldPoints, calculateBoundingBox } from '../utils/geometryTransforms';
 import { convertToSquareMeters, calculateGridAwareDimensions, getUnitLabel, calculateSmartGridPosition, generateShapeFromArea } from '../utils/areaCalculations';
 import { SimpleAlignment, type SpacingMeasurement } from '../services/simpleAlignment';
 import { SnapGrid } from '../utils/SnapGrid';
@@ -53,6 +54,8 @@ interface AppStore extends AppState {
   toggleShapeSelection: (id: string) => void;
   clearSelection: () => void;
   hoverShape: (id: string | null) => void;
+  setHoveredGroupId: (groupId: string | null) => void;
+  setHighlightedShapeId: (shapeId: string | null) => void;
   duplicateShape: (id: string) => void;
   createShapeFromArea: (area: number, unit: AreaUnit) => void;
 
@@ -228,6 +231,32 @@ interface AppStore extends AppState {
     targetShapeId?: string
   ) => void;
   closeContextMenu: () => void;
+
+  // Keyboard shortcuts - Shape manipulation
+  nudgeShape: (shapeId: string, direction: 'up' | 'down' | 'left' | 'right', distance: number) => void;
+  selectAllShapes: () => void;
+
+  // Keyboard shortcuts - Grouping
+  groupShapes: () => void;
+  ungroupShapes: () => void;
+
+  // Keyboard shortcuts - Alignment
+  alignShapesLeft: (shapeIds: string[]) => void;
+  alignShapesRight: (shapeIds: string[]) => void;
+  alignShapesTop: (shapeIds: string[]) => void;
+  alignShapesBottom: (shapeIds: string[]) => void;
+  alignShapesCenter: (shapeIds: string[]) => void;
+  alignShapesMiddle: (shapeIds: string[]) => void;
+
+  // Keyboard shortcuts - Distribution
+  distributeShapesHorizontally: (shapeIds: string[]) => void;
+  distributeShapesVertically: (shapeIds: string[]) => void;
+
+  // Keyboard shortcuts - Z-order
+  bringShapeToFront: (shapeId: string) => void;
+  sendShapeToBack: (shapeId: string) => void;
+  bringShapeForward: (shapeId: string) => void;
+  sendShapeBackward: (shapeId: string) => void;
 }
 
 const generateId = (): string => {
@@ -440,12 +469,15 @@ const createInitialState = (): AppState => {
     selectedShapeId: null, // Don't auto-select default shape on page load
     selectedShapeIds: [] as string[], // For multi-selection support
     hoveredShapeId: null,
+    hoveredGroupId: null, // Canva-style grouping: track hovered group
+    highlightedShapeId: null, // Canva-style grouping: track highlighted shape in group
     dragState: {
       isDragging: false,
       draggedShapeId: null,
       startPosition: null,
       currentPosition: null,
       originalShapePoints: null,
+      originalShapesData: undefined,
     },
     activeLayerId: defaultLayer.id,
     drawing: getDefaultDrawingState(),
@@ -512,6 +544,8 @@ const createInitialState = (): AppState => {
     selectedShapeId: baseState.selectedShapeId,
     selectedShapeIds: baseState.selectedShapeIds,
     hoveredShapeId: baseState.hoveredShapeId,
+    hoveredGroupId: baseState.hoveredGroupId,
+    highlightedShapeId: baseState.highlightedShapeId,
     dragState: baseState.dragState,
     activeLayerId: baseState.activeLayerId,
     drawing: baseState.drawing,
@@ -1596,15 +1630,27 @@ export const useAppStore = create<AppStore>()(
 
       deleteShape: (id: string) => {
         get().saveToHistory(); // Save state before deleting shape
-        
+
+        const state = get();
+        const targetShape = state.shapes.find(s => s.id === id);
+
+        // Canva-style grouping: Check if deleting a grouped shape with other selected shapes
+        const selectedIds = state.selectedShapeIds || [];
+        const shapesToDelete = (targetShape?.groupId && selectedIds.length > 1)
+          ? selectedIds  // Delete all selected shapes in group
+          : [id];  // Delete single shape
+
         set(
           state => ({
-            shapes: state.shapes.filter(shape => shape.id !== id),
-            selectedShapeId: state.selectedShapeId === id ? null : state.selectedShapeId,
+            shapes: state.shapes.filter(shape => !shapesToDelete.includes(shape.id)),
+            selectedShapeId: shapesToDelete.includes(state.selectedShapeId || '') ? null : state.selectedShapeId,
+            selectedShapeIds: state.selectedShapeIds?.filter(sid => !shapesToDelete.includes(sid)) || [],
           }),
           false,
           'deleteShape',
         );
+
+        logger.info(`Deleted ${shapesToDelete.length} shape(s)`);
       },
 
       selectShape: (id: string | null) => {
@@ -1756,6 +1802,14 @@ export const useAppStore = create<AppStore>()(
         set({ hoveredShapeId: id }, false, 'hoverShape');
       },
 
+      setHoveredGroupId: (groupId: string | null) => {
+        set({ hoveredGroupId: groupId }, false, 'setHoveredGroupId');
+      },
+
+      setHighlightedShapeId: (shapeId: string | null) => {
+        set({ highlightedShapeId: shapeId }, false, 'setHighlightedShapeId');
+      },
+
       // Drag actions
       startDragging: (shapeId: string, startPosition: Point2D) => {
         const state = get();
@@ -1773,13 +1827,29 @@ export const useAppStore = create<AppStore>()(
         // Store the current shape points as they are (may include rotation already applied)
         const currentPoints = shape?.points ? [...shape.points] : null;
 
+        // Canva-style grouping: Store original data for ALL selected shapes (for group move)
+        const selectedIds = state.selectedShapeIds || [];
+        const shapesToDrag = selectedIds.length > 0 ? selectedIds : [shapeId];
+
+        const originalShapesData = new Map<string, { points: Point2D[]; rotation?: { angle: number; center: Point2D } }>();
+        shapesToDrag.forEach(id => {
+          const s = state.shapes.find(shape => shape.id === id);
+          if (s && !s.locked) {
+            originalShapesData.set(id, {
+              points: [...s.points],
+              rotation: s.rotation ? { ...s.rotation, center: { ...s.rotation.center } } : undefined
+            });
+          }
+        });
+
         set({
           dragState: {
             isDragging: true,
             draggedShapeId: shapeId,
             startPosition,
             currentPosition: startPosition,
-            originalShapePoints: currentPoints,
+            originalShapePoints: currentPoints, // Legacy: keep for backward compatibility
+            originalShapesData, // Canva-style grouping: store all selected shapes
           }
         }, false, 'startDragging');
       },
@@ -1998,13 +2068,39 @@ export const useAppStore = create<AppStore>()(
           const offsetX = state.dragState.currentPosition.x - state.dragState.startPosition.x;
           const offsetY = state.dragState.currentPosition.y - state.dragState.startPosition.y;
 
+          // Canva-style grouping: Move ALL selected shapes if originalShapesData exists
+          const originalShapesData = state.dragState.originalShapesData;
+
           const updatedShapes = state.shapes.map(shape => {
-            if (shape.id === state.dragState.draggedShapeId && state.dragState.originalShapePoints) {
+            // If we have multi-shape data (group drag), use that
+            if (originalShapesData && originalShapesData.has(shape.id)) {
+              const originalData = originalShapesData.get(shape.id)!;
+              const newPoints = originalData.points.map(point => ({
+                x: point.x + offsetX,
+                y: point.y + offsetY,
+              }));
+
+              // Also update rotation center if shape is rotated
+              let newRotation = shape.rotation;
+              if (originalData.rotation) {
+                newRotation = {
+                  ...originalData.rotation,
+                  center: {
+                    x: originalData.rotation.center.x + offsetX,
+                    y: originalData.rotation.center.y + offsetY
+                  }
+                };
+              }
+
+              return { ...shape, points: newPoints, rotation: newRotation, modified: new Date() };
+            }
+            // Legacy: fallback to single shape drag for backward compatibility
+            else if (shape.id === state.dragState.draggedShapeId && state.dragState.originalShapePoints) {
               const newPoints = state.dragState.originalShapePoints.map(point => ({
                 x: point.x + offsetX,
                 y: point.y + offsetY,
               }));
-              
+
               // Also update rotation center if shape is rotated
               let newRotation = shape.rotation;
               if (newRotation) {
@@ -2016,7 +2112,7 @@ export const useAppStore = create<AppStore>()(
                   }
                 };
               }
-              
+
               return { ...shape, points: newPoints, rotation: newRotation, modified: new Date() };
             }
             return shape;
@@ -2030,9 +2126,10 @@ export const useAppStore = create<AppStore>()(
               startPosition: null,
               currentPosition: null,
               originalShapePoints: null,
+              originalShapesData: undefined,
             }
           }, false, 'finishDragging');
-          
+
           // Save to history after drag is complete
           get().saveToHistory();
         } else {
@@ -2044,6 +2141,7 @@ export const useAppStore = create<AppStore>()(
               startPosition: null,
               currentPosition: null,
               originalShapePoints: null,
+              originalShapesData: undefined,
             }
           }, false, 'finishDragging');
         }
@@ -2076,6 +2174,7 @@ export const useAppStore = create<AppStore>()(
             startPosition: null,
             currentPosition: null,
             originalShapePoints: null,
+            originalShapesData: undefined,
           }
         }, false, 'cancelDragging');
       },
@@ -2083,24 +2182,47 @@ export const useAppStore = create<AppStore>()(
       duplicateShape: (id: string) => {
         const state = get();
         const originalShape = state.shapes.find(shape => shape.id === id);
-        if (originalShape) {
-          const duplicatedShape: Shape = {
-            ...originalShape,
-            id: generateId(),
-            name: `${originalShape.name} Copy`,
-            points: originalShape.points.map(p => ({ x: p.x + 20, y: p.y + 20 })), // Offset slightly
-            created: new Date(),
-            modified: new Date(),
-          };
 
-          set(
-            prevState => ({
-              shapes: [...prevState.shapes, duplicatedShape],
-            }),
-            false,
-            'duplicateShape',
-          );
-        }
+        if (!originalShape) return;
+
+        // Canva-style grouping: Check if duplicating a grouped shape with other selected shapes
+        const selectedIds = state.selectedShapeIds || [];
+        const shapesToDuplicate = (originalShape.groupId && selectedIds.length > 1)
+          ? state.shapes.filter(s => selectedIds.includes(s.id))  // Duplicate all selected shapes in group
+          : [originalShape];  // Duplicate single shape
+
+        // Generate new groupId for duplicated shapes (if they were grouped)
+        const newGroupId = (shapesToDuplicate.length > 1 && shapesToDuplicate.some(s => s.groupId))
+          ? `group_${Date.now()}`
+          : undefined;
+
+        const duplicatedShapes: Shape[] = shapesToDuplicate.map(shape => ({
+          ...shape,
+          id: generateId(),
+          name: `${shape.name} Copy`,
+          points: shape.points.map(p => ({ x: p.x + 20, y: p.y + 20 })), // Offset slightly
+          groupId: newGroupId, // Assign new groupId or undefined
+          created: new Date(),
+          modified: new Date(),
+          // Preserve rotation metadata if present
+          rotation: shape.rotation ? {
+            angle: shape.rotation.angle,
+            center: {
+              x: shape.rotation.center.x + 20,
+              y: shape.rotation.center.y + 20
+            }
+          } : undefined
+        }));
+
+        set(
+          prevState => ({
+            shapes: [...prevState.shapes, ...duplicatedShapes],
+          }),
+          false,
+          'duplicateShape',
+        );
+
+        logger.info(`Duplicated ${duplicatedShapes.length} shape(s)${newGroupId ? ` with new group ID: ${newGroupId}` : ''}`);
       },
 
       // Point manipulation
@@ -2382,6 +2504,7 @@ export const useAppStore = create<AppStore>()(
             startPosition: null,
             currentPosition: null,
             originalShapePoints: null,
+            originalShapesData: undefined,
           },
           activeLayerId: state.activeLayerId,
           drawing: {
@@ -2871,6 +2994,15 @@ export const useAppStore = create<AppStore>()(
         const currentShape = get().shapes.find(shape => shape.id === shapeId);
         const originalRotation = currentShape?.rotation || { angle: 0, center: { x: 0, y: 0 } };
 
+        // Canva-style grouping: If shape is part of a group, select ALL group members
+        // This ensures group rotation works even when clicking rotation handle directly
+        let groupMemberIds: string[] = [shapeId];
+        if (currentShape?.groupId) {
+          const groupMembers = currentState.shapes.filter(s => s.groupId === currentShape.groupId);
+          groupMemberIds = groupMembers.map(s => s.id);
+          logger.info(`Entering rotate mode for group: ${currentShape.groupId} (${groupMemberIds.length} shapes)`);
+        }
+
         set(
           state => ({
             drawing: {
@@ -2890,7 +3022,9 @@ export const useAppStore = create<AppStore>()(
               resizeHandleIndex: null,
               maintainAspectRatio: false,
             },
+            // Select all group members if grouped, or just the single shape
             selectedShapeId: shapeId,
+            selectedShapeIds: groupMemberIds,
           }),
           false,
           'enterRotateMode',
@@ -2916,18 +3050,30 @@ export const useAppStore = create<AppStore>()(
 
       // Live rotation (for real-time updates without history pollution)
       rotateShapeLive: (shapeId: string, angle: number, center: Point2D) => {
-        // Invalidate geometry cache for the shape being rotated
-        const existingShape = get().shapes.find(shape => shape.id === shapeId);
-        if (existingShape) {
-          GeometryCache.invalidateShape(existingShape);
-        }
+        const state = get();
+
+        // Canva-style grouping: Check if rotating a grouped shape with other selected shapes
+        const targetShape = state.shapes.find(s => s.id === shapeId);
+        const selectedIds = state.selectedShapeIds || [];
+        const shapesToRotate = (targetShape?.groupId && selectedIds.length > 1)
+          ? selectedIds  // Rotate all selected shapes in group
+          : [shapeId];   // Rotate single shape
+
+        // Invalidate geometry cache for all shapes being rotated
+        shapesToRotate.forEach(id => {
+          const existingShape = state.shapes.find(shape => shape.id === id);
+          if (existingShape) {
+            GeometryCache.invalidateShape(existingShape);
+          }
+        });
 
         // The angle parameter is already the final absolute angle we want to apply
         // (calculated from original rotation + delta in RotationControls)
+        // For group rotation: all shapes rotate around the same group center
         set(
           state => ({
             shapes: state.shapes.map(shape => {
-              if (shape.id === shapeId) {
+              if (shapesToRotate.includes(shape.id)) {
                 return {
                   ...shape,
                   rotation: { angle, center },
@@ -2943,17 +3089,29 @@ export const useAppStore = create<AppStore>()(
       },
 
       rotateShape: (shapeId: string, angle: number, center: Point2D) => {
-        // Invalidate geometry cache for the shape being rotated
-        const existingShape = get().shapes.find(shape => shape.id === shapeId);
-        if (existingShape) {
-          GeometryCache.invalidateShape(existingShape);
-        }
+        const state = get();
 
-        // Apply the final rotation
+        // Canva-style grouping: Check if rotating a grouped shape with other selected shapes
+        const targetShape = state.shapes.find(s => s.id === shapeId);
+        const selectedIds = state.selectedShapeIds || [];
+        const shapesToRotate = (targetShape?.groupId && selectedIds.length > 1)
+          ? selectedIds  // Rotate all selected shapes in group
+          : [shapeId];   // Rotate single shape
+
+        // Invalidate geometry cache for all shapes being rotated
+        shapesToRotate.forEach(id => {
+          const existingShape = state.shapes.find(shape => shape.id === id);
+          if (existingShape) {
+            GeometryCache.invalidateShape(existingShape);
+          }
+        });
+
+        // Apply the final rotation to all shapes
+        // For group rotation: all shapes rotate around the same group center
         set(
           state => ({
             shapes: state.shapes.map(shape => {
-              if (shape.id === shapeId) {
+              if (shapesToRotate.includes(shape.id)) {
                 return {
                   ...shape,
                   rotation: { angle, center },
@@ -2988,6 +3146,15 @@ export const useAppStore = create<AppStore>()(
         // Save current state to history before entering mode
         state.saveToHistory();
 
+        // Canva-style grouping: If shape is part of a group, select ALL group members
+        // This ensures group rotation works from the Rotate button
+        let groupMemberIds: string[] = [shapeId];
+        if (shape.groupId) {
+          const groupMembers = state.shapes.filter(s => s.groupId === shape.groupId);
+          groupMemberIds = groupMembers.map(s => s.id);
+          logger.info(`Entering cursor rotation mode for group: ${shape.groupId} (${groupMemberIds.length} shapes)`);
+        }
+
         // Enter cursor rotation mode (keep current tool as 'select')
         set(
           state => ({
@@ -2996,7 +3163,7 @@ export const useAppStore = create<AppStore>()(
               cursorRotationMode: true,
               cursorRotationShapeId: shapeId,
             },
-            selectedShapeIds: [shapeId], // Ensure shape is selected
+            selectedShapeIds: groupMemberIds, // Select all group members or just single shape
           }),
           false,
           'enterCursorRotationMode'
@@ -3748,6 +3915,7 @@ export const useAppStore = create<AppStore>()(
                 startPosition: null,
                 currentPosition: null,
                 originalShapePoints: null,
+                originalShapesData: undefined,
               },
               activeLayerId: defaultLayer?.id || 'default-layer',
               drawing: getDefaultDrawingState(),
@@ -4010,6 +4178,7 @@ export const useAppStore = create<AppStore>()(
               startPosition: null,
               currentPosition: null,
               originalShapePoints: null,
+              originalShapesData: undefined,
             }
           }),
           false,
@@ -4488,6 +4657,494 @@ export const useAppStore = create<AppStore>()(
           'closeContextMenu'
         );
       },
+
+
+// Keyboard shortcuts - Shape manipulation
+nudgeShape: (shapeId: string, direction: 'up' | 'down' | 'left' | 'right', distance: number) => {
+  set(
+    (state) => {
+      const shape = state.shapes.find((s) => s.id === shapeId);
+      if (!shape) return state;
+
+      // Canva-style grouping: Check if nudging a grouped shape with other selected shapes
+      const selectedIds = state.selectedShapeIds || [];
+      const shapesToNudge = (shape.groupId && selectedIds.length > 1)
+        ? selectedIds  // Nudge all selected shapes in group
+        : [shapeId];   // Nudge single shape
+
+      const nudgeVector: Point2D = {
+        x: direction === 'right' ? distance : direction === 'left' ? -distance : 0,
+        y: direction === 'up' ? distance : direction === 'down' ? -distance : 0,
+      };
+
+      return {
+        shapes: state.shapes.map((s) => {
+          if (shapesToNudge.includes(s.id)) {
+            const nudgedPoints = s.points.map((point) => ({
+              x: point.x + nudgeVector.x,
+              y: point.y + nudgeVector.y,
+            }));
+
+            // Also nudge rotation center if shape is rotated
+            const nudgedRotation = s.rotation ? {
+              ...s.rotation,
+              center: {
+                x: s.rotation.center.x + nudgeVector.x,
+                y: s.rotation.center.y + nudgeVector.y,
+              }
+            } : undefined;
+
+            return { ...s, points: nudgedPoints, rotation: nudgedRotation, modified: new Date() };
+          }
+          return s;
+        }),
+      };
+    },
+    false,
+    'nudgeShape'
+  );
+  get().saveToHistory();
+},
+
+selectAllShapes: () => {
+  set(
+    (state) => ({
+      selectedShapeIds: state.shapes.map((s) => s.id),
+    }),
+    false,
+    'selectAllShapes'
+  );
+},
+
+// Keyboard shortcuts - Grouping
+groupShapes: () => {
+  set(
+    (state) => {
+      const shapesToGroup = state.shapes.filter((s) =>
+        state.selectedShapeIds.includes(s.id)
+      );
+
+      // Need at least 2 shapes to group
+      if (shapesToGroup.length < 2) {
+        logger.warn('Cannot group: need at least 2 shapes');
+        return state;
+      }
+
+      // Generate unique group ID
+      const groupId = `group_${Date.now()}`;
+
+      // Assign groupId to all selected shapes
+      const updatedShapes = state.shapes.map((s) =>
+        shapesToGroup.some((sg) => sg.id === s.id)
+          ? { ...s, groupId, modified: new Date() }
+          : s
+      );
+
+      logger.info(`Grouped ${shapesToGroup.length} shapes with ID: ${groupId}`);
+
+      return {
+        shapes: updatedShapes,
+        // Keep shapes selected
+        selectedShapeIds: state.selectedShapeIds,
+      };
+    },
+    false,
+    'groupShapes'
+  );
+  get().saveToHistory();
+},
+
+ungroupShapes: () => {
+  set(
+    (state) => {
+      const shapesToUngroup = state.shapes.filter((s) =>
+        state.selectedShapeIds.includes(s.id) && s.groupId
+      );
+
+      if (shapesToUngroup.length === 0) {
+        logger.warn('Cannot ungroup: no grouped shapes selected');
+        return state;
+      }
+
+      const groupIds = new Set(shapesToUngroup.map((s) => s.groupId));
+
+      // Remove groupId from all selected shapes
+      const updatedShapes = state.shapes.map((s) =>
+        shapesToUngroup.some((su) => su.id === s.id)
+          ? { ...s, groupId: undefined, modified: new Date() }
+          : s
+      );
+
+      logger.info(`Ungrouped ${groupIds.size} group(s)`);
+
+      return {
+        shapes: updatedShapes,
+        // Keep shapes selected
+        selectedShapeIds: state.selectedShapeIds,
+      };
+    },
+    false,
+    'ungroupShapes'
+  );
+  get().saveToHistory();
+},
+
+// Keyboard shortcuts - Alignment
+alignShapesLeft: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToAlign = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToAlign.length < 2) return state;
+
+      // Find leftmost x coordinate
+      const minX = Math.min(...shapesToAlign.flatMap((s) => s.points.map((p) => p.x)));
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          if (!shapeIds.includes(shape.id)) return shape;
+
+          const currentMinX = Math.min(...shape.points.map((p) => p.x));
+          const offsetX = minX - currentMinX;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x + offsetX, y: p.y })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'alignShapesLeft'
+  );
+  get().saveToHistory();
+},
+
+alignShapesRight: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToAlign = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToAlign.length < 2) return state;
+
+      // Find rightmost x coordinate
+      const maxX = Math.max(...shapesToAlign.flatMap((s) => s.points.map((p) => p.x)));
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          if (!shapeIds.includes(shape.id)) return shape;
+
+          const currentMaxX = Math.max(...shape.points.map((p) => p.x));
+          const offsetX = maxX - currentMaxX;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x + offsetX, y: p.y })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'alignShapesRight'
+  );
+  get().saveToHistory();
+},
+
+alignShapesTop: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToAlign = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToAlign.length < 2) return state;
+
+      // Find topmost y coordinate (highest value in 3D space)
+      const maxY = Math.max(...shapesToAlign.flatMap((s) => s.points.map((p) => p.y)));
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          if (!shapeIds.includes(shape.id)) return shape;
+
+          const currentMaxY = Math.max(...shape.points.map((p) => p.y));
+          const offsetY = maxY - currentMaxY;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x, y: p.y + offsetY })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'alignShapesTop'
+  );
+  get().saveToHistory();
+},
+
+alignShapesBottom: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToAlign = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToAlign.length < 2) return state;
+
+      // Find bottommost y coordinate (lowest value in 3D space)
+      const minY = Math.min(...shapesToAlign.flatMap((s) => s.points.map((p) => p.y)));
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          if (!shapeIds.includes(shape.id)) return shape;
+
+          const currentMinY = Math.min(...shape.points.map((p) => p.y));
+          const offsetY = minY - currentMinY;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x, y: p.y + offsetY })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'alignShapesBottom'
+  );
+  get().saveToHistory();
+},
+
+alignShapesCenter: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToAlign = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToAlign.length < 2) return state;
+
+      // Calculate center x of all shapes
+      const allPoints = shapesToAlign.flatMap((s) => s.points);
+      const minX = Math.min(...allPoints.map((p) => p.x));
+      const maxX = Math.max(...allPoints.map((p) => p.x));
+      const centerX = (minX + maxX) / 2;
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          if (!shapeIds.includes(shape.id)) return shape;
+
+          const shapeMinX = Math.min(...shape.points.map((p) => p.x));
+          const shapeMaxX = Math.max(...shape.points.map((p) => p.x));
+          const shapeCenterX = (shapeMinX + shapeMaxX) / 2;
+          const offsetX = centerX - shapeCenterX;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x + offsetX, y: p.y })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'alignShapesCenter'
+  );
+  get().saveToHistory();
+},
+
+alignShapesMiddle: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToAlign = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToAlign.length < 2) return state;
+
+      // Calculate middle y of all shapes
+      const allPoints = shapesToAlign.flatMap((s) => s.points);
+      const minY = Math.min(...allPoints.map((p) => p.y));
+      const maxY = Math.max(...allPoints.map((p) => p.y));
+      const middleY = (minY + maxY) / 2;
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          if (!shapeIds.includes(shape.id)) return shape;
+
+          const shapeMinY = Math.min(...shape.points.map((p) => p.y));
+          const shapeMaxY = Math.max(...shape.points.map((p) => p.y));
+          const shapeMiddleY = (shapeMinY + shapeMaxY) / 2;
+          const offsetY = middleY - shapeMiddleY;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x, y: p.y + offsetY })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'alignShapesMiddle'
+  );
+  get().saveToHistory();
+},
+
+// Keyboard shortcuts - Distribution
+distributeShapesHorizontally: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToDistribute = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToDistribute.length < 3) return state;
+
+      // Sort shapes by their center x position
+      const shapesWithCenters = shapesToDistribute.map((shape) => {
+        const minX = Math.min(...shape.points.map((p) => p.x));
+        const maxX = Math.max(...shape.points.map((p) => p.x));
+        const centerX = (minX + maxX) / 2;
+        return { shape, centerX };
+      });
+      shapesWithCenters.sort((a, b) => a.centerX - b.centerX);
+
+      // Calculate even spacing
+      const firstCenterX = shapesWithCenters[0].centerX;
+      const lastCenterX = shapesWithCenters[shapesWithCenters.length - 1].centerX;
+      const totalDistance = lastCenterX - firstCenterX;
+      const spacing = totalDistance / (shapesWithCenters.length - 1);
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          const index = shapesWithCenters.findIndex((s) => s.shape.id === shape.id);
+          if (index === -1 || index === 0 || index === shapesWithCenters.length - 1) return shape;
+
+          const targetCenterX = firstCenterX + index * spacing;
+          const currentCenterX = shapesWithCenters[index].centerX;
+          const offsetX = targetCenterX - currentCenterX;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x + offsetX, y: p.y })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'distributeShapesHorizontally'
+  );
+  get().saveToHistory();
+},
+
+distributeShapesVertically: (shapeIds: string[]) => {
+  set(
+    (state) => {
+      const shapesToDistribute = state.shapes.filter((s) => shapeIds.includes(s.id));
+      if (shapesToDistribute.length < 3) return state;
+
+      // Sort shapes by their center y position
+      const shapesWithCenters = shapesToDistribute.map((shape) => {
+        const minY = Math.min(...shape.points.map((p) => p.y));
+        const maxY = Math.max(...shape.points.map((p) => p.y));
+        const centerY = (minY + maxY) / 2;
+        return { shape, centerY };
+      });
+      shapesWithCenters.sort((a, b) => a.centerY - b.centerY);
+
+      // Calculate even spacing
+      const firstCenterY = shapesWithCenters[0].centerY;
+      const lastCenterY = shapesWithCenters[shapesWithCenters.length - 1].centerY;
+      const totalDistance = lastCenterY - firstCenterY;
+      const spacing = totalDistance / (shapesWithCenters.length - 1);
+
+      return {
+        shapes: state.shapes.map((shape) => {
+          const index = shapesWithCenters.findIndex((s) => s.shape.id === shape.id);
+          if (index === -1 || index === 0 || index === shapesWithCenters.length - 1) return shape;
+
+          const targetCenterY = firstCenterY + index * spacing;
+          const currentCenterY = shapesWithCenters[index].centerY;
+          const offsetY = targetCenterY - currentCenterY;
+
+          return {
+            ...shape,
+            points: shape.points.map((p) => ({ x: p.x, y: p.y + offsetY })),
+            modified: new Date(),
+          };
+        }),
+      };
+    },
+    false,
+    'distributeShapesVertically'
+  );
+  get().saveToHistory();
+},
+
+// Keyboard shortcuts - Z-order
+bringShapeToFront: (shapeId: string) => {
+  set(
+    (state) => {
+      const shapeIndex = state.shapes.findIndex((s) => s.id === shapeId);
+      if (shapeIndex === -1 || shapeIndex === state.shapes.length - 1) return state;
+
+      const shape = state.shapes[shapeIndex];
+      const newShapes = [...state.shapes];
+      newShapes.splice(shapeIndex, 1);
+      newShapes.push(shape);
+
+      return { shapes: newShapes };
+    },
+    false,
+    'bringShapeToFront'
+  );
+  get().saveToHistory();
+},
+
+sendShapeToBack: (shapeId: string) => {
+  set(
+    (state) => {
+      const shapeIndex = state.shapes.findIndex((s) => s.id === shapeId);
+      if (shapeIndex === -1 || shapeIndex === 0) return state;
+
+      const shape = state.shapes[shapeIndex];
+      const newShapes = [...state.shapes];
+      newShapes.splice(shapeIndex, 1);
+      newShapes.unshift(shape);
+
+      return { shapes: newShapes };
+    },
+    false,
+    'sendShapeToBack'
+  );
+  get().saveToHistory();
+},
+
+bringShapeForward: (shapeId: string) => {
+  set(
+    (state) => {
+      const shapeIndex = state.shapes.findIndex((s) => s.id === shapeId);
+      if (shapeIndex === -1 || shapeIndex === state.shapes.length - 1) return state;
+
+      const shape = state.shapes[shapeIndex];
+      const newShapes = [...state.shapes];
+      newShapes.splice(shapeIndex, 1);
+      newShapes.splice(shapeIndex + 1, 0, shape);
+
+      return { shapes: newShapes };
+    },
+    false,
+    'bringShapeForward'
+  );
+  get().saveToHistory();
+},
+
+sendShapeBackward: (shapeId: string) => {
+  set(
+    (state) => {
+      const shapeIndex = state.shapes.findIndex((s) => s.id === shapeId);
+      if (shapeIndex === -1 || shapeIndex === 0) return state;
+
+      const shape = state.shapes[shapeIndex];
+      const newShapes = [...state.shapes];
+      newShapes.splice(shapeIndex, 1);
+      newShapes.splice(shapeIndex - 1, 0, shape);
+
+      return { shapes: newShapes };
+    },
+    false,
+    'sendShapeBackward'
+  );
+  get().saveToHistory();
+},
     }),
     {
       name: 'land-visualizer-store',
