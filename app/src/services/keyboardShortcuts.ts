@@ -6,6 +6,7 @@
  */
 
 import type { KeyboardShortcut, ShortcutConfig } from '../types/shortcuts';
+import { logger } from '../utils/logger';
 
 class KeyboardShortcutManager {
   private shortcuts: Map<string, KeyboardShortcut> = new Map();
@@ -37,7 +38,7 @@ class KeyboardShortcutManager {
     const key = this.generateShortcutKey(shortcut);
 
     if (this.shortcuts.has(key)) {
-      console.warn(`Shortcut conflict detected: ${key} is already registered`);
+      logger.warn(`[KeyboardShortcuts] Conflict detected: ${key} is already registered`);
     }
 
     this.shortcuts.set(key, { ...shortcut, enabled: shortcut.enabled ?? true });

@@ -1,4 +1,5 @@
 import type { AddAreaConfig, AddAreaValidation, AreaUnit } from '@/types';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { convertToSquareMeters } from './areaCalculations';
 
 const AREA_LIMITS = {
@@ -16,12 +17,14 @@ export const validateAddAreaConfig = (config: Partial<AddAreaConfig>): AddAreaVa
   if (!config.area || config.area <= 0) {
     errors.push('Area must be a positive number');
   } else if (config.unit && config.area) {
-    const limits = AREA_LIMITS[config.unit];
-    if (config.area < limits.min) {
-      errors.push(`Area must be at least ${limits.min} ${config.unit}`);
-    }
-    if (config.area > limits.max) {
-      errors.push(`Area cannot exceed ${limits.max} ${config.unit}`);
+    const limits = AREA_LIMITS[config.unit as keyof typeof AREA_LIMITS];
+    if (limits) {
+      if (config.area < limits.min) {
+        errors.push(`Area must be at least ${limits.min} ${config.unit}`);
+      }
+      if (config.area > limits.max) {
+        errors.push(`Area cannot exceed ${limits.max} ${config.unit}`);
+      }
     }
   }
 

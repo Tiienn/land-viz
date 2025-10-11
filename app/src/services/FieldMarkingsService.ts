@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { FIELD_MARKING_CONFIGS } from '../data/fieldMarkingsConfig';
 import { TextureCache, getTextureCacheInstance } from '../utils/TextureCache';
+import { logger } from '../utils/logger';
 import type {
   SportType,
   FieldDimensions,
@@ -34,7 +35,7 @@ export class FieldMarkingsService {
   ): THREE.Texture | null {
     const config = FIELD_MARKING_CONFIGS[sport];
     if (!config) {
-      console.warn(`No marking configuration found for sport: ${sport}`);
+      logger.warn(`[FieldMarkingsService] No marking configuration found for sport: ${sport}`);
       return null;
     }
 

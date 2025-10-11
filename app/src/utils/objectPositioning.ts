@@ -108,7 +108,7 @@ export class ObjectPositioner {
 
     // Fallback: position further out if no safe spot found
     const fallbackRadius = radius + gridSpacing * placedObjects.length;
-    const fallbackAngle = index * (Math.PI * 2 / Math.max(objects.length, 8));
+    const fallbackAngle = index * (Math.PI * 2 / Math.max(placedObjects.length + 1, 8));
 
     return {
       x: centerX + Math.cos(fallbackAngle) * fallbackRadius,

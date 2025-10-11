@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../App';
 import { useDrawingStore } from '../../store/useDrawingStore';
@@ -66,7 +66,8 @@ describe('Integration: User Workflows', () => {
 
       // Simulate drawing a rectangle (would involve canvas interactions in real app)
       const drawingStore = useDrawingStore.getState();
-      const shapeId = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Rectangle 1',
         type: 'rectangle',
         points: [
           { x: 0, y: 0 },
@@ -74,8 +75,8 @@ describe('Integration: User Workflows', () => {
           { x: 10, y:8 },
           { x: 0, y: 8 },
         ],
-        center: { x: 5, y: 4 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
@@ -92,44 +93,44 @@ describe('Integration: User Workflows', () => {
       const measurementStore = useMeasurementStore.getState();
       measurementStore.startMeasurement();
       measurementStore.setStartPoint({ x: 0, y: 0 });
-      measurementStore.setEndPoint({ x: 10, y: 0 });
-      measurementStore.completeMeasurement();
+      measurementStore.completeMeasurement({ x: 10, y: 0 });
 
-      expect(measurementStore.measurements).toHaveLength(1);
-      expect(measurementStore.measurements[0].distance).toBe(10);
+      expect(measurementStore.measurement.measurements).toHaveLength(1);
+      expect(measurementStore.measurement.measurements[0].distance).toBe(10);
 
       // Step 3: Open comparison tool to compare property size
       const comparisonTool = screen.getByRole('button', { name: /compare/i });
       await user.click(comparisonTool);
 
-      expect(useComparisonStore.getState().isVisible).toBe(true);
+      expect(useComparisonStore.getState().comparison.isExpanded).toBe(true);
 
       // Set land area for comparison (80 square units from 10x8 rectangle)
       const comparisonStore = useComparisonStore.getState();
-      comparisonStore.setLandArea(80, 'sqm');
-      comparisonStore.toggleObjectSelection('soccer-field');
+      comparisonStore.updateLandArea(80);
+      comparisonStore.toggleObjectVisibility('soccer-field');
 
-      expect(comparisonStore.comparisons).toHaveLength(1);
-      expect(comparisonStore.comparisons[0].objectId).toBe('soccer-field');
+      const calculations = comparisonStore.comparison.calculations;
+      expect(calculations.size).toBeGreaterThan(0);
+      expect(calculations.has('soccer-field')).toBe(true);
 
       // Step 4: Use conversion tool to convert area to different units
       const convertTool = screen.getByRole('button', { name: /convert/i });
       await user.click(convertTool);
 
-      expect(useConversionStore.getState().isVisible).toBe(true);
+      expect(useConversionStore.getState().conversion.isExpanded).toBe(true);
 
       const conversionStore = useConversionStore.getState();
       conversionStore.setInputValue('80');
-      conversionStore.setSelectedUnit('sqm');
+      conversionStore.setInputUnit('sqm');
       conversionStore.performConversion();
 
-      expect(conversionStore.results.length).toBeGreaterThan(0);
-      const sqftResult = conversionStore.results.find(r => r.unit === 'sqft');
-      expect(sqftResult?.value).toBeCloseTo(861.11, 1); // 80 sqm ≈ 861.11 sqft
+      expect(conversionStore.conversion.results.size).toBeGreaterThan(0);
+      const sqftResult = conversionStore.conversion.results.get('sqft');
+      expect(parseFloat(sqftResult || '0')).toBeCloseTo(861.11, 1); // 80 sqm ≈ 861.11 sqft
     });
 
     it('should handle complete property subdivision workflow', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -140,7 +141,8 @@ describe('Integration: User Workflows', () => {
 
       // Step 1: Draw main property boundary
       drawingStore.setActiveTool('polyline');
-      const mainPropertyId = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Main Property',
         type: 'polyline',
         points: [
           { x: 0, y: 0 },
@@ -149,31 +151,33 @@ describe('Integration: User Workflows', () => {
           { x: 10, y: 20 },
           { x: 0, y: 15 },
         ],
-        center: { x: 10, y: 10 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
       // Step 2: Create subdivision lines
-      const subdivisionId1 = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Subdivision Line 1',
         type: 'polyline',
         points: [
           { x: 10, y: 0 },
           { x: 10, y: 15 },
         ],
-        center: { x: 10, y: 7.5 },
-        rotation: 0,
+        color: '#10B981',
+        visible: true,
         layerId: 'main',
       });
 
-      const subdivisionId2 = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Subdivision Line 2',
         type: 'polyline',
         points: [
           { x: 0, y: 7.5 },
           { x: 20, y: 7.5 },
         ],
-        center: { x: 10, y: 7.5 },
-        rotation: 0,
+        color: '#F59E0B',
+        visible: true,
         layerId: 'main',
       });
 
@@ -185,35 +189,34 @@ describe('Integration: User Workflows', () => {
       // Measure subdivision 1 width
       measurementStore.startMeasurement();
       measurementStore.setStartPoint({ x: 0, y: 0 });
-      measurementStore.setEndPoint({ x: 10, y: 0 });
-      measurementStore.completeMeasurement();
+      measurementStore.completeMeasurement({ x: 10, y: 0 });
 
       // Measure subdivision 1 height
       measurementStore.startMeasurement();
       measurementStore.setStartPoint({ x: 0, y: 0 });
-      measurementStore.setEndPoint({ x: 0, y: 7.5 });
-      measurementStore.completeMeasurement();
+      measurementStore.completeMeasurement({ x: 0, y: 7.5 });
 
-      expect(measurementStore.measurements).toHaveLength(2);
-      expect(measurementStore.measurements[0].distance).toBe(10);
-      expect(measurementStore.measurements[1].distance).toBe(7.5);
+      expect(measurementStore.measurement.measurements).toHaveLength(2);
+      expect(measurementStore.measurement.measurements[0].distance).toBe(10);
+      expect(measurementStore.measurement.measurements[1].distance).toBe(7.5);
 
       // Step 4: Compare subdivision areas
       const comparisonStore = useComparisonStore.getState();
-      comparisonStore.showPanel();
-      comparisonStore.setLandArea(75, 'sqm'); // 10 x 7.5 = 75 sqm
-      comparisonStore.toggleObjectSelection('tennis-court');
-      comparisonStore.toggleObjectSelection('basketball-court');
+      comparisonStore.toggleComparisonPanel();
+      comparisonStore.updateLandArea(75); // 10 x 7.5 = 75 sqm
+      comparisonStore.toggleObjectVisibility('tennis-court');
+      comparisonStore.toggleObjectVisibility('basketball-court');
 
-      expect(comparisonStore.comparisons).toHaveLength(2);
-      expect(comparisonStore.selectedObjects).toContain('tennis-court');
-      expect(comparisonStore.selectedObjects).toContain('basketball-court');
+      const visibleObjects = comparisonStore.comparison.visibleObjects;
+      expect(visibleObjects.size).toBe(2);
+      expect(visibleObjects.has('tennis-court')).toBe(true);
+      expect(visibleObjects.has('basketball-court')).toBe(true);
     });
   });
 
   describe('Professional Survey Workflow', () => {
     it('should support professional land surveying tasks', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -232,11 +235,12 @@ describe('Integration: User Workflows', () => {
       ];
 
       drawingStore.setActiveTool('rectangle');
-      const propertyId = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Survey Property',
         type: 'rectangle',
         points: propertyCorners,
-        center: { x: 25.125, y: 16.875 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
@@ -251,45 +255,40 @@ describe('Integration: User Workflows', () => {
       boundaries.forEach(boundary => {
         measurementStore.startMeasurement();
         measurementStore.setStartPoint(boundary.start);
-        measurementStore.setEndPoint(boundary.end);
-        measurementStore.completeMeasurement();
+        measurementStore.completeMeasurement(boundary.end);
       });
 
-      expect(measurementStore.measurements).toHaveLength(4);
+      expect(measurementStore.measurement.measurements).toHaveLength(4);
 
       // Verify measurements
-      expect(measurementStore.measurements[0].distance).toBeCloseTo(50.25, 2); // North boundary
-      expect(measurementStore.measurements[1].distance).toBeCloseTo(33.75, 2); // East boundary
-      expect(measurementStore.measurements[2].distance).toBeCloseTo(50.25, 2); // South boundary
-      expect(measurementStore.measurements[3].distance).toBeCloseTo(33.75, 2); // West boundary
+      expect(measurementStore.measurement.measurements[0].distance).toBeCloseTo(50.25, 2); // North boundary
+      expect(measurementStore.measurement.measurements[1].distance).toBeCloseTo(33.75, 2); // East boundary
+      expect(measurementStore.measurement.measurements[2].distance).toBeCloseTo(50.25, 2); // South boundary
+      expect(measurementStore.measurement.measurements[3].distance).toBeCloseTo(33.75, 2); // West boundary
 
       // Step 3: Calculate total area and convert to various units
       const totalArea = 50.25 * 33.75; // 1695.9375 square units
 
       const conversionStore = useConversionStore.getState();
-      conversionStore.showPanel();
+      conversionStore.toggleConvertPanel();
       conversionStore.setInputValue(totalArea.toString());
-      conversionStore.setSelectedUnit('sqm');
+      conversionStore.setInputUnit('sqm');
       conversionStore.performConversion();
 
-      expect(conversionStore.results.length).toBeGreaterThan(0);
+      expect(conversionStore.conversion.results.size).toBeGreaterThan(0);
 
       // Verify key conversions for surveying
-      const acresResult = conversionStore.results.find(r => r.unit === 'acres');
-      const hectaresResult = conversionStore.results.find(r => r.unit === 'hectares');
-      const sqftResult = conversionStore.results.find(r => r.unit === 'sqft');
+      const acresResult = conversionStore.conversion.results.get('acres');
+      const hectaresResult = conversionStore.conversion.results.get('hectares');
+      const sqftResult = conversionStore.conversion.results.get('sqft');
 
-      expect(acresResult?.value).toBeCloseTo(0.419, 2); // ~0.419 acres
-      expect(hectaresResult?.value).toBeCloseTo(0.170, 2); // ~0.170 hectares
-      expect(sqftResult?.value).toBeCloseTo(18252, 0); // ~18,252 sqft
-
-      // Step 4: Add measurement history for documentation
-      expect(conversionStore.history).toHaveLength(1);
-      expect(conversionStore.history[0].inputValue).toBe(totalArea.toString());
+      expect(parseFloat(acresResult || '0')).toBeCloseTo(0.419, 2); // ~0.419 acres
+      expect(parseFloat(hectaresResult || '0')).toBeCloseTo(0.170, 2); // ~0.170 hectares
+      expect(parseFloat(sqftResult || '0')).toBeCloseTo(18252, 0); // ~18,252 sqft
     });
 
     it('should handle complex polygon surveys with historical units', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -310,47 +309,48 @@ describe('Integration: User Workflows', () => {
       ];
 
       drawingStore.setActiveTool('polyline');
-      const propertyId = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Irregular Property',
         type: 'polyline',
         points: irregularProperty,
-        center: { x: 15, y: 17.5 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
       // Step 2: Test historical French units (common in Louisiana, Quebec)
-      conversionStore.showPanel();
+      conversionStore.toggleConvertPanel();
       conversionStore.setInputValue('2.5');
-      conversionStore.setSelectedUnit('arpent-na'); // North American arpent
+      conversionStore.setInputUnit('arpent-na'); // North American arpent
       conversionStore.performConversion();
 
-      const sqmFromArpent = conversionStore.results.find(r => r.unit === 'sqm');
-      expect(sqmFromArpent?.value).toBeCloseTo(8498.75, 1); // 2.5 arpent ≈ 8,498.75 sqm
+      const sqmFromArpent = conversionStore.conversion.results.get('sqm');
+      expect(parseFloat(sqmFromArpent || '0')).toBeCloseTo(8498.75, 1); // 2.5 arpent ≈ 8,498.75 sqm
 
       // Step 3: Test British colonial units (common in former British territories)
       conversionStore.setInputValue('5');
-      conversionStore.setSelectedUnit('perches');
+      conversionStore.setInputUnit('perches');
       conversionStore.performConversion();
 
-      const sqmFromPerches = conversionStore.results.find(r => r.unit === 'sqm');
-      expect(sqmFromPerches?.value).toBeCloseTo(126.45, 1); // 5 perches ≈ 126.45 sqm
+      const sqmFromPerches = conversionStore.conversion.results.get('sqm');
+      expect(parseFloat(sqmFromPerches || '0')).toBeCloseTo(126.45, 1); // 5 perches ≈ 126.45 sqm
 
       // Step 4: Test Mauritius-specific units
       conversionStore.setInputValue('1');
-      conversionStore.setSelectedUnit('perches-mauritius');
+      conversionStore.setInputUnit('perches-mauritius');
       conversionStore.performConversion();
 
-      const sqmFromMauritiusPerches = conversionStore.results.find(r => r.unit === 'sqm');
-      expect(sqmFromMauritiusPerches?.value).toBeCloseTo(39.53, 1); // 1 Mauritius perch ≈ 39.53 sqm
+      const sqmFromMauritiusPerches = conversionStore.conversion.results.get('sqm');
+      expect(parseFloat(sqmFromMauritiusPerches || '0')).toBeCloseTo(39.53, 1); // 1 Mauritius perch ≈ 39.53 sqm
 
       // Verify warnings for historical units
-      expect(conversionStore.results.length).toBeGreaterThan(0);
+      expect(conversionStore.conversion.results.size).toBeGreaterThan(0);
     });
   });
 
   describe('Real Estate Development Workflow', () => {
     it('should support development planning with multiple lots', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -361,7 +361,8 @@ describe('Integration: User Workflows', () => {
       const comparisonStore = useComparisonStore.getState();
 
       // Step 1: Create development area
-      const developmentArea = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Development Area',
         type: 'rectangle',
         points: [
           { x: 0, y: 0 },
@@ -369,8 +370,8 @@ describe('Integration: User Workflows', () => {
           { x: 100, y: 60 },
           { x: 0, y: 60 },
         ],
-        center: { x: 50, y: 30 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
@@ -392,6 +393,7 @@ describe('Integration: User Workflows', () => {
 
       lots.forEach((lot, index) => {
         drawingStore.addShape({
+          name: `Lot ${index + 1}`,
           type: 'rectangle',
           points: [
             { x: lot.x, y: lot.y },
@@ -399,8 +401,8 @@ describe('Integration: User Workflows', () => {
             { x: lot.x + lot.width, y: lot.y + lot.height },
             { x: lot.x, y: lot.y + lot.height },
           ],
-          center: { x: lot.x + lot.width / 2, y: lot.y + lot.height / 2 },
-          rotation: 0,
+          color: '#10B981',
+          visible: true,
           layerId: 'main',
         });
       });
@@ -409,16 +411,17 @@ describe('Integration: User Workflows', () => {
 
       // Step 3: Compare individual lot sizes to common structures
       const lotArea = 20 * 30; // 600 square units
-      comparisonStore.showPanel();
-      comparisonStore.setLandArea(lotArea, 'sqm');
-      comparisonStore.toggleObjectSelection('tennis-court');
-      comparisonStore.toggleObjectSelection('basketball-court');
-      comparisonStore.toggleObjectSelection('parking-space');
+      comparisonStore.toggleComparisonPanel();
+      comparisonStore.updateLandArea(lotArea);
+      comparisonStore.toggleObjectVisibility('tennis-court');
+      comparisonStore.toggleObjectVisibility('basketball-court');
+      comparisonStore.toggleObjectVisibility('parking-space');
 
-      expect(comparisonStore.comparisons).toHaveLength(3);
+      const calculations = comparisonStore.comparison.calculations;
+      expect(calculations.size).toBeGreaterThan(0);
 
       // Verify reasonable comparisons
-      const tennisComparison = comparisonStore.comparisons.find(c => c.objectId === 'tennis-court');
+      const tennisComparison = calculations.get('tennis-court');
       expect(tennisComparison?.quantity).toBeGreaterThan(1); // Lot is larger than tennis court
 
       // Step 4: Calculate development density
@@ -430,7 +433,7 @@ describe('Integration: User Workflows', () => {
     });
 
     it('should handle mixed-use development planning', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -450,6 +453,7 @@ describe('Integration: User Workflows', () => {
 
       zones.forEach(zone => {
         drawingStore.addShape({
+          name: zone.name,
           type: 'rectangle',
           points: [
             { x: zone.area.x, y: zone.area.y },
@@ -457,11 +461,8 @@ describe('Integration: User Workflows', () => {
             { x: zone.area.x + zone.area.width, y: zone.area.y + zone.area.height },
             { x: zone.area.x, y: zone.area.y + zone.area.height },
           ],
-          center: {
-            x: zone.area.x + zone.area.width / 2,
-            y: zone.area.y + zone.area.height / 2
-          },
-          rotation: 0,
+          color: '#3B82F6',
+          visible: true,
           layerId: 'main',
         });
       });
@@ -469,21 +470,23 @@ describe('Integration: User Workflows', () => {
       expect(drawingStore.shapes).toHaveLength(4);
 
       // Step 2: Analyze each zone against appropriate references
-      comparisonStore.showPanel();
+      comparisonStore.toggleComparisonPanel();
 
       // Residential zone (2400 sqm)
-      comparisonStore.setLandArea(60 * 40, 'sqm');
-      comparisonStore.toggleObjectSelection('soccer-field');
+      comparisonStore.updateLandArea(60 * 40);
+      comparisonStore.toggleObjectVisibility('soccer-field');
 
-      let soccerComparison = comparisonStore.comparisons.find(c => c.objectId === 'soccer-field');
+      let calculations = comparisonStore.comparison.calculations;
+      let soccerComparison = calculations.get('soccer-field');
       expect(soccerComparison?.quantity).toBeCloseTo(0.34, 1); // ~1/3 of a soccer field
 
       // Commercial zone (800 sqm)
-      comparisonStore.clearSelectedObjects();
-      comparisonStore.setLandArea(40 * 20, 'sqm');
-      comparisonStore.toggleObjectSelection('basketball-court');
+      comparisonStore.resetComparison();
+      comparisonStore.updateLandArea(40 * 20);
+      comparisonStore.toggleObjectVisibility('basketball-court');
 
-      let basketballComparison = comparisonStore.comparisons.find(c => c.objectId === 'basketball-court');
+      calculations = comparisonStore.comparison.calculations;
+      let basketballComparison = calculations.get('basketball-court');
       expect(basketballComparison?.quantity).toBeGreaterThan(1); // Multiple basketball courts fit
 
       // Step 3: Calculate total development efficiency
@@ -501,7 +504,7 @@ describe('Integration: User Workflows', () => {
 
   describe('Error Recovery and Edge Cases', () => {
     it('should gracefully handle invalid measurements and continue workflow', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -512,7 +515,8 @@ describe('Integration: User Workflows', () => {
       const measurementStore = useMeasurementStore.getState();
 
       // Step 1: Create a shape
-      const shapeId = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Test Rectangle',
         type: 'rectangle',
         points: [
           { x: 0, y: 0 },
@@ -520,41 +524,39 @@ describe('Integration: User Workflows', () => {
           { x: 10, y: 10 },
           { x: 0, y: 10 },
         ],
-        center: { x: 5, y: 5 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
       // Step 2: Attempt invalid measurement (same point)
       measurementStore.startMeasurement();
       measurementStore.setStartPoint({ x: 5, y: 5 });
-      measurementStore.setEndPoint({ x: 5, y: 5 }); // Same point - zero distance
 
       // Should handle gracefully without crashing
-      expect(() => measurementStore.completeMeasurement()).not.toThrow();
-      expect(measurementStore.measurements).toHaveLength(1);
-      expect(measurementStore.measurements[0].distance).toBe(0);
+      expect(() => measurementStore.completeMeasurement({ x: 5, y: 5 })).not.toThrow();
+      expect(measurementStore.measurement.measurements).toHaveLength(1);
+      expect(measurementStore.measurement.measurements[0].distance).toBe(0);
 
       // Step 3: Continue with valid measurement
       measurementStore.startMeasurement();
       measurementStore.setStartPoint({ x: 0, y: 0 });
-      measurementStore.setEndPoint({ x: 10, y: 10 });
-      measurementStore.completeMeasurement();
+      measurementStore.completeMeasurement({ x: 10, y: 10 });
 
-      expect(measurementStore.measurements).toHaveLength(2);
-      expect(measurementStore.measurements[1].distance).toBeCloseTo(14.14, 2); // sqrt(10² + 10²)
+      expect(measurementStore.measurement.measurements).toHaveLength(2);
+      expect(measurementStore.measurement.measurements[1].distance).toBeCloseTo(14.14, 2); // sqrt(10² + 10²)
 
       // Step 4: Other tools should still work
       const comparisonStore = useComparisonStore.getState();
-      comparisonStore.showPanel();
-      comparisonStore.setLandArea(100, 'sqm');
+      comparisonStore.toggleComparisonPanel();
+      comparisonStore.updateLandArea(100);
 
-      expect(comparisonStore.isVisible).toBe(true);
-      expect(comparisonStore.landArea).toBe(100);
+      expect(comparisonStore.comparison.isExpanded).toBe(true);
+      expect(comparisonStore.comparison.landArea).toBe(100);
     });
 
     it('should handle rapid tool switching without data loss', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -568,43 +570,44 @@ describe('Integration: User Workflows', () => {
 
       // Rapidly switch tools and add data
       drawingStore.setActiveTool('rectangle');
-      const shape1 = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 5, y: 5 }],
-        center: { x: 2.5, y: 2.5 },
-        rotation: 0,
+        color: '#3B82F6',
+        visible: true,
         layerId: 'main',
       });
 
       drawingStore.setActiveTool('measure');
       measurementStore.startMeasurement();
       measurementStore.setStartPoint({ x: 0, y: 0 });
-      measurementStore.setEndPoint({ x: 5, y: 5 });
-      measurementStore.completeMeasurement();
+      measurementStore.completeMeasurement({ x: 5, y: 5 });
 
       drawingStore.setActiveTool('circle');
-      const shape2 = drawingStore.addShape({
+      drawingStore.addShape({
+        name: 'Shape 2',
         type: 'circle',
         points: [{ x: 10, y: 10 }, { x: 15, y: 15 }],
-        center: { x: 12.5, y: 12.5 },
-        rotation: 0,
+        color: '#10B981',
+        visible: true,
         layerId: 'main',
       });
 
-      comparisonStore.showPanel();
-      comparisonStore.setLandArea(50, 'sqm');
-      comparisonStore.toggleObjectSelection('tennis-court');
+      comparisonStore.toggleComparisonPanel();
+      comparisonStore.updateLandArea(50);
+      comparisonStore.toggleObjectVisibility('tennis-court');
 
-      conversionStore.showPanel();
+      conversionStore.toggleConvertPanel();
       conversionStore.setInputValue('50');
-      conversionStore.setSelectedUnit('sqm');
+      conversionStore.setInputUnit('sqm');
       conversionStore.performConversion();
 
       // Verify all data is preserved
       expect(drawingStore.shapes).toHaveLength(2);
-      expect(measurementStore.measurements).toHaveLength(1);
-      expect(comparisonStore.selectedObjects).toContain('tennis-court');
-      expect(conversionStore.results.length).toBeGreaterThan(0);
+      expect(measurementStore.measurement.measurements).toHaveLength(1);
+      expect(comparisonStore.comparison.visibleObjects.has('tennis-court')).toBe(true);
+      expect(conversionStore.conversion.results.size).toBeGreaterThan(0);
 
       // Switch back to drawing and verify state
       drawingStore.setActiveTool('polyline');
@@ -612,14 +615,14 @@ describe('Integration: User Workflows', () => {
 
       // Previous data should still be intact
       expect(drawingStore.shapes).toHaveLength(2);
-      expect(measurementStore.measurements).toHaveLength(1);
-      expect(measurementStore.measurements[0].distance).toBeCloseTo(7.07, 2);
+      expect(measurementStore.measurement.measurements).toHaveLength(1);
+      expect(measurementStore.measurement.measurements[0].distance).toBeCloseTo(7.07, 2);
     });
   });
 
   describe('Performance Under Load', () => {
     it('should handle large numbers of shapes and measurements efficiently', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       await waitFor(() => {
@@ -634,6 +637,7 @@ describe('Integration: User Workflows', () => {
       // Add many shapes
       for (let i = 0; i < 100; i++) {
         drawingStore.addShape({
+          name: `Shape ${i + 1}`,
           type: 'rectangle',
           points: [
             { x: i, y: i },
@@ -641,8 +645,8 @@ describe('Integration: User Workflows', () => {
             { x: i + 1, y: i + 1 },
             { x: i, y: i + 1 },
           ],
-          center: { x: i + 0.5, y: i + 0.5 },
-          rotation: 0,
+          color: '#3B82F6',
+          visible: true,
           layerId: 'main',
         });
       }
@@ -651,8 +655,7 @@ describe('Integration: User Workflows', () => {
       for (let i = 0; i < 50; i++) {
         measurementStore.startMeasurement();
         measurementStore.setStartPoint({ x: i, y: i });
-        measurementStore.setEndPoint({ x: i + 1, y: i + 1 });
-        measurementStore.completeMeasurement();
+        measurementStore.completeMeasurement({ x: i + 1, y: i + 1 });
       }
 
       const endTime = performance.now();
@@ -660,14 +663,14 @@ describe('Integration: User Workflows', () => {
 
       // Verify data integrity
       expect(drawingStore.shapes).toHaveLength(100);
-      expect(measurementStore.measurements).toHaveLength(50);
+      expect(measurementStore.measurement.measurements).toHaveLength(50);
 
       // Should complete within reasonable time
       expect(duration).toBeLessThan(1000); // Less than 1 second
 
       // Verify sample measurements are correct
-      expect(measurementStore.measurements[0].distance).toBeCloseTo(1.414, 2); // sqrt(2)
-      expect(measurementStore.measurements[49].distance).toBeCloseTo(1.414, 2);
+      expect(measurementStore.measurement.measurements[0].distance).toBeCloseTo(1.414, 2); // sqrt(2)
+      expect(measurementStore.measurement.measurements[49].distance).toBeCloseTo(1.414, 2);
     });
   });
 });

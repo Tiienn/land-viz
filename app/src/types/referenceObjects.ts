@@ -57,9 +57,11 @@ export interface BoundingBox {
 
 // State management for comparison tool
 export interface ComparisonState {
-  panelExpanded: boolean;
+  isExpanded: boolean;
+  isLoading: boolean;
   visibleObjects: Set<string>; // IDs of visible reference objects
   searchQuery: string;
   selectedCategory: ReferenceCategory | 'all';
-  calculations: ComparisonCalculations | null;
+  landArea: number;
+  calculations: Map<string, any>; // Map of objectId to comparison data
 }

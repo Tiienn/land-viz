@@ -1,6 +1,7 @@
 import { BufferGeometry, BufferAttribute } from 'three';
 import type { Point2D, Shape } from '@/types';
 import { logger } from './logger';
+import earcut from 'earcut';
 
 /**
  * Simplified geometry cache - removed complex caching logic for easier debugging
@@ -241,31 +242,58 @@ export class GeometryCache {
   }
 
   /**
-   * Create polygon geometry
+   * Create polygon geometry using Earcut triangulation
+   *
+   * Earcut handles both convex and concave polygons correctly,
+   * making it perfect for imported site plan boundaries.
    */
   private static createPolygonGeometry(points: Point2D[], elevation: number): BufferGeometry {
     const geometry = new BufferGeometry();
 
     if (points.length < 2) return geometry;
 
-    const vertices: number[] = [];
-    const indices: number[] = [];
+    logger.info(`[GeometryCache] Creating polygon geometry with ${points.length} points`);
+    logger.info(`[GeometryCache] Points:`, JSON.stringify(points));
 
-    // Add vertices
+    const vertices: number[] = [];
+
+    // Add vertices for rendering (3D with elevation)
     points.forEach(point => {
       vertices.push(point.x, elevation, point.y);
     });
 
+    logger.info(`[GeometryCache] Created ${vertices.length / 3} vertices`);
+
     // Create triangles for 3+ points
+    let indices: number[] = [];
+
     if (points.length >= 3) {
       if (points.length === 3) {
+        // Triangle - simple case
         indices.push(0, 1, 2);
-      } else if (points.length === 4) {
-        indices.push(0, 1, 2, 0, 2, 3);
+        logger.info(`[GeometryCache] Triangle: using direct indices`);
       } else {
-        // Simple fan triangulation for 5+ points
-        for (let i = 1; i < points.length - 1; i++) {
-          indices.push(0, i, i + 1);
+        // 4+ points: Use Earcut for robust triangulation
+        // Earcut requires flat array of [x, y, x, y, ...]
+        const flatCoords: number[] = [];
+        points.forEach(point => {
+          flatCoords.push(point.x, point.y);
+        });
+
+        logger.info(`[GeometryCache] Using Earcut triangulation for ${points.length}-point polygon`);
+
+        try {
+          // Earcut returns indices for the triangulation
+          indices = earcut(flatCoords);
+          logger.info(`[GeometryCache] Earcut created ${indices.length / 3} triangles`);
+        } catch (error) {
+          logger.error(`[GeometryCache] Earcut triangulation failed:`, error);
+
+          // Fallback to simple fan triangulation
+          logger.warn(`[GeometryCache] Falling back to fan triangulation`);
+          for (let i = 1; i < points.length - 1; i++) {
+            indices.push(0, i, i + 1);
+          }
         }
       }
 
@@ -280,6 +308,8 @@ export class GeometryCache {
 
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
+
+    logger.info(`[GeometryCache] Polygon geometry created successfully with ${indices.length / 3} triangles`);
 
     return geometry;
   }

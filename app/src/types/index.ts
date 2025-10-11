@@ -382,6 +382,9 @@ export interface LineToolState {
   isMultiSegment: boolean;
 }
 
+// Unit types
+export type UnitType = 'metric' | 'imperial' | 'toise';
+
 // Area unit types for Insert Area feature
 export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm' | 'toise' | 'perches' | 'perches-mauritius' | 'arpent-na' | 'arpent-paris' | 'arpent-mauritius';
 
@@ -909,3 +912,18 @@ export type {
   FormattedDimension,
   ParsedPolarCoordinate
 } from './dimension';
+
+// ================================
+// TEMPLATE SYSTEM TYPES
+// ================================
+
+export type {
+  TemplateCategory,
+  PropertyTemplate,
+  TemplateData,
+  TemplateMetadata,
+  CreateTemplateInput,
+  TemplateFilter,
+  TemplateValidationResult,
+  TemplateExportFormat
+} from './template';

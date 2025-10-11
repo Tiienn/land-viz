@@ -39,17 +39,19 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
   const { camera } = useThree();
   const renderTrigger = useAppStore(state => state.renderTrigger);
 
-  // Don't render dimensions if keyboard shortcuts modal is open (z-index conflict)
+  // Don't render dimensions if any modal/dropdown is open (z-index conflict with drei Html overlay)
   const [isModalOpen, setIsModalOpen] = React.useState(false);
 
   React.useEffect(() => {
     const checkModal = () => {
-      const isOpen = document.body.hasAttribute('data-keyboard-help-open');
+      const isOpen = document.body.hasAttribute('data-keyboard-help-open') ||
+                     document.body.hasAttribute('data-modal-open') ||
+                     document.body.hasAttribute('data-dropdown-open');
       setIsModalOpen(isOpen);
     };
 
     checkModal();
-    // Check frequently for modal state changes
+    // Check frequently for modal/dropdown state changes
     const interval = setInterval(checkModal, 50);
     return () => clearInterval(interval);
   }, []);
@@ -116,7 +118,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
               style={{
                 pointerEvents: 'none',
                 userSelect: 'none',
-                zIndex: 1000
+                zIndex: 1
               }}
             >
               <div style={{
@@ -213,7 +215,7 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
           style={{
             pointerEvents: 'none',
             userSelect: 'none',
-            zIndex: 1000
+            zIndex: 1
           }}
         >
           <div style={{

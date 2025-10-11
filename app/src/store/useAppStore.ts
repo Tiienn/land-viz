@@ -10,6 +10,7 @@ import { useToolHistoryStore } from './useToolHistoryStore';
 import { GeometryCache } from '../utils/GeometryCache';
 import { logger } from '../utils/logger';
 import { getWorldPoints, calculateBoundingBox } from '../utils/geometryTransforms';
+import { flipPointsHorizontally, flipPointsVertically } from '../utils/flipUtils';
 import { convertToSquareMeters, calculateGridAwareDimensions, getUnitLabel, calculateSmartGridPosition, generateShapeFromArea } from '../utils/areaCalculations';
 import { SimpleAlignment, type SpacingMeasurement } from '../services/simpleAlignment';
 import { SnapGrid } from '../utils/SnapGrid';
@@ -119,6 +120,10 @@ interface AppStore extends AppState {
   enterCursorRotationMode: (shapeId: string) => void;
   exitCursorRotationMode: () => void;
   applyCursorRotation: (shapeId: string, angle: number, center: Point2D) => void;
+
+  // Flip actions (available in 'select' mode)
+  flipShapes: (shapeIds: string[], direction: 'horizontal' | 'vertical') => void;
+  flipSelectedShapes: (direction: 'horizontal' | 'vertical') => void;
 
   // Measurement actions (only available in 'measure' mode)
   activateMeasurementTool: () => void;
@@ -462,9 +467,9 @@ const createDefaultShape = (): Shape => {
 
 const createInitialState = (): AppState => {
   const defaultLayer = createDefaultLayer();
-  const defaultShape = createDefaultShape();
+  // Removed default shape - start with empty canvas
   const baseState = {
-    shapes: [defaultShape],
+    shapes: [],
     layers: [defaultLayer],
     selectedShapeId: null, // Don't auto-select default shape on page load
     selectedShapeIds: [] as string[], // For multi-selection support
@@ -1077,7 +1082,8 @@ export const useAppStore = create<AppStore>()(
                 currentShape: null,
               },
               // Auto-select the newly created shape so user can immediately rotate/edit it
-              selectedShapeId: newShape.id
+              selectedShapeId: newShape.id,
+              selectedShapeIds: [newShape.id] // CRITICAL FIX: Update array for multi-selection support
             }),
             false,
             'finishDrawing',
@@ -1143,6 +1149,12 @@ export const useAppStore = create<AppStore>()(
 
       // Shape actions
       addShape: shape => {
+        logger.info('[useAppStore] addShape called with:', {
+          type: shape.type,
+          points: shape.points?.length,
+          layerId: shape.layerId
+        });
+
         get().saveToHistory(); // Save state before adding shape
 
         const newShape: Shape = {
@@ -1152,6 +1164,9 @@ export const useAppStore = create<AppStore>()(
           ...shape,
         };
 
+        logger.info('[useAppStore] Created new shape with ID:', newShape.id);
+        logger.info('[useAppStore] Total shapes before add:', get().shapes.length);
+
         set(
           state => ({
             shapes: [...state.shapes, newShape],
@@ -1159,6 +1174,8 @@ export const useAppStore = create<AppStore>()(
           false,
           'addShape',
         );
+
+        logger.info('[useAppStore] Total shapes after add:', get().shapes.length);
       },
 
       createShapeFromArea: (area: number, unit: AreaUnit) => {
@@ -3203,6 +3220,76 @@ export const useAppStore = create<AppStore>()(
         state.rotateShape(shapeId, angle, center);
 
         logger.info(`Cursor rotation applied: ${Math.round(angle)}°`);
+      },
+
+      // Flip actions
+      flipShapes: (shapeIds: string[], direction: 'horizontal' | 'vertical') => {
+        const state = get();
+
+        logger.info(`[Store] Flipping ${shapeIds.length} shapes ${direction}ly`);
+
+        // Validate inputs
+        if (shapeIds.length === 0) {
+          logger.warn('[Store] No shapes to flip');
+          return;
+        }
+
+        // Invalidate geometry cache for all shapes being flipped
+        shapeIds.forEach(id => {
+          const existingShape = state.shapes.find(shape => shape.id === id);
+          if (existingShape) {
+            GeometryCache.invalidateShape(existingShape);
+          }
+        });
+
+        // Flip each shape around its own center
+        set(
+          state => ({
+            shapes: state.shapes.map(shape => {
+              if (!shapeIds.includes(shape.id)) return shape;
+
+              // Skip locked shapes silently
+              if (shape.locked) {
+                logger.info(`[Store] Skipping locked shape ${shape.id}`);
+                return shape;
+              }
+
+              // Calculate flipped points
+              const flippedPoints = direction === 'horizontal'
+                ? flipPointsHorizontally(shape.points)
+                : flipPointsVertically(shape.points);
+
+              logger.info(`[Store] Flipped shape ${shape.id}:`, {
+                originalPoints: shape.points.length,
+                flippedPoints: flippedPoints.length,
+                direction
+              });
+
+              return {
+                ...shape,
+                points: flippedPoints,
+                modified: new Date()
+              };
+            }),
+            renderTrigger: state.renderTrigger + 1
+          }),
+          false,
+          'flipShapes'
+        );
+
+        // Save to history after flip completes
+        get().saveToHistory();
+
+        logger.info(`[Store] Flip complete: ${shapeIds.length} shapes flipped ${direction}ly`);
+      },
+
+      flipSelectedShapes: (direction: 'horizontal' | 'vertical') => {
+        const { selectedShapeIds, flipShapes } = get();
+        if (selectedShapeIds.length === 0) {
+          logger.warn('[Store] No shapes selected for flip');
+          return;
+        }
+        flipShapes(selectedShapeIds, direction);
       },
 
       // Measurement actions

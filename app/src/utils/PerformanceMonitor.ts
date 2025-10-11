@@ -231,7 +231,7 @@ class PerformanceMonitorService {
     // Record key load metrics
     this.recordMetric({
       name: 'page-load',
-      value: navigation.loadEventEnd - navigation.navigationStart,
+      value: navigation.loadEventEnd - navigation.fetchStart,
       timestamp: Date.now(),
       category: 'load',
       unit: 'ms',
@@ -239,7 +239,7 @@ class PerformanceMonitorService {
 
     this.recordMetric({
       name: 'dom-content-loaded',
-      value: navigation.domContentLoadedEventEnd - navigation.navigationStart,
+      value: navigation.domContentLoadedEventEnd - navigation.fetchStart,
       timestamp: Date.now(),
       category: 'load',
       unit: 'ms',

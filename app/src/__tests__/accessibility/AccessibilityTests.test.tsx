@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe, toHaveNoViolations } from 'jest-axe';
-import { App } from '../../App';
+import App from '../../App';
 
 // Extend Jest matchers
 expect.extend(toHaveNoViolations);
@@ -131,7 +131,7 @@ describe('Accessibility Tests', () => {
       const user = userEvent.setup();
       render(<App />);
 
-      const initiallyFocused = document.activeElement;
+      const _initiallyFocused = document.activeElement;
 
       // Tab through several elements
       const focusSequence: Element[] = [];
@@ -232,14 +232,14 @@ describe('Accessibility Tests', () => {
     });
 
     it('should announce dynamic content changes', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       // Look for elements that might trigger content changes
-      const buttons = screen.getAllByRole('button');
+      const _buttons = screen.getAllByRole('button');
 
       // Check for ARIA live regions
-      const liveRegions = document.querySelectorAll('[aria-live]');
+      const _liveRegions = document.querySelectorAll('[aria-live]');
 
       // Even if no live regions exist initially, dynamic content should be announced
       // This would be tested more thoroughly with actual screen reader testing
@@ -304,7 +304,7 @@ describe('Accessibility Tests', () => {
         value: 360, // Half of typical 720px height
       });
 
-      const { container } = render(<App />);
+      render(<App />);
 
       // Check that essential functionality is still accessible
       const buttons = screen.getAllByRole('button');
@@ -391,7 +391,7 @@ describe('Accessibility Tests', () => {
     });
 
     it('should support gesture alternatives', async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       render(<App />);
 
       // Check that complex gestures have keyboard/button alternatives

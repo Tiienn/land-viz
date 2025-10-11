@@ -193,28 +193,58 @@ class GeometryLoaderService {
   /**
    * Dynamic import for field markings service
    */
-  private async loadSoccerField(options: any): Promise<THREE.Group> {
+  private async loadSoccerField(_options: any): Promise<THREE.Group> {
     const { getFieldMarkingsService } = await import('../services/FieldMarkingsService');
     const service = getFieldMarkingsService();
-    return service.createField('soccer', options);
+    const texture = service.generateFieldTexture('soccer');
+
+    const group = new THREE.Group();
+    if (texture) {
+      const geometry = new THREE.PlaneGeometry(105, 68); // FIFA standard soccer field
+      const material = new THREE.MeshLambertMaterial({ map: texture });
+      const plane = new THREE.Mesh(geometry, material);
+      plane.rotation.x = -Math.PI / 2;
+      group.add(plane);
+    }
+    return group;
   }
 
-  private async loadBasketballCourt(options: any): Promise<THREE.Group> {
+  private async loadBasketballCourt(_options: any): Promise<THREE.Group> {
     const { getFieldMarkingsService } = await import('../services/FieldMarkingsService');
     const service = getFieldMarkingsService();
-    return service.createField('basketball', options);
+    const texture = service.generateFieldTexture('basketball');
+
+    const group = new THREE.Group();
+    if (texture) {
+      const geometry = new THREE.PlaneGeometry(28, 15); // NBA standard court
+      const material = new THREE.MeshLambertMaterial({ map: texture });
+      const plane = new THREE.Mesh(geometry, material);
+      plane.rotation.x = -Math.PI / 2;
+      group.add(plane);
+    }
+    return group;
   }
 
-  private async loadTennisCourt(options: any): Promise<THREE.Group> {
+  private async loadTennisCourt(_options: any): Promise<THREE.Group> {
     const { getFieldMarkingsService } = await import('../services/FieldMarkingsService');
     const service = getFieldMarkingsService();
-    return service.createField('tennis', options);
+    const texture = service.generateFieldTexture('tennis');
+
+    const group = new THREE.Group();
+    if (texture) {
+      const geometry = new THREE.PlaneGeometry(23.77, 10.97); // ITF standard tennis court
+      const material = new THREE.MeshLambertMaterial({ map: texture });
+      const plane = new THREE.Mesh(geometry, material);
+      plane.rotation.x = -Math.PI / 2;
+      group.add(plane);
+    }
+    return group;
   }
 
   /**
    * Simple geometric objects (no dynamic import needed)
    */
-  private async loadHouse(options: any): Promise<THREE.Group> {
+  private async loadHouse(_options: any): Promise<THREE.Group> {
     const group = new THREE.Group();
 
     // Simple house geometry
@@ -237,7 +267,7 @@ class GeometryLoaderService {
     return group;
   }
 
-  private async loadParkingSpace(options: any): Promise<THREE.Group> {
+  private async loadParkingSpace(_options: any): Promise<THREE.Group> {
     const group = new THREE.Group();
 
     // Simple parking space outline
@@ -277,11 +307,15 @@ class GeometryLoaderService {
     if (this.cache.size >= this.options.maxCacheSize) {
       // Remove oldest entry (simple FIFO)
       const firstKey = this.cache.keys().next().value;
-      const oldGeometry = this.cache.get(firstKey);
+      if (firstKey) {
+        const oldGeometry = this.cache.get(firstKey);
 
-      // Dispose of geometry resources
-      this.disposeGeometry(oldGeometry!);
-      this.cache.delete(firstKey);
+        // Dispose of geometry resources
+        if (oldGeometry) {
+          this.disposeGeometry(oldGeometry);
+        }
+        this.cache.delete(firstKey);
+      }
 
       logger.info('Cache size limit reached, removed oldest geometry', { removedKey: firstKey });
     }

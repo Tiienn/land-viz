@@ -23,13 +23,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 }) => {
   const { camera, gl } = useThree();
   const planeRef = useRef<Mesh>(null);
-  
+
   // Performance-optimized managers
   const raycastManager = useRef(new RaycastManager());
   const snapGrid = useRef(new SnapGrid(gridSize * 5, gridSize * 1.5));
 
   // PERFORMANCE FIX: RAF throttling for alignment detection
   const alignmentRafRef = useRef<number | null>(null);
+
+  // Right-click drag detection (prevent context menu after camera drag)
+  const rightClickStartPos = useRef<{x: number, y: number} | null>(null);
+  const rightClickStartTime = useRef<number | null>(null);
 
   // Cached vectors for performance
   const mousePosition = useRef(new Vector2());
@@ -688,9 +692,42 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     // Keep this function in case other tools need double-click in the future
   }, []);
 
+  // Track right-click start position and time for drag detection
+  const handlePointerDown = useCallback((event: ThreeEvent<PointerEvent>) => {
+    if (event.button === 2) { // Right mouse button
+      rightClickStartPos.current = {
+        x: event.clientX,
+        y: event.clientY
+      };
+      rightClickStartTime.current = Date.now();
+    }
+  }, []);
+
   const handleContextMenu = useCallback((event: ThreeEvent<MouseEvent>) => {
     event.nativeEvent.preventDefault();
     event.stopPropagation(); // Prevent event from bubbling to parent handlers
+
+    // Check if user was dragging camera (distance or time threshold)
+    if (rightClickStartPos.current && rightClickStartTime.current) {
+      const distance = Math.sqrt(
+        Math.pow(event.clientX - rightClickStartPos.current.x, 2) +
+        Math.pow(event.clientY - rightClickStartPos.current.y, 2)
+      );
+      const duration = Date.now() - rightClickStartTime.current;
+
+      // Don't show context menu if:
+      // - Mouse moved more than 5 pixels (camera drag)
+      // - Right-click held longer than 200ms (camera orbit)
+      if (distance > 5 || duration > 200) {
+        rightClickStartPos.current = null;
+        rightClickStartTime.current = null;
+        return; // Cancel context menu - user was dragging camera
+      }
+    }
+
+    // Clear tracking refs
+    rightClickStartPos.current = null;
+    rightClickStartTime.current = null;
 
     // Get fresh state to avoid stale selector issues
     const freshState = useAppStore.getState();
@@ -787,6 +824,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       ref={planeRef}
       position={[0, -0.001, 0]}
       rotation={[-Math.PI / 2, 0, 0]}
+      onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       onClick={handleClick}

@@ -169,7 +169,9 @@ export class SnapGrid {
     // Limit cache size
     if (this.gridCache.size > this.CACHE_SIZE_LIMIT) {
       const firstKey = this.gridCache.keys().next().value;
-      this.gridCache.delete(firstKey);
+      if (firstKey) {
+        this.gridCache.delete(firstKey);
+      }
     }
 
     // Add generated points to snap points

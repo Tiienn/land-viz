@@ -53,6 +53,19 @@ export const AddAreaModal: React.FC<AddAreaModalProps> = ({ isOpen, onClose }) =
     }
   }, [config, validation.isValid, createAreaShape, onClose]);
 
+  // Set data attribute for ShapeDimensions to hide when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.setAttribute('data-modal-open', 'true');
+    } else {
+      document.body.removeAttribute('data-modal-open');
+    }
+
+    return () => {
+      document.body.removeAttribute('data-modal-open');
+    };
+  }, [isOpen]);
+
   // Keyboard shortcuts
   useEffect(() => {
     if (!isOpen) return;

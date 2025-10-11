@@ -21,6 +21,7 @@ import { ObjectPositioner } from './utils/objectPositioning';
 import AlignmentControls from './components/UI/AlignmentControls';
 import { View2DToggleButton } from './components/UI/View2DToggleButton';
 import { ShortcutsHelpButton } from './components/UI/ShortcutsHelpButton';
+import { FlipButton } from './components/UI/FlipButton';
 import Icon from './components/Icon';
 import logger from './utils/logger';
 import type { Point2D, AreaUnit } from './types';
@@ -31,6 +32,9 @@ import { ContextMenu } from './components/ContextMenu/ContextMenu';
 import DimensionInputToolbar from './components/DimensionInput/DimensionInputToolbar';
 import LiveDistanceLabel from './components/DimensionInput/LiveDistanceLabel';
 import PrecisionSettingsPanel from './components/DimensionInput/PrecisionSettingsPanel';
+import { TemplateGalleryModal, SaveTemplateDialog } from './components/TemplateGallery';
+import { useTemplateStore } from './store/useTemplateStore';
+import { ImageImporterModal } from './components/ImageImport';
 
 /**
  * Root React component for the Land Visualizer application.
@@ -54,6 +58,7 @@ function App(): React.JSX.Element {
   const sceneManagerRef = useRef<SceneManagerRef>(null);
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
   const [exportSettingsFormat] = useState<ExportSettings['format']>('excel');
+  const [imageImportOpen, setImageImportOpen] = useState(false);
   const [isProfessionalMode, setIsProfessionalMode] = useState(false);
   const [mousePosition, setMousePosition] = useState<Point2D>({ x: 0, y: 0 });
   const [isMouseOver3D, setIsMouseOver3D] = useState(false);
@@ -152,6 +157,7 @@ function App(): React.JSX.Element {
     alignShapesRight,
     alignShapesTop,
     alignShapesBottom,
+    flipSelectedShapes,
     alignShapesCenter,
     alignShapesMiddle,
     distributeShapesHorizontally,
@@ -353,6 +359,30 @@ function App(): React.JSX.Element {
         }
       },
     },
+    {
+      id: 'flip-horizontal',
+      key: 'h',
+      shift: true,
+      description: 'Flip Horizontally',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length > 0) {
+          flipSelectedShapes('horizontal');
+        }
+      },
+    },
+    {
+      id: 'flip-vertical',
+      key: 'v',
+      shift: true,
+      description: 'Flip Vertically',
+      category: 'editing',
+      action: () => {
+        if (selectedShapeIds && selectedShapeIds.length > 0) {
+          flipSelectedShapes('vertical');
+        }
+      },
+    },
     // View shortcuts
     {
       id: 'toggle-view',
@@ -361,6 +391,17 @@ function App(): React.JSX.Element {
       category: 'view',
       action: () => {
         toggleViewMode();
+      },
+    },
+    {
+      id: 'open-template-gallery',
+      key: 't',
+      ctrl: true,
+      shift: true,
+      description: 'Open Template Gallery',
+      category: 'view',
+      action: () => {
+        useTemplateStore.getState().openGallery();
       },
     },
     {
@@ -732,6 +773,16 @@ function App(): React.JSX.Element {
         }
       },
     },
+    // Import Plan
+    {
+      id: 'import-plan',
+      key: 'i',
+      description: 'Open Import Plan dialog',
+      category: 'tools',
+      action: () => {
+        setImageImportOpen(true);
+      },
+    },
     // Help overlay
     {
       id: 'help',
@@ -779,6 +830,7 @@ function App(): React.JSX.Element {
     groupShapes,
     ungroupShapes,
     selectAllShapes,
+    flipSelectedShapes,
     alignShapesLeft,
     alignShapesRight,
     alignShapesTop,
@@ -790,6 +842,7 @@ function App(): React.JSX.Element {
     bringShapeForward,
     sendShapeBackward,
     setShortcutHelpOpen,
+    setImageImportOpen,
     sceneManagerRef,
     // Note: shortcutHelpOpen removed from deps - Esc handler checks DOM directly
   ]);
@@ -1041,8 +1094,8 @@ function App(): React.JSX.Element {
             </span>
           )}
         </div>
-        <div style={{ padding: '16px 24px' }}>
-          <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
+        <div style={{ padding: '12px 16px' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'nowrap' }}>
             {/* Drawing */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
@@ -1062,9 +1115,9 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '80px', 
+                    minWidth: '65px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1110,9 +1163,9 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '80px', 
+                    minWidth: '65px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1154,9 +1207,9 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '80px', 
+                    minWidth: '65px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1201,9 +1254,9 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '80px', 
+                    minWidth: '65px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1245,9 +1298,9 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '80px',
+                    minWidth: '65px',
                     height: '60px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1321,9 +1374,9 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '80px',
+                    minWidth: '65px',
                     height: '60px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1381,9 +1434,9 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '80px',
+                    minWidth: '65px',
                     height: '60px',
                     color: '#000000',
                     background: 'white',
@@ -1414,9 +1467,9 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '80px',
+                    minWidth: '65px',
                     height: '60px',
                     color: '#000000',
                     background: 'white',
@@ -1450,9 +1503,9 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '80px',
+                    minWidth: '65px',
                     height: '60px',
                     color: '#000000',
                     background: 'white',
@@ -1486,7 +1539,7 @@ function App(): React.JSX.Element {
               width: '1px',
               height: '70px',
               background: '#e5e7eb',
-              margin: '0 8px'
+              margin: '0 4px'
             }}></div>
 
             <div style={{
@@ -1512,9 +1565,9 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '80px', 
+                    minWidth: '65px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1552,9 +1605,9 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '80px',
+                    minWidth: '65px',
                     height: '60px',
                     border: '1px solid #e5e7eb',
                     cursor: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
@@ -1591,6 +1644,12 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Rotate</span>
                 </button>
+                <div style={{ marginLeft: '8px' }}>
+                  <FlipButton
+                    disabled={selectedShapeIds.length === 0 || drawing.isEditMode}
+                    onFlip={(direction) => flipSelectedShapes(direction)}
+                  />
+                </div>
                 <button 
                   onClick={() => {
                     if (window.confirm('Are you sure you want to clear all shapes? This action cannot be undone.')) {
@@ -1601,9 +1660,9 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '80px', 
+                    minWidth: '65px', 
                     height: '60px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
@@ -1647,7 +1706,7 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
                     minWidth: '60px', 
                     height: '60px', 
@@ -1710,7 +1769,7 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     borderRadius: '4px',
                     minWidth: '60px',
                     height: '60px',
@@ -1759,7 +1818,7 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
                     minWidth: '60px', 
                     height: '60px', 
@@ -1799,7 +1858,7 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
                     minWidth: '60px', 
                     height: '60px', 
@@ -2026,7 +2085,7 @@ function App(): React.JSX.Element {
               width: '1px', 
               height: '70px', 
               background: '#e5e7eb', 
-              margin: '0 8px' 
+              margin: '0 4px' 
             }}></div>
 
             {/* Corner Controls */}
@@ -2089,7 +2148,7 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
                     minWidth: '60px', 
                     height: '60px', 
@@ -2123,7 +2182,7 @@ function App(): React.JSX.Element {
                     display: 'flex', 
                     flexDirection: 'column', 
                     alignItems: 'center', 
-                    padding: '8px 12px', 
+                    padding: '6px 10px', 
                     borderRadius: '4px', 
                     minWidth: '60px', 
                     height: '60px', 
@@ -2152,7 +2211,7 @@ function App(): React.JSX.Element {
               width: '1px', 
               height: '70px', 
               background: '#e5e7eb', 
-              margin: '0 8px' 
+              margin: '0 4px' 
             }}></div>
 
 
@@ -2173,9 +2232,9 @@ function App(): React.JSX.Element {
                       display: 'flex', 
                       flexDirection: 'column', 
                       alignItems: 'center', 
-                      padding: '8px 12px', 
+                      padding: '6px 10px', 
                       borderRadius: '4px', 
-                      minWidth: '80px', 
+                      minWidth: '65px', 
                       height: '60px', 
                       border: '1px solid #e5e7eb',
                       cursor: 'pointer',
@@ -2215,7 +2274,7 @@ function App(): React.JSX.Element {
                         onClick={() => handleQuickExport('excel')}
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: 'none',
                           background: 'transparent',
                           cursor: 'pointer',
@@ -2241,7 +2300,7 @@ function App(): React.JSX.Element {
                         onClick={() => handleQuickExport('dxf')}
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: 'none',
                           borderTop: '1px solid #f3f4f6',
                           background: 'transparent',
@@ -2259,7 +2318,7 @@ function App(): React.JSX.Element {
                         onClick={() => handleQuickExport('pdf')}
                         style={{
                           width: '100%',
-                          padding: '8px 12px',
+                          padding: '6px 10px',
                           border: 'none',
                           borderTop: '1px solid #f3f4f6',
                           background: 'transparent',
@@ -2277,6 +2336,147 @@ function App(): React.JSX.Element {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Vertical Separator */}
+            <div style={{
+              width: '1px',
+              height: '70px',
+              background: '#e5e7eb',
+              margin: '0 4px'
+            }}></div>
+
+            {/* Import */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Import</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button
+                  onClick={() => setImageImportOpen(true)}
+                  title="Import Plan (I)"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    minWidth: '60px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Import Plan</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Vertical Separator */}
+            <div style={{
+              width: '1px',
+              height: '70px',
+              background: '#e5e7eb',
+              margin: '0 4px'
+            }}></div>
+
+            {/* Templates */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '8px',
+                textAlign: 'center'
+              }}>Templates</div>
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button
+                  onClick={() => useTemplateStore.getState().openGallery()}
+                  title="Browse Templates (Ctrl+Shift+T)"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    minWidth: '60px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14,2 14,8 20,8"></polyline>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Gallery</span>
+                </button>
+
+                <button
+                  onClick={() => useTemplateStore.getState().openSaveDialog()}
+                  title="Save as Template"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    minWidth: '60px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: '#ffffff',
+                    color: '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Save</span>
+                </button>
               </div>
             </div>
           </div>
@@ -4079,6 +4279,18 @@ function App(): React.JSX.Element {
 
       {/* Context Menu */}
       <ContextMenu />
+
+      {/* Template Gallery Modal */}
+      <TemplateGalleryModal />
+
+      {/* Save Template Dialog */}
+      <SaveTemplateDialog />
+
+      {/* Image Import Modal */}
+      <ImageImporterModal
+        isOpen={imageImportOpen}
+        onClose={() => setImageImportOpen(false)}
+      />
     </div>
   );
 }

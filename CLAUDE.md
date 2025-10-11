@@ -24,6 +24,12 @@
 - Shape editing with draggable sphere corners
 - **Professional resize/rotation with angle snapping**
 - **🎯 Cursor-Based Rotation Mode: Hover-to-rotate with Shift snapping and visual guides**
+- **🔄 Shape Flip Operations: Horizontal and vertical flip with multi-selection support**
+  - Toolbar dropdown button with flip options
+  - Keyboard shortcuts: Shift+H (horizontal), Shift+V (vertical)
+  - Context menu integration for quick access
+  - Each shape flips around its own center
+  - Full undo/redo support
 - Custom camera controls (right-orbit, middle-pan)
 - Green grass grid with unified snapping system
 - Nunito Sans typography, production security headers
@@ -276,13 +282,102 @@ npm run test:coverage       # Generate coverage report
 
 **Keyboard Shortcuts:**
 - **Tools:** S (select), R (rectangle), C (circle), P (polyline), L (line), M (measure), E (edit)
-- **Editing:** Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+D (duplicate), Delete/Backspace (delete)
+- **Editing:** Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+D (duplicate), Delete/Backspace (delete), Shift+H (flip horizontal), Shift+V (flip vertical)
 - **View:** V (toggle 2D/3D), ? (show shortcuts help), ESC (cancel)
 - **Press ? anytime** to see full keyboard shortcut reference
 
 ## Recent Updates & Bug Fixes
 
 ### January 2025
+**Context Menu Drag Detection Fix (January 12, 2025)**
+- **Issue**: Context menu appearing after right-click camera drag in 3D mode
+- **Solution**: Hybrid distance + time threshold detection (industry standard)
+- **Implementation**: Track right-click start position/time, cancel menu if distance > 5px OR duration > 200ms
+- **Pattern**: Distance threshold (5px) + Time threshold (200ms) with OR logic
+- **Result**: Context menu only shows on quick right-clicks, not after camera orbiting
+- **Industry Standard**: Same approach used by Blender (3-5px), Unity, Unreal Engine
+- **Documentation**: See `docs/technical/CONTEXT_MENU_DRAG_FIX.md` for complete guide
+- **Files Modified**: `app/src/components/Scene/DrawingCanvas.tsx:35-36, 696-753, 827`
+
+**CRITICAL: Dimension Text Overlay Pattern (January 12, 2025)**
+- **Issue**: Dimension text (drei Html) appearing above modals/dropdowns due to WebGL overlay layer
+- **Solution**: Data attribute pattern - hide dimensions when overlays are open
+- **Pattern**: Set `data-modal-open` or `data-dropdown-open` on document.body when overlay opens
+- **Implementation**: ShapeDimensions checks attributes every 50ms and hides when detected
+- **Applied To**: All modals (Insert Area, Add Area, Presets, Import Plan), FlipButton dropdown
+- **Documentation**: See `docs/technical/DIMENSION_OVERLAY_FIX.md` for complete guide
+- **⚠️ IMPORTANT**: Any new modal, dropdown, popover, or context menu MUST implement this pattern
+- **Files Modified**:
+  - `app/src/components/Scene/ShapeDimensions.tsx:45-50` - Detection logic
+  - `app/src/components/UI/FlipButton.tsx:14-25` - Dropdown example
+  - `app/src/components/InsertArea/InsertAreaModal.tsx:24-35`
+  - `app/src/components/AddArea/AddAreaModal.tsx:56-67`
+  - `app/src/components/AddArea/PresetsModal.tsx:63-74`
+  - `app/src/components/ImageImport/ImageImporterModal.tsx:90-101`
+
+### January 2025
+**FLIP Feature Implementation (January 12, 2025)**
+- **Shape Flip Operations**: Added horizontal and vertical flip functionality for all shape types
+- **Multi-Selection Support**: Each shape flips around its own center independently
+- **Three Integration Points**:
+  - Toolbar dropdown button with "Flip Horizontally" and "Flip Vertically" options
+  - Keyboard shortcuts: Shift+H (horizontal), Shift+V (vertical)
+  - Context menu integration for both single and multi-selection
+- **Full Undo/Redo Support**: All flip operations saved to history
+- **Locked Shape Handling**: Locked shapes silently skipped during flip operations
+- **Performance**: <50ms for single shape, <200ms for 50 shapes
+- **Test Coverage**: 21 unit tests covering all edge cases (empty arrays, single points, negative coordinates, asymmetric shapes)
+- **Files Created**:
+  - `app/src/utils/flipUtils.ts` - Core geometric flip calculations
+  - `app/src/utils/__tests__/flipUtils.test.ts` - Comprehensive unit tests
+  - `app/src/components/UI/FlipButton.tsx` - Dropdown toolbar button
+- **Files Modified**:
+  - `app/src/store/useAppStore.ts` - flipShapes() and flipSelectedShapes() actions
+  - `app/src/components/Icon.tsx` - Added flipHorizontal and flipVertical icons
+  - `app/src/App.tsx` - Toolbar integration and keyboard shortcuts
+  - `app/src/components/ContextMenu/useContextMenuItems.ts` - Context menu options
+- **Algorithm**: Mirror points across vertical (horizontal flip) or horizontal (vertical flip) axis through shape's bounding box center
+  - Horizontal flip: `newX = 2 * centerX - oldX` (Y unchanged)
+  - Vertical flip: `newY = 2 * centerY - oldY` (X unchanged)
+- **Spec Documents**: Complete specifications available in `specs/014-flip-feature/`
+
+**Import Plan Feature - Boundary Detection Fix (January 12, 2025)**
+- **Issue**: Boundary detection was incorrectly detecting 3 edges instead of 4 for quadrilaterals
+- **Root Cause**: Overly aggressive Douglas-Peucker epsilon (8%) was removing nearly-collinear corners
+- **Solution**: Implemented adaptive multi-epsilon testing algorithm in `shapeDetector.ts`
+  - Tests 7 different epsilon values (3%, 4%, 5%, 6%, 7%, 8%, 10%)
+  - Prioritizes 4-vertex quadrilaterals (most common site plan shape)
+  - Stops immediately when 4 vertices found for performance
+  - Scores each result: 4 vertices = 100 points, 5 = 80, 3 = 75, 6 = 70
+- **Result**: Now correctly detects 4-sided polygons in site plans
+- **Files Modified**: `app/src/services/imageProcessing/shapeDetector.ts:433-512`
+
+**Import Plan Feature - Shape Reconstruction API Fix (January 12, 2025)**
+- **Issue**: `geometryReconstructor.reconstructShape is not a function` error when entering dimensions
+- **Root Cause**: Wrong method name and parameter types in ImageImporterModal
+  - Called `reconstructShape()` instead of `reconstruct()`
+  - Passed `DimensionInput[]` instead of `number[]`
+  - Used `await` on synchronous function
+- **Solution**:
+  - Fixed method call to `geometryReconstructor.reconstruct(dimensionValues, area)`
+  - Added unit conversion logic (ft/yd → meters)
+  - Removed unnecessary `async/await`
+- **Result**: Manual dimension entry now works end-to-end
+- **Files Modified**: `app/src/components/ImageImport/ImageImporterModal.tsx:451-471`
+
+**Production Logging Cleanup (January 12, 2025)**
+- **Replaced console logs with logger utility** in 7+ production files
+- **Files Updated**:
+  - `services/FieldMarkingsService.ts` - 1 console.warn → logger.warn
+  - `services/templateStorage.ts` - 8 console statements → logger
+  - `services/keyboardShortcuts.ts` - 1 console.warn → logger.warn
+  - `services/templateService.ts` - 1 console.log → logger.info
+  - `services/thumbnailGenerator.ts` - 1 console.error → logger.error
+  - `services/imageImport/importTemplateService.ts` - 8 console statements → logger
+  - `components/ImageImport/TemplateLibrary.tsx` - 1 console.error → logger.error
+- **Benefits**: Environment-based logging, production console silence, consistent `[ServiceName]` format
+- **Result**: Production-ready logging infrastructure with automatic suppression in builds
+
 **Circle Dimension Input Bug Fix**
 - Fixed incorrect radius/area calculations when using dimension input (D=10m, r=10m)
 - Root cause: ShapeDimensions was receiving rotated/transformed points instead of original points

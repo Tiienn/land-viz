@@ -84,7 +84,8 @@
       "Bash(start C:\\Users\\Tien\\Documents\\land-viz\\test-keyboard.html)",
       "Bash(npx playwright install:*)",
       "Bash(tasklist)",
-      "Bash(npx playwright test:*)"
+      "Bash(npx playwright test:*)",
+      "WebFetch(domain:docs.opencv.org)"
     ],
     "deny": [],
     "ask": []

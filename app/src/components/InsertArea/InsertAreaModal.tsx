@@ -21,6 +21,19 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
   // Get grid settings from store
   const { drawing } = useAppStore();
 
+  // Set data attribute for ShapeDimensions to hide when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.setAttribute('data-modal-open', 'true');
+    } else {
+      document.body.removeAttribute('data-modal-open');
+    }
+
+    return () => {
+      document.body.removeAttribute('data-modal-open');
+    };
+  }, [isOpen]);
+
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {

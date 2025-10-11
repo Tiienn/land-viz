@@ -222,6 +222,9 @@ export function sanitizeObject<T extends Record<string, unknown>>(
         break;
 
       case 'number':
+        if (typeof value !== 'string' && typeof value !== 'number') {
+          return null;
+        }
         const numValue = sanitizeNumber(value, {
           min: rules.min,
           max: rules.max

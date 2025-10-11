@@ -14,7 +14,8 @@ export const useContextMenuItems = (
     deleteShape,
     duplicateShape,
     toggleViewMode,
-    closeContextMenu
+    closeContextMenu,
+    flipSelectedShapes
   } = useAppStore();
 
   return useMemo(() => {
@@ -113,6 +114,31 @@ export const useContextMenuItems = (
           action: () => {
             if (targetShapeId) {
               duplicateShape(targetShapeId);
+              closeContextMenu();
+            }
+          },
+        },
+        { type: 'divider' },
+        {
+          id: 'flip-horizontal',
+          label: 'Flip Horizontally',
+          icon: 'flipHorizontal',
+          shortcut: 'Shift+H',
+          action: () => {
+            if (targetShapeId) {
+              flipSelectedShapes('horizontal');
+              closeContextMenu();
+            }
+          },
+        },
+        {
+          id: 'flip-vertical',
+          label: 'Flip Vertically',
+          icon: 'flipVertical',
+          shortcut: 'Shift+V',
+          action: () => {
+            if (targetShapeId) {
+              flipSelectedShapes('vertical');
               closeContextMenu();
             }
           },
@@ -309,6 +335,27 @@ export const useContextMenuItems = (
         },
         { type: 'divider' },
         {
+          id: 'flip-horizontal',
+          label: 'Flip Horizontally',
+          icon: 'flipHorizontal',
+          shortcut: 'Shift+H',
+          action: () => {
+            flipSelectedShapes('horizontal');
+            closeContextMenu();
+          },
+        },
+        {
+          id: 'flip-vertical',
+          label: 'Flip Vertically',
+          icon: 'flipVertical',
+          shortcut: 'Shift+V',
+          action: () => {
+            flipSelectedShapes('vertical');
+            closeContextMenu();
+          },
+        },
+        { type: 'divider' },
+        {
           id: 'align',
           label: 'Align',
           icon: 'align',
@@ -398,5 +445,5 @@ export const useContextMenuItems = (
     }
 
     return [];
-  }, [type, targetShapeId, shapes, selectedShapeIds, setActiveTool, deleteShape, duplicateShape, toggleViewMode, closeContextMenu]);
+  }, [type, targetShapeId, shapes, selectedShapeIds, setActiveTool, deleteShape, duplicateShape, toggleViewMode, closeContextMenu, flipSelectedShapes]);
 };

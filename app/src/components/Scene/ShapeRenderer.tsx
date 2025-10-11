@@ -185,6 +185,19 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   const finishDragging = useAppStore(state => state.finishDragging);
   const cancelDragging = useAppStore(state => state.cancelDragging);
   
+  // Debug: Log shapes changes
+  useEffect(() => {
+    logger.info('[ShapeRenderer] Shapes updated. Count:', shapes.length);
+    if (shapes.length > 0) {
+      logger.info('[ShapeRenderer] Latest shape:', {
+        id: shapes[shapes.length - 1].id,
+        type: shapes[shapes.length - 1].type,
+        points: shapes[shapes.length - 1].points.length,
+        layerId: shapes[shapes.length - 1].layerId
+      });
+    }
+  }, [shapes]);
+
   // Resize mode actions
   const enterResizeMode = useAppStore(state => state.enterResizeMode);
   const exitResizeMode = useAppStore(state => state.exitResizeMode);
@@ -518,7 +531,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       const transform = shapeTransforms.find(t => t.id === shape.id);
       const pointsForGeometry = transform ? transform.points : shape.points;
 
-      logger.log(`🌍 Processing ${shape.type} ${shape.id}:`, {
+      logger.info(`🌍 Processing ${shape.type} ${shape.id}:`, {
         originalPoints: shape.points?.length || 0,
         transformedPoints: pointsForGeometry?.length || 0,
         hasTransform: !!transform
@@ -585,7 +598,10 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
             points: pointsForGeometry,
             modified: shape.modified  // Preserve original timestamp for cache logic
           }, elevation);
-          logger.log(`🗜️ Cached geometry used for ${shape.id}`);
+          logger.info(`🗜️ Cached geometry used for ${shape.id}:`, {
+            hasGeometry: !!geometry,
+            vertices: geometry?.attributes?.position?.count || 0
+          });
         }
       }
       
@@ -594,11 +610,20 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         logger.warn(`⚠️ Invalid geometry detected for ${shape.id}, creating fallback`);
         geometry = createFallbackGeometry(shape, elevation);
       }
-      
+
+      const isValid = !!geometry && geometry.attributes.position && geometry.attributes.position.count > 0;
+
+      logger.info(`🌍 Geometry result for ${shape.id}:`, {
+        type: shape.type,
+        hasGeometry: !!geometry,
+        vertices: geometry?.attributes?.position?.count || 0,
+        valid: isValid
+      });
+
       return {
         id: shape.id,
         geometry,
-        valid: !!geometry && geometry.attributes.position && geometry.attributes.position.count > 0
+        valid: isValid
       };
     });
   }, [

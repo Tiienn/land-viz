@@ -54,15 +54,17 @@ export interface ConversionResult {
  */
 export interface ConversionState {
   /** Whether the convert panel is expanded */
-  convertPanelExpanded: boolean;
+  isExpanded: boolean;
   /** Current input value as string */
-  currentInputValue: string;
+  inputValue: string;
   /** Current input unit */
-  currentInputUnit: AreaUnit;
-  /** Last valid numeric value */
-  lastValidValue: number | null;
+  inputUnit: AreaUnit;
   /** Error message for current input */
   inputError: string | null;
+  /** Conversion results as a Map */
+  results: Map<AreaUnit, string>;
+  /** Last copied unit (for UI feedback) */
+  lastCopied: AreaUnit | null;
 }
 
 /**

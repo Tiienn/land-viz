@@ -23,7 +23,8 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Step 1: Create two shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Rectangle 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
         layerId: 'main',
@@ -31,7 +32,8 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Rectangle 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }, { x: 20, y: 30 }],
         layerId: 'main',
@@ -40,6 +42,10 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       });
 
       expect(store.shapes).toHaveLength(2);
+
+      // Get shape IDs from store
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       // Step 2: Select both shapes
       store.selectMultipleShapes([shape1, shape2]);
@@ -69,26 +75,37 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape3 = store.addShape({
+      store.addShape({
+        name: 'Shape 3',
         type: 'rectangle',
         points: [{ x: 40, y: 40 }, { x: 50, y: 50 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      // Get shape IDs from store
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
+      const shape3 = store.shapes[2].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -114,12 +131,16 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create single shape
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Single Shape',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
 
       store.selectShape(shape1);
       store.groupShapes();
@@ -136,19 +157,26 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -181,7 +209,8 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create shapes with different properties
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Rectangle Shape',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'layer1',
@@ -189,7 +218,8 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Circle Shape',
         type: 'circle',
         points: [{ x: 20, y: 20 }, { x: 25, y: 25 }],
         layerId: 'layer2',
@@ -197,6 +227,9 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
         rotation: { angle: 45, center: { x: 22.5, y: 22.5 } },
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       // Group and ungroup
       store.selectMultipleShapes([shape1, shape2]);
@@ -224,19 +257,26 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }, { x: 20, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -248,7 +288,7 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       // Drag shape1
       store.startDragging(shape1, { x: 5, y: 5 });
       store.updateDragPosition({ x: 15, y: 15 });
-      store.endDragging();
+      store.finishDragging();
 
       // Verify both shapes moved by same offset
       const updatedStore = useAppStore.getState();
@@ -271,21 +311,28 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Unlocked Shape',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
         locked: false,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Locked Shape',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
         locked: true, // LOCKED
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -295,7 +342,7 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       // Drag shape1
       store.startDragging(shape1, { x: 5, y: 5 });
       store.updateDragPosition({ x: 15, y: 15 });
-      store.endDragging();
+      store.finishDragging();
 
       // Shape1 should move, shape2 should NOT (locked)
       const updatedStore = useAppStore.getState();
@@ -316,26 +363,33 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }, { x: 20, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
 
       // Rotate the group by 45 degrees
       const rotationCenter = { x: 15, y: 15 };
-      store.rotateShapes(store.selectedShapeIds, 45, rotationCenter);
+      store.rotateShape(shape1, 45, rotationCenter);
 
       // Verify both shapes have rotation metadata
       const updatedStore = useAppStore.getState();
@@ -356,19 +410,26 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -390,26 +451,36 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create shapes on different layers
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Layer 1 Shape',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'layer1',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Layer 2 Shape',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'layer2',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape3 = store.addShape({
+      store.addShape({
+        name: 'Layer 3 Shape',
         type: 'rectangle',
         points: [{ x: 40, y: 40 }, { x: 50, y: 50 }],
         layerId: 'layer3',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
+      const shape3 = store.shapes[2].id;
 
       // Group shapes from different layers
       store.selectMultipleShapes([shape1, shape2, shape3]);
@@ -438,19 +509,26 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -484,25 +562,31 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      store.selectMultipleShapes([shape1, shape2]);
+      const shape1 = store.shapes[0].id;
+
+      store.selectMultipleShapes([shape1, store.shapes[1].id]);
       store.groupShapes();
 
       // Rotate group
-      store.rotateShapes(store.selectedShapeIds, 45, { x: 15, y: 15 });
+      store.rotateShape(shape1, 45, { x: 15, y: 15 });
 
       // Verify rotated
       let updatedStore = useAppStore.getState();
@@ -533,9 +617,9 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const startTime = performance.now();
 
       // Create 150 shapes
-      const shapeIds: string[] = [];
       for (let i = 0; i < 150; i++) {
-        const id = store.addShape({
+        store.addShape({
+          name: `Shape ${i}`,
           type: 'rectangle',
           points: [
             { x: i, y: i },
@@ -544,10 +628,13 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
             { x: i, y: i + 1 },
           ],
           layerId: 'main',
+          color: '#3B82F6',
           visible: true,
         });
-        shapeIds.push(id);
       }
+
+      // Get all shape IDs from store
+      const shapeIds = store.shapes.map(s => s.id);
 
       // Group all shapes
       store.selectMultipleShapes(shapeIds);
@@ -571,7 +658,7 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const dragStart = performance.now();
       store.startDragging(shapeIds[0], { x: 0, y: 0 });
       store.updateDragPosition({ x: 10, y: 10 });
-      store.endDragging();
+      store.finishDragging();
       const dragDuration = performance.now() - dragStart;
 
       // Drag should also be fast (< 500ms for 150 shapes)
@@ -582,19 +669,26 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
 
@@ -625,7 +719,8 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
@@ -633,13 +728,17 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
         color: '#00FF00',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
@@ -663,26 +762,35 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [{ x: 20, y: 20 }, { x: 30, y: 30 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape3 = store.addShape({
+      store.addShape({
+        name: 'Shape 3',
         type: 'rectangle',
         points: [{ x: 40, y: 40 }, { x: 50, y: 50 }],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       // Group shape1 and shape2
       store.selectMultipleShapes([shape1, shape2]);
@@ -706,7 +814,8 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
       const store = useAppStore.getState();
 
       // Create and group shapes
-      const shape1 = store.addShape({
+      store.addShape({
+        name: 'Shape 1',
         type: 'rectangle',
         points: [
           { x: 0, y: 0 },
@@ -715,10 +824,12 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
           { x: 0, y: 10 },
         ],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
 
-      const shape2 = store.addShape({
+      store.addShape({
+        name: 'Shape 2',
         type: 'rectangle',
         points: [
           { x: 20, y: 20 },
@@ -727,8 +838,12 @@ describe('Integration: Canva-Style Grouping Workflows', () => {
           { x: 20, y: 30 },
         ],
         layerId: 'main',
+        color: '#3B82F6',
         visible: true,
       });
+
+      const shape1 = store.shapes[0].id;
+      const shape2 = store.shapes[1].id;
 
       store.selectMultipleShapes([shape1, shape2]);
       store.groupShapes();
