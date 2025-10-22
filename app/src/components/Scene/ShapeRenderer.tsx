@@ -185,18 +185,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   const finishDragging = useAppStore(state => state.finishDragging);
   const cancelDragging = useAppStore(state => state.cancelDragging);
   
-  // Debug: Log shapes changes
-  useEffect(() => {
-    logger.info('[ShapeRenderer] Shapes updated. Count:', shapes.length);
-    if (shapes.length > 0) {
-      logger.info('[ShapeRenderer] Latest shape:', {
-        id: shapes[shapes.length - 1].id,
-        type: shapes[shapes.length - 1].type,
-        points: shapes[shapes.length - 1].points.length,
-        layerId: shapes[shapes.length - 1].layerId
-      });
-    }
-  }, [shapes]);
+  // Shapes monitoring removed for production
 
   // Resize mode actions
   const enterResizeMode = useAppStore(state => state.enterResizeMode);
@@ -334,19 +323,45 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       } else if (!isBeingResized && drawing.liveResizePoints) {
         logger.log(`🎨 ⚠️ Live points exist but ${shape.id} is NOT being resized. Current resizingShapeId:`, drawing.resizingShapeId);
       }
-      
+
+      // CRITICAL FIX: Convert 2-point rectangles to 4-point BEFORE applying rotation
+      // This ensures the rotation transform is applied to the complete rectangle, not just 2 corners
+      if (shape.type === 'rectangle' && transformedPoints.length === 2) {
+        const [topLeft, bottomRight] = transformedPoints;
+        transformedPoints = [
+          { x: topLeft.x, y: topLeft.y },           // Top left (0)
+          { x: bottomRight.x, y: topLeft.y },       // Top right (1)
+          { x: bottomRight.x, y: bottomRight.y },   // Bottom right (2)
+          { x: topLeft.x, y: bottomRight.y }        // Bottom left (3)
+        ];
+      }
+
+      // CRITICAL FIX: During live resize, recalculate rotation center based on new dimensions
+      let effectiveRotation = shape.rotation;
+      if (isBeingResized && drawing.liveResizePoints && shape.rotation && transformedPoints.length >= 2) {
+        // Recalculate center from the resized points (in LOCAL space)
+        if (shape.type === 'rectangle' && transformedPoints.length === 4) {
+          const centerX = transformedPoints.reduce((sum, p) => sum + p.x, 0) / transformedPoints.length;
+          const centerY = transformedPoints.reduce((sum, p) => sum + p.y, 0) / transformedPoints.length;
+          effectiveRotation = {
+            angle: shape.rotation.angle,
+            center: { x: centerX, y: centerY }
+          };
+        }
+      }
+
       // Handle dragging transform
       if (isDragging && dragState.startPosition && dragState.currentPosition) {
         const offsetX = dragState.currentPosition.x - dragState.startPosition.x;
         const offsetY = dragState.currentPosition.y - dragState.startPosition.y;
-        
-        const rotatedPoints = applyRotationTransform(transformedPoints, shape.rotation);
+
+        const rotatedPoints = applyRotationTransform(transformedPoints, effectiveRotation);
         transformedPoints = rotatedPoints.map(point => ({
           x: point.x + offsetX,
           y: point.y + offsetY
         }));
       } else {
-        transformedPoints = applyRotationTransform(transformedPoints, shape.rotation);
+        transformedPoints = applyRotationTransform(transformedPoints, effectiveRotation);
       }
       
       logger.log(`🎨 Final points for ${shape.id}:`, {
@@ -531,12 +546,6 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       const transform = shapeTransforms.find(t => t.id === shape.id);
       const pointsForGeometry = transform ? transform.points : shape.points;
 
-      logger.info(`🌍 Processing ${shape.type} ${shape.id}:`, {
-        originalPoints: shape.points?.length || 0,
-        transformedPoints: pointsForGeometry?.length || 0,
-        hasTransform: !!transform
-      });
-
       // Check if shape is being resized
       const isBeingResized = drawing.isResizeMode && drawing.resizingShapeId === shape.id;
       const hasLiveResizePoints = drawing.liveResizePoints && drawing.liveResizePoints.length >= 2;
@@ -561,13 +570,10 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
           logger.log('🔥 LIVE MODE:', hasLiveResizePoints ? 'RESIZE' : 'EDIT', '- Creating geometry for', shape.id);
 
           try {
-            // CRITICAL: Use specialized method for live resize to prevent diagonal line artifacts
-            if (hasLiveResizePoints && shape.type === 'rectangle') {
-              logger.log('🎯 Using specialized live resize geometry for', shape.id, 'with', drawing.liveResizePoints.length, 'live points');
-              geometry = GeometryCache.getLiveResizeGeometry(shape, drawing.liveResizePoints, elevation);
-            } else if (shape.type === 'rectangle') {
-              // Standard fresh geometry for non-live operations
-              console.log('🏗️ Creating FRESH rectangle geometry for', shape.id, 'with points:', JSON.stringify(pointsForGeometry));
+            // CRITICAL FIX: Always use pointsForGeometry which already has rotation applied
+            // Do NOT use drawing.liveResizePoints directly as those are in LOCAL space
+            if (shape.type === 'rectangle') {
+              logger.log('🎯 Creating fresh geometry for', shape.id, 'with', pointsForGeometry.length, 'transformed points');
               geometry = createFreshRectangleGeometry(pointsForGeometry, elevation);
             } else {
               // For other shapes, use cache but force fresh creation
@@ -598,13 +604,9 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
             points: pointsForGeometry,
             modified: shape.modified  // Preserve original timestamp for cache logic
           }, elevation);
-          logger.info(`🗜️ Cached geometry used for ${shape.id}:`, {
-            hasGeometry: !!geometry,
-            vertices: geometry?.attributes?.position?.count || 0
-          });
         }
       }
-      
+
       // VALIDATION: Ensure geometry is valid before returning
       if (geometry && (!geometry.attributes.position || geometry.attributes.position.count === 0)) {
         logger.warn(`⚠️ Invalid geometry detected for ${shape.id}, creating fallback`);
@@ -612,13 +614,6 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       }
 
       const isValid = !!geometry && geometry.attributes.position && geometry.attributes.position.count > 0;
-
-      logger.info(`🌍 Geometry result for ${shape.id}:`, {
-        type: shape.type,
-        hasGeometry: !!geometry,
-        vertices: geometry?.attributes?.position?.count || 0,
-        valid: isValid
-      });
 
       return {
         id: shape.id,
@@ -778,10 +773,23 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
           // Clear highlighted shape since this is not a group selection
           setHighlightedShapeId(null);
 
-          // Single selection mode
-          if (selectedShapeId === shapeId) {
+          // ISSUE 1 FIX: Check if clicking on an already-selected shape in multi-selection
+          const currentSelectedIds = selectedShapeIds || [];
+          const isAlreadySelected = currentSelectedIds.includes(shapeId);
+          const isMultiSelection = currentSelectedIds.length > 1;
+
+          if (isAlreadySelected && isMultiSelection) {
+            // Preserve multi-selection, just change the primary shape
+            useAppStore.setState({
+              selectedShapeId: shapeId, // Make this the primary selection
+              // Keep selectedShapeIds unchanged to preserve multi-selection
+            });
+          } else if (selectedShapeId === shapeId) {
             // Shape already selected - enter resize mode for quick interaction
-            if (!drawing.isEditMode && !drawing.isResizeMode) {
+            // CRITICAL: Only enter resize mode for single-shape selection
+            const currentSelectedIds = useAppStore.getState().selectedShapeIds;
+            const isSingleSelection = !currentSelectedIds || currentSelectedIds.length <= 1;
+            if (!drawing.isEditMode && !drawing.isResizeMode && isSingleSelection) {
               enterResizeMode(shapeId);
             }
           } else {
@@ -790,11 +798,14 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
           // Enter resize mode after selection for immediate productivity - force resize mode for all shapes
           setTimeout(() => {
             const currentDrawing = useAppStore.getState().drawing;
-            // CRITICAL: Only enter resize mode if not transitioning to rotation mode
+            const currentSelectedIds = useAppStore.getState().selectedShapeIds;
+            const isSingleSelection = !currentSelectedIds || currentSelectedIds.length <= 1;
+            // CRITICAL: Only enter resize mode if not transitioning to rotation mode AND single-shape selection
             if (!currentDrawing.isEditMode &&
                 !currentDrawing.isRotateMode &&
                 !currentDrawing.isResizeMode &&
-                currentDrawing.activeTool === 'select') {
+                currentDrawing.activeTool === 'select' &&
+                isSingleSelection) {
               enterResizeMode(shapeId);
             }
           }, 50); // Longer timeout to ensure state updates properly
@@ -812,10 +823,14 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
 
     event.stopPropagation();
     if (activeTool === 'select') {
-      // Double click enters resize mode
+      // Double click enters resize mode (only for single-shape selection)
       selectShape(shapeId);
       setTimeout(() => {
-        enterResizeMode(shapeId);
+        const currentSelectedIds = useAppStore.getState().selectedShapeIds;
+        const isSingleSelection = !currentSelectedIds || currentSelectedIds.length <= 1;
+        if (isSingleSelection) {
+          enterResizeMode(shapeId);
+        }
       }, 0);
     }
   }, [activeTool, selectShape, enterResizeMode]);
@@ -877,7 +892,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       return; // Allow right-click and middle-click to pass through for camera controls
     }
 
-    if (activeTool !== 'select' || selectedShapeId !== shapeId) {
+    // ISSUE 2 FIX: Allow dragging if shape is the primary selection OR part of multi-selection
+    const selectedIds = useAppStore.getState().selectedShapeIds || [];
+    const isSelectedShape = selectedShapeId === shapeId || selectedIds.includes(shapeId);
+
+    if (activeTool !== 'select' || !isSelectedShape) {
       return; // Only allow dragging selected shapes in select mode
     }
 
@@ -949,24 +968,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         return null;
       }
 
-      // Get transformed points and ensure rectangles/circles are in proper format for outline rendering
+      // Get transformed points - already converted to 4-point format in transform calculation
       let transformedPoints = transform.points;
-
-      // CRITICAL FIX: Convert 2-point rectangles to 4-point format for proper outline rendering
-      if (shape.type === 'rectangle' && transformedPoints.length === 2) {
-        const [topLeft, bottomRight] = transformedPoints;
-        transformedPoints = [
-          { x: topLeft.x, y: topLeft.y },      // Top left
-          { x: bottomRight.x, y: topLeft.y },  // Top right
-          { x: bottomRight.x, y: bottomRight.y }, // Bottom right
-          { x: topLeft.x, y: bottomRight.y }   // Bottom left
-        ];
-        logger.log(`🔧 Converted 2-point rectangle to 4-point for outline rendering:`, {
-          shapeId: shape.id,
-          original: transform.points,
-          converted: transformedPoints
-        });
-      }
 
       // CRITICAL FIX: Convert 2-point circles to perimeter points for proper outline rendering
       if (shape.type === 'circle' && transformedPoints.length === 2) {
@@ -1014,7 +1017,10 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         }
       }
 
-      const isSelected = shape.id === selectedShapeId;
+      // MULTI-SELECTION FIX: Check if shape is primary OR in multi-selection array
+      const isPrimarySelected = shape.id === selectedShapeId;
+      const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected;
+      const isSelected = isPrimarySelected || isMultiSelected;
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
       const shapeElevation = layerElevations.get(shape.layerId) || elevation;
 

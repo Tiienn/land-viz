@@ -99,7 +99,6 @@ export class FeatureErrorBoundary extends Component<Props, State> {
         alert('Error details copied to clipboard. Please paste this when reporting the bug.');
       })
       .catch(() => {
-        console.log('Bug report data:', bugReportData);
         alert('Please check the console for error details to include in your bug report.');
       });
   };

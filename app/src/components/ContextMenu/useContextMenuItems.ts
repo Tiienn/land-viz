@@ -1,22 +1,35 @@
 import { useMemo } from 'react';
 import { useAppStore } from '@/store/useAppStore';
+import { useTextStore } from '@/store/useTextStore';
 import type { MenuItem } from '@/types/contextMenu';
 import type { ContextMenuType } from '@/types/contextMenu';
 
 export const useContextMenuItems = (
   type: ContextMenuType | null,
-  targetShapeId?: string | null
+  targetShapeId?: string | null,
+  targetTextId?: string | null
 ): MenuItem[] => {
   const {
     shapes,
+    elements,
     selectedShapeIds,
     setActiveTool,
     deleteShape,
     duplicateShape,
     toggleViewMode,
     closeContextMenu,
-    flipSelectedShapes
+    flipSelectedShapes,
+    groupShapes,
+    ungroupShapes
   } = useAppStore();
+
+  // Phase 7: Text store actions
+  const {
+    texts,
+    updateText,
+    deleteText,
+    selectText
+  } = useTextStore();
 
   return useMemo(() => {
     if (!type) return [];
@@ -32,7 +45,6 @@ export const useContextMenuItems = (
           disabledReason: 'No shape to paste',
           action: () => {
             // TODO: Implement paste functionality
-            console.log('Paste action');
           },
         },
         { type: 'divider' },
@@ -103,9 +115,12 @@ export const useContextMenuItems = (
     }
 
     if (type === 'shape') {
-      const targetShape = shapes.find((s) => s.id === targetShapeId);
+      // CRITICAL FIX: Check BOTH shapes and elements arrays during migration
+      // Safe fallback: elements might be undefined if migration hasn't run yet
+      const targetShape = shapes.find((s) => s.id === targetShapeId) ||
+                          (elements || []).find((el) => el.id === targetShapeId && el.elementType === 'shape');
 
-      return [
+      const menuItems: MenuItem[] = [
         {
           id: 'duplicate',
           label: 'Duplicate',
@@ -118,7 +133,26 @@ export const useContextMenuItems = (
             }
           },
         },
-        { type: 'divider' },
+      ];
+
+      // Add Ungroup option if this shape is part of a group
+      if (targetShape?.groupId) {
+        menuItems.push({
+          id: 'ungroup',
+          label: 'Ungroup',
+          icon: 'ungroup',
+          shortcut: 'Ctrl+Shift+G',
+          action: () => {
+            ungroupShapes();
+            closeContextMenu();
+          },
+        });
+      }
+
+      menuItems.push({ type: 'divider' });
+
+      return [
+        ...menuItems,
         {
           id: 'flip-horizontal',
           label: 'Flip Horizontally',
@@ -188,8 +222,17 @@ export const useContextMenuItems = (
 
     if (type === 'multi-selection') {
       const alignShapes = (direction: 'left' | 'right' | 'top' | 'bottom' | 'center-h' | 'center-v') => {
-        const { shapes, updateShape } = useAppStore.getState();
-        const selectedShapes = shapes.filter(s => selectedShapeIds.includes(s.id));
+        const { shapes, elements, updateShape } = useAppStore.getState();
+        // CRITICAL FIX: Check BOTH shapes and elements arrays during migration
+        // Safe fallback: elements might be undefined if migration hasn't run yet
+        const allShapes = [
+          ...shapes,
+          ...(elements || []).filter(el => el.elementType === 'shape').map(el => ({
+            id: el.id,
+            points: el.points
+          }))
+        ];
+        const selectedShapes = allShapes.filter(s => selectedShapeIds.includes(s.id));
 
         if (selectedShapes.length < 2) return;
 
@@ -262,8 +305,17 @@ export const useContextMenuItems = (
       };
 
       const distributeShapes = (direction: 'horizontal' | 'vertical') => {
-        const { shapes, updateShape } = useAppStore.getState();
-        const selectedShapes = shapes.filter(s => selectedShapeIds.includes(s.id));
+        const { shapes, elements, updateShape } = useAppStore.getState();
+        // CRITICAL FIX: Check BOTH shapes and elements arrays during migration
+        // Safe fallback: elements might be undefined if migration hasn't run yet
+        const allShapes = [
+          ...shapes,
+          ...(elements || []).filter(el => el.elementType === 'shape').map(el => ({
+            id: el.id,
+            points: el.points
+          }))
+        ];
+        const selectedShapes = allShapes.filter(s => selectedShapeIds.includes(s.id));
 
         if (selectedShapes.length < 3) return; // Need at least 3 shapes to distribute
 
@@ -318,22 +370,43 @@ export const useContextMenuItems = (
         });
       };
 
-      return [
+      // Check if any selected shapes are grouped
+      const selectedShapes = shapes.filter(s => selectedShapeIds?.includes(s.id));
+      const hasGroupedShapes = selectedShapes.some(s => s.groupId);
+
+      const menuItems: MenuItem[] = [
         {
           id: 'group',
           label: 'Group',
           icon: 'group',
           shortcut: 'Ctrl+G',
-          disabled: selectedShapeIds.length < 2,
-          disabledReason: 'Select multiple shapes',
+          disabled: false, // Always enabled for multi-selection context menu
           action: () => {
-            // Group functionality - could be implemented later
-            // For now, just show a message
-            console.log('Group functionality coming soon');
+            groupShapes();
             closeContextMenu();
           },
         },
-        { type: 'divider' },
+      ];
+
+      // Only show Ungroup if at least one selected shape is grouped
+      if (hasGroupedShapes) {
+        menuItems.push({
+          id: 'ungroup',
+          label: 'Ungroup',
+          icon: 'ungroup',
+          shortcut: 'Ctrl+Shift+G',
+          disabled: false,
+          action: () => {
+            ungroupShapes();
+            closeContextMenu();
+          },
+        });
+      }
+
+      menuItems.push({ type: 'divider' });
+
+      return [
+        ...menuItems,
         {
           id: 'flip-horizontal',
           label: 'Flip Horizontally',
@@ -444,6 +517,107 @@ export const useContextMenuItems = (
       ];
     }
 
+    // Phase 7: Text context menu
+    if (type === 'text') {
+      const targetText = texts.find((t) => t.id === targetTextId);
+
+      return [
+        {
+          id: 'edit-text',
+          label: 'Edit Text Content',
+          icon: 'edit',
+          shortcut: 'Enter',
+          action: () => {
+            if (targetTextId && targetText) {
+              // Dispatch event to open text edit modal
+              window.dispatchEvent(new CustomEvent('editTextObject', {
+                detail: { textId: targetTextId }
+              }));
+              closeContextMenu();
+            }
+          },
+        },
+        {
+          id: 'duplicate-text',
+          label: 'Duplicate',
+          icon: 'copy',
+          shortcut: 'Ctrl+D',
+          action: () => {
+            if (targetText) {
+              // Create duplicate text with offset
+              const newText = {
+                ...targetText,
+                id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                position: {
+                  x: targetText.position.x + 20,
+                  y: targetText.position.y + 20,
+                  z: targetText.position.z
+                },
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+              };
+
+              const { addText } = useTextStore.getState();
+              addText(newText);
+              closeContextMenu();
+            }
+          },
+        },
+        { type: 'divider' },
+        {
+          id: 'lock-text',
+          label: targetText?.locked ? 'Unlock Text' : 'Lock Text',
+          icon: 'lock',
+          action: () => {
+            if (targetTextId && targetText) {
+              updateText(targetTextId, { locked: !targetText.locked });
+              closeContextMenu();
+            }
+          },
+        },
+        {
+          id: 'toggle-visibility',
+          label: targetText?.visible ? 'Hide Text' : 'Show Text',
+          icon: 'eye',
+          action: () => {
+            if (targetTextId && targetText) {
+              updateText(targetTextId, { visible: !targetText.visible });
+              closeContextMenu();
+            }
+          },
+        },
+        { type: 'divider' },
+        {
+          id: 'text-properties',
+          label: 'Text Properties',
+          icon: 'settings',
+          action: () => {
+            // Select text to show properties panel
+            if (targetTextId) {
+              selectText(targetTextId);
+              closeContextMenu();
+            }
+          },
+        },
+        { type: 'divider' },
+        {
+          id: 'delete-text',
+          label: 'Delete',
+          icon: 'trash',
+          shortcut: 'Del',
+          destructive: true,
+          disabled: targetText?.locked,
+          disabledReason: 'Text is locked',
+          action: () => {
+            if (targetTextId && !targetText?.locked) {
+              deleteText(targetTextId);
+              closeContextMenu();
+            }
+          },
+        },
+      ];
+    }
+
     return [];
-  }, [type, targetShapeId, shapes, selectedShapeIds, setActiveTool, deleteShape, duplicateShape, toggleViewMode, closeContextMenu, flipSelectedShapes]);
+  }, [type, targetShapeId, targetTextId, shapes, elements, selectedShapeIds, texts, setActiveTool, deleteShape, duplicateShape, toggleViewMode, closeContextMenu, flipSelectedShapes, updateText, deleteText, selectText]);
 };

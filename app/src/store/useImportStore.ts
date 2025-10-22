@@ -35,6 +35,7 @@ import type {
   ReconstructedShape,
   SavedTemplate,
 } from '../types/imageImport';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Types
@@ -243,7 +244,7 @@ export const useImportStore = create<ImportState & ImportActions>((set, get) => 
         JSON.stringify([...templates, template])
       );
     } catch (error) {
-      console.error('[ImportStore] Failed to save template to localStorage:', error);
+      logger.error('[ImportStore]', 'Failed to save template to localStorage:', error);
     }
   },
 
@@ -256,7 +257,7 @@ export const useImportStore = create<ImportState & ImportActions>((set, get) => 
     try {
       localStorage.setItem('land-viz-import-templates', JSON.stringify(filtered));
     } catch (error) {
-      console.error('[ImportStore] Failed to remove template from localStorage:', error);
+      logger.error('[ImportStore]', 'Failed to remove template from localStorage:', error);
     }
   },
 
@@ -265,7 +266,7 @@ export const useImportStore = create<ImportState & ImportActions>((set, get) => 
     const template = templates.find((t) => t.id === templateId);
 
     if (!template) {
-      console.error(`[ImportStore] Template ${templateId} not found`);
+      logger.error('[ImportStore]', `Template ${templateId} not found`);
       return;
     }
 
@@ -315,7 +316,7 @@ if (typeof window !== 'undefined') {
       useImportStore.setState({ templates });
     }
   } catch (error) {
-    console.error('[ImportStore] Failed to load templates from localStorage:', error);
+    logger.error('[ImportStore]', 'Failed to load templates from localStorage:', error);
   }
 }
 

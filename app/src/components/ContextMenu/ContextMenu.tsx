@@ -7,9 +7,9 @@ import { useContextMenuItems } from './useContextMenuItems';
 
 export const ContextMenu: React.FC = () => {
   const { contextMenu, closeContextMenu } = useAppStore();
-  const { isOpen, type, position, targetShapeId } = contextMenu;
+  const { isOpen, type, position, targetShapeId, targetTextId } = contextMenu; // Phase 7: Added targetTextId
 
-  const menuItems = useContextMenuItems(type, targetShapeId);
+  const menuItems = useContextMenuItems(type, targetShapeId, targetTextId); // Phase 7: Pass targetTextId
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 

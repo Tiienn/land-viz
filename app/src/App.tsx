@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import SceneManager, { type SceneManagerRef } from './components/Scene/SceneManager';
 import LayerPanel from './components/LayerPanel';
+import PropertiesPanel from './components/PropertiesPanel';
 import AppHeader from './components/Layout/AppHeader';
 import SceneErrorBoundary from './components/ErrorBoundary/SceneErrorBoundary';
 import UIErrorBoundary from './components/ErrorBoundary/UIErrorBoundary';
@@ -35,6 +36,12 @@ import PrecisionSettingsPanel from './components/DimensionInput/PrecisionSetting
 import { TemplateGalleryModal, SaveTemplateDialog } from './components/TemplateGallery';
 import { useTemplateStore } from './store/useTemplateStore';
 import { ImageImporterModal } from './components/ImageImport';
+import { TextModal } from './components/Text/TextModal';
+import { InlineTextOverlay } from './components/Text/InlineTextOverlay';
+import { useTextStore } from './store/useTextStore';
+import { generateTextId, createDefaultTextObject } from './utils/textUtils';
+import type { TextObject } from './types/text';
+import { initializeFontLoader } from './utils/fontLoader'; // Phase 11: Font loading
 
 /**
  * Root React component for the Land Visualizer application.
@@ -77,6 +84,13 @@ function App(): React.JSX.Element {
   const [calculatorExpanded, setCalculatorExpanded] = useState(false);
   const [toolsPanelExpanded, setToolsPanelExpanded] = useState(false);
   const [insertAreaModalOpen, setInsertAreaModalOpen] = useState(false);
+  const [textModalOpen, setTextModalOpen] = useState(false);
+  const [textCreatePosition, setTextCreatePosition] = useState<{ x: number; y: number } | null>(null);
+  // Phase 5: Label modal state
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [labelShapeId, setLabelShapeId] = useState<string | null>(null);
+  const [labelPosition, setLabelPosition] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [editingLabel, setEditingLabel] = useState<TextObject | undefined>(undefined);
   const [comparisonExpanded, setComparisonExpanded] = useState(false);
   const [convertExpanded, setConvertExpanded] = useState(false);
   const [tidyUpExpanded, setTidyUpExpanded] = useState(false);
@@ -99,6 +113,7 @@ function App(): React.JSX.Element {
     downloadExport,
     selectedShapeId,
     selectedShapeIds,
+    selectedElementIds, // CRITICAL FIX: Import unified selection array
     enterEditMode,
     exitEditMode,
     addShapeCorner,
@@ -143,6 +158,7 @@ function App(): React.JSX.Element {
     enableMultiSegmentMode,
     removeLastLineSegment,
     shapes,
+    updateShape, // Phase 5: For updating shape labels
     // layers,
     // activeLayerId,
     // updateLayer,
@@ -166,10 +182,18 @@ function App(): React.JSX.Element {
     sendShapeToBack,
     bringShapeForward,
     sendShapeBackward,
+    // runMigration, // Phase 2: Auto-migration (TODO: Implement this function in useAppStore)
   } = useAppStore();
 
   // Line tool state
   const lineToolState = useAppStore(state => state.drawing.lineTool);
+
+  // Text store actions
+  const addText = useTextStore(state => state.addText);
+  const activeLayerId = useAppStore(state => state.activeLayerId);
+  const isInlineEditing = useTextStore(state => state.isInlineEditing);
+  const inlineEditingTextId = useTextStore(state => state.inlineEditingTextId);
+  const inlineEditScreenPosition = useTextStore(state => state.inlineEditScreenPosition);
 
   // Calculate left panel offset for modals (smart positioning to avoid overlap)
   const leftPanelOffset = useMemo(() => {
@@ -187,6 +211,22 @@ function App(): React.JSX.Element {
     }
   }, [drawing.activeTool, activeTool]);
 
+  // Listen for custom event to open Properties panel (from text double-click)
+  useEffect(() => {
+    const handleOpenPropertiesPanel = () => {
+      setPropertiesExpanded(true);
+      setRightPanelExpanded(true);
+    };
+
+    window.addEventListener('openPropertiesPanel', handleOpenPropertiesPanel);
+    return () => window.removeEventListener('openPropertiesPanel', handleOpenPropertiesPanel);
+  }, []);
+
+  // Phase 2: Auto-migration - Run once on app load
+  // TODO: Implement runMigration function in useAppStore before uncommenting
+  // useEffect(() => {
+  //   runMigration();
+  // }, [runMigration]);
 
   // Global keyboard shortcut listener
   useKeyboardShortcutListener();
@@ -258,6 +298,16 @@ function App(): React.JSX.Element {
       },
     },
     {
+      id: 'tool-text',
+      key: 't',
+      description: 'Text tool',
+      category: 'tools',
+      action: () => {
+        setActiveTool('text');
+        setStoreActiveTool('text');
+      },
+    },
+    {
       id: 'tool-edit',
       key: 'e',
       description: 'Toggle edit mode',
@@ -313,10 +363,12 @@ function App(): React.JSX.Element {
       description: 'Duplicate selected shape',
       category: 'editing',
       action: () => {
-        // Check selectedShapeIds first (for groups), fallback to selectedShapeId
-        const targetId = selectedShapeIds && selectedShapeIds.length > 0
-          ? selectedShapeIds[0]
-          : selectedShapeId;
+        // CRITICAL FIX: Check BOTH selectedElementIds (unified) and selectedShapeIds (legacy)
+        const targetId = selectedElementIds && selectedElementIds.length > 0
+          ? selectedElementIds[0]
+          : (selectedShapeIds && selectedShapeIds.length > 0
+            ? selectedShapeIds[0]
+            : selectedShapeId);
 
         if (targetId) {
           duplicateShape(targetId);
@@ -997,6 +1049,11 @@ function App(): React.JSX.Element {
     }
   }, [exportDropdownOpen]);
 
+  // Phase 11: Initialize font loader
+  React.useEffect(() => {
+    initializeFontLoader();
+  }, []);
+
   // Remove scroll bars and ensure proper viewport handling
   React.useEffect(() => {
     // Remove scroll bars from body and html
@@ -1044,6 +1101,67 @@ function App(): React.JSX.Element {
       window.removeEventListener('resetCamera', handleResetCamera);
     };
   }, []);
+
+  // ============================================================
+  // CANVA-STYLE INLINE TEXT EDITING
+  // ============================================================
+  // Modal-based text creation has been replaced with inline editing.
+  // When clicking with the text tool, DrawingCanvas now:
+  // 1. Creates a text object immediately
+  // 2. Opens InlineTextEditor component (renders in 3D space)
+  // 3. Shows live formatting controls in PropertiesPanel
+  // 4. User types directly at the click position (no modal interruption)
+  //
+  // The modal system below is ONLY for label editing (shape labels via double-click)
+  // ============================================================
+
+  // Phase 5: Open label modal event listener
+  React.useEffect(() => {
+    const handleOpenLabelModal = (event: any) => {
+      const { shapeId, position, existingLabel } = event.detail;
+      setLabelShapeId(shapeId);
+      setLabelPosition(position);
+      setEditingLabel(existingLabel);
+      setLabelModalOpen(true);
+    };
+
+    window.addEventListener('openLabelModal', handleOpenLabelModal);
+
+    return () => {
+      window.removeEventListener('openLabelModal', handleOpenLabelModal);
+    };
+  }, []);
+
+  // Phase 5: Handle label modal save
+  const handleLabelModalSave = (textData: Partial<TextObject>) => {
+    if (!labelShapeId || !labelPosition) return;
+
+    const shape = shapes.find(s => s.id === labelShapeId);
+    if (!shape) return;
+
+    // Create or update label
+    const label: TextObject = {
+      ...createDefaultTextObject(
+        labelPosition,
+        shape.layerId,
+        'label'
+      ),
+      id: editingLabel?.id || generateTextId(),
+      content: textData.content!,
+      attachedToShapeId: labelShapeId,
+      offset: { x: 0, y: 0 },
+      ...textData
+    };
+
+    // Update shape with label using updateShape from store
+    updateShape(labelShapeId, { label });
+
+    // Close modal and reset state
+    setLabelModalOpen(false);
+    setLabelShapeId(null);
+    setLabelPosition(null);
+    setEditingLabel(undefined);
+  };
 
   return (
     <div style={{ 
@@ -1415,6 +1533,53 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Measure</span>
                 </button>
+                <button
+                  onClick={() => {
+                    setActiveTool('text');
+                    setStoreActiveTool('text');
+                  }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    minWidth: '65px',
+                    height: '60px',
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                    background: activeTool === 'text'
+                      ? '#dbeafe'
+                      : '#ffffff',
+                    color: activeTool === 'text' ? '#1d4ed8' : '#000000',
+                    transition: 'all 0.2s ease',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    boxShadow: activeTool === 'text'
+                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)'
+                      : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTool !== 'text') {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTool !== 'text') {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                  title="Add text annotations (T)"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 7V4h16v3"></path>
+                    <path d="M9 20h6"></path>
+                    <path d="M12 4v16"></path>
+                  </svg>
+                  <span style={{ marginTop: '4px' }}>Text</span>
+                </button>
               </div>
             </div>
 
@@ -1591,16 +1756,26 @@ function App(): React.JSX.Element {
                     if (drawing.cursorRotationMode) {
                       // Exit cursor rotation mode
                       exitCursorRotationMode();
-                    } else if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
-                      // Exit resize mode if active
-                      if (drawing.isResizeMode) {
-                        exitResizeMode();
+                    } else {
+                      // MULTI-SELECTION FIX: Support rotation for multi-selection
+                      const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0);
+                      if (hasSelection && activeTool === 'select' && !drawing.isEditMode) {
+                        // Exit resize mode if active
+                        if (drawing.isResizeMode) {
+                          exitResizeMode();
+                        }
+                        // Enter cursor rotation mode with primary shape or first selected shape
+                        const targetShapeId = selectedShapeId || (selectedShapeIds && selectedShapeIds[0]) || '';
+                        enterCursorRotationMode(targetShapeId);
                       }
-                      // Enter cursor rotation mode
-                      enterCursorRotationMode(selectedShapeId);
                     }
                   }}
-                  disabled={!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing}
+                  disabled={
+                    (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                    activeTool !== 'select' ||
+                    drawing.isEditMode ||
+                    drawing.isDrawing
+                  }
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -1610,23 +1785,39 @@ function App(): React.JSX.Element {
                     minWidth: '65px',
                     height: '60px',
                     border: '1px solid #e5e7eb',
-                    cursor: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
+                    cursor: (
+                      (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                      activeTool !== 'select' ||
+                      drawing.isEditMode ||
+                      drawing.isDrawing
+                    )
                       ? 'not-allowed'
                       : 'pointer',
                     background: drawing.cursorRotationMode ? '#a5b4fc' : '#ffffff',
                     color: drawing.cursorRotationMode ? '#312e81' :
-                           (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
+                           (
+                             (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                             activeTool !== 'select' ||
+                             drawing.isEditMode ||
+                             drawing.isDrawing
+                           )
                              ? '#9ca3af'
                              : '#000000',
                     transition: 'all 0.2s ease',
                     fontSize: '11px',
                     fontWeight: '500',
-                    opacity: (!selectedShapeId || activeTool !== 'select' || drawing.isEditMode || drawing.isDrawing)
+                    opacity: (
+                      (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                      activeTool !== 'select' ||
+                      drawing.isEditMode ||
+                      drawing.isDrawing
+                    )
                       ? 0.5
                       : 1
                   }}
                   onMouseEnter={(e) => {
-                    if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.cursorRotationMode) {
+                    const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0);
+                    if (hasSelection && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.cursorRotationMode) {
                       e.currentTarget.style.background = '#f3f4f6';
                       e.currentTarget.style.borderColor = '#d1d5db';
                     }
@@ -3567,7 +3758,8 @@ function App(): React.JSX.Element {
 
         </div>
 
-        {/* Properties Panel - Overlay from right */}
+
+        {/* Properties Panel - Inline */}
         {propertiesExpanded && (
           <div style={{
             position: 'absolute',
@@ -3576,649 +3768,20 @@ function App(): React.JSX.Element {
             bottom: 0,
             width: '400px',
             background: 'white',
-            borderLeft: '1px solid #e5e5e5',
+            borderLeft: '1px solid #e2e8f0',
             boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
             overflowY: 'auto',
-            zIndex: 20,
-            display: 'flex',
-            flexDirection: 'column'
+            zIndex: 20
           }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '16px 20px',
-              borderBottom: '1px solid #e5e7eb',
-              backgroundColor: '#fafafa'
-            }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '16px',
-                fontWeight: 700,
-                color: '#1f2937'
-              }}>
-                Properties
-              </h3>
-              <button
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#6b7280',
-                  padding: '4px 8px',
-                  borderRadius: '6px'
-                }}
-                onClick={() => {
+            <UIErrorBoundary componentName="PropertiesPanel" showMinimalError={true}>
+              <PropertiesPanel
+                isOpen={true}
+                onClose={() => {
                   setPropertiesExpanded(false);
                   setRightPanelExpanded(false);
                 }}
-              >
-                ▶
-              </button>
-            </div>
-            {/* Content */}
-            <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
-              {/* Current Tool Section */}
-              <div style={{
-                background: '#f0f9ff',
-                border: '1px solid #0ea5e9',
-                borderRadius: '8px',
-                padding: '16px',
-                marginBottom: '20px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '12px'
-                }}>
-                  <span style={{ fontSize: '24px' }}>
-                    {activeTool === 'rectangle' ? '⬜' :
-                     activeTool === 'circle' ? '⭕' :
-                     activeTool === 'polyline' ? '📐' :
-                     activeTool === 'measure' ? '📏' :
-                     activeTool === 'line' ? '📏' :
-                     '↖'}
-                  </span>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: '#0c4a6e'
-                  }}>
-                    {activeTool === 'rectangle' ? 'Rectangle Tool' :
-                     activeTool === 'circle' ? 'Circle Tool' :
-                     activeTool === 'polyline' ? 'Polyline Tool' :
-                     activeTool === 'measure' ? 'Measure Tool' :
-                     activeTool === 'line' ? 'Line Tool' :
-                     'Select Tool'}
-                  </h3>
-                  {drawing.isDrawing && (
-                    <span style={{
-                      background: '#22c55e',
-                      color: 'white',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      fontSize: '10px',
-                      fontWeight: '600'
-                    }}>
-                      DRAWING
-                    </span>
-                  )}
-                </div>
-
-                {/* Dimension Input - Only show for rectangle and circle tools */}
-                {(activeTool === 'rectangle' || activeTool === 'circle') && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <DimensionInputToolbar />
-                  </div>
-                )}
-
-                <div style={{ marginBottom: '16px' }}>
-                  <h4 style={{
-                    margin: '0 0 8px 0',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#374151'
-                  }}>
-                    How to Use:
-                  </h4>
-                  <ol style={{
-                    margin: 0,
-                    paddingLeft: '16px',
-                    color: '#6b7280',
-                    fontSize: '13px'
-                  }}>
-                    {activeTool === 'rectangle' && (
-                      <>
-                        <li style={{ marginBottom: '4px' }}>
-                          {drawing.isDrawing
-                            ? 'Click to set the opposite corner of your rectangle'
-                            : 'Click on the 3D scene to set the first corner of your rectangle'}
-                        </li>
-                        <li style={{ marginBottom: '4px' }}>
-                          The rectangle will be drawn with straight edges between the two corners
-                        </li>
-                      </>
-                    )}
-                    {activeTool === 'circle' && (
-                      <>
-                        <li style={{ marginBottom: '4px' }}>
-                          {drawing.isDrawing
-                            ? 'Click to set the radius of your circle'
-                            : 'Click on the 3D scene to set the center of your circle'}
-                        </li>
-                        <li style={{ marginBottom: '4px' }}>
-                          Move your mouse to adjust the radius
-                        </li>
-                      </>
-                    )}
-                    {activeTool === 'polyline' && (
-                      <>
-                        <li style={{ marginBottom: '4px' }}>
-                          {drawing.isDrawing
-                            ? 'Click to add more points to your line'
-                            : 'Click on the 3D scene to start drawing your line'}
-                        </li>
-                        <li style={{ marginBottom: '4px' }}>
-                          Continue clicking to add additional points
-                        </li>
-                        <li style={{ marginBottom: '4px' }}>
-                          Click near the start point to close the shape
-                        </li>
-                      </>
-                    )}
-                    {activeTool === 'select' && (
-                      <>
-                        <li style={{ marginBottom: '4px' }}>
-                          Click on shapes to select and edit them
-                        </li>
-                        <li style={{ marginBottom: '4px' }}>
-                          Use the drawing tools above to create new shapes
-                        </li>
-                      </>
-                    )}
-                  </ol>
-                </div>
-              </div>
-
-              {/* Grid Settings */}
-              <div style={{
-                background: '#f9fafb',
-                border: '1px solid #e5e5e5',
-                borderRadius: '8px',
-                padding: '16px',
-                marginBottom: '20px'
-              }}>
-                <h3 style={{
-                  margin: '0 0 12px 0',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#111827'
-                }}>
-                  Grid Settings
-                </h3>
-
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151'
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={drawing.snapToGrid}
-                      onChange={() => {
-                        const newValue = !drawing.snapToGrid;
-                        useAppStore.setState((state) => ({
-                          drawing: {
-                            ...state.drawing,
-                            snapToGrid: newValue
-                          }
-                        }));
-                      }}
-                      style={{
-                        width: '16px',
-                        height: '16px',
-                        cursor: 'pointer'
-                      }}
-                    />
-                    Enable Grid Snap
-                  </label>
-                  <p style={{
-                    margin: '4px 0 0 24px',
-                    fontSize: '12px',
-                    color: '#6b7280'
-                  }}>
-                    Snap cursor to grid points for precise measurements
-                  </p>
-                </div>
-
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '4px'
-                  }}>
-                    Grid Size: {drawing.gridSize}m
-                  </label>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="10"
-                    step="0.5"
-                    value={drawing.gridSize}
-                    onChange={(e) => {
-                      const newValue = parseFloat(e.target.value);
-                      useAppStore.setState((state) => ({
-                        drawing: {
-                          ...state.drawing,
-                          gridSize: newValue
-                        }
-                      }));
-                    }}
-                    style={{
-                      width: '100%',
-                      cursor: 'pointer'
-                    }}
-                  />
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: '11px',
-                    color: '#6b7280',
-                    marginTop: '2px'
-                  }}>
-                    <span>0.5m</span>
-                    <span>10m</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Shape Snapping Controls */}
-              <div style={{
-                background: '#f9fafb',
-                border: '1px solid #e5e5e5',
-                borderRadius: '8px',
-                padding: '16px',
-                marginBottom: '20px'
-              }}>
-                <div style={{
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#111827',
-                  marginBottom: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <span>Shape Snapping</span>
-                  <div
-                    title="Snap to corners, edges, and centers of existing shapes"
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '50%',
-                      background: '#9CA3AF',
-                      color: 'white',
-                      fontSize: '11px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'help',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    ?
-                  </div>
-                </div>
-
-                {/* Master Toggle */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '14px',
-                  color: '#374151',
-                  marginBottom: '12px',
-                  cursor: 'pointer'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={drawing.snapping?.config?.enabled ?? true}
-                    onChange={() => {
-                      const currentEnabled = drawing.snapping?.config?.enabled ?? true;
-                      useAppStore.setState((state) => ({
-                        drawing: {
-                          ...state.drawing,
-                          snapping: {
-                            ...state.drawing.snapping,
-                            config: {
-                              ...state.drawing.snapping.config,
-                              enabled: !currentEnabled
-                            }
-                          }
-                        }
-                      }));
-                    }}
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      cursor: 'pointer'
-                    }}
-                  />
-                  <span>Enable Shape Snapping</span>
-                </label>
-
-                {/* Snap Mode and Radius Controls */}
-                {(drawing.snapping?.config?.enabled ?? true) && (
-                  <>
-                    {/* Snap Mode Selection - Adaptive vs Fixed */}
-                    <div style={{
-                      marginBottom: '16px',
-                      paddingBottom: '12px',
-                      borderBottom: '1px solid #E5E7EB'
-                    }}>
-                      <div style={{
-                        fontSize: '12px',
-                        color: '#6B7280',
-                        marginBottom: '8px'
-                      }}>
-                        Snap Detection Mode:
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        gap: '16px'
-                      }}>
-                        <label style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          color: '#4B5563'
-                        }}>
-                          <input
-                            type="radio"
-                            checked={(drawing.snapping?.config?.mode ?? 'adaptive') === 'adaptive'}
-                            onChange={() => {
-                              useAppStore.setState((state) => ({
-                                drawing: {
-                                  ...state.drawing,
-                                  snapping: {
-                                    ...state.drawing.snapping,
-                                    config: {
-                                      ...state.drawing.snapping.config,
-                                      mode: 'adaptive'
-                                    }
-                                  }
-                                }
-                              }));
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <span>Adaptive</span>
-                        </label>
-                        <label style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          color: '#4B5563'
-                        }}>
-                          <input
-                            type="radio"
-                            checked={(drawing.snapping?.config?.mode ?? 'adaptive') === 'fixed'}
-                            onChange={() => {
-                              useAppStore.setState((state) => ({
-                                drawing: {
-                                  ...state.drawing,
-                                  snapping: {
-                                    ...state.drawing.snapping,
-                                    config: {
-                                      ...state.drawing.snapping.config,
-                                      mode: 'fixed'
-                                    }
-                                  }
-                                }
-                              }));
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <span>Fixed</span>
-                        </label>
-                      </div>
-                      <div style={{
-                        fontSize: '11px',
-                        color: '#9CA3AF',
-                        marginTop: '6px',
-                        fontStyle: 'italic'
-                      }}>
-                        {(drawing.snapping?.config?.mode ?? 'adaptive') === 'adaptive'
-                          ? 'Auto-adjusts with zoom for consistent detection distance'
-                          : 'Manual control of snap radius in meters'}
-                      </div>
-                    </div>
-
-                    {/* Adaptive Mode Controls */}
-                    {(drawing.snapping?.config?.mode ?? 'adaptive') === 'adaptive' && (
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{
-                          fontSize: '12px',
-                          color: '#6B7280',
-                          marginBottom: '8px'
-                        }}>
-                          Screen Distance: <strong>{drawing.snapping?.config?.screenSpacePixels ?? 75}px</strong>
-                        </div>
-                        <input
-                          type="range"
-                          min="30"
-                          max="150"
-                          step="5"
-                          value={drawing.snapping?.config?.screenSpacePixels ?? 75}
-                          onChange={(e) => {
-                            const newValue = Number(e.target.value);
-                            useAppStore.setState((state) => ({
-                              drawing: {
-                                ...state.drawing,
-                                snapping: {
-                                  ...state.drawing.snapping,
-                                  config: {
-                                    ...state.drawing.snapping.config,
-                                    screenSpacePixels: newValue
-                                  }
-                                }
-                              }
-                            }));
-                          }}
-                          style={{
-                            width: '100%',
-                            marginBottom: '8px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <div style={{
-                          fontSize: '11px',
-                          color: '#9CA3AF',
-                          display: 'flex',
-                          justifyContent: 'space-between'
-                        }}>
-                          <span>Precise (30px)</span>
-                          <span>Relaxed (150px)</span>
-                        </div>
-                        <div style={{
-                          fontSize: '11px',
-                          color: '#6B7280',
-                          marginTop: '8px',
-                          padding: '6px 8px',
-                          background: '#F3F4F6',
-                          borderRadius: '4px'
-                        }}>
-                          World Radius: <strong>{(drawing.snapping?.config?.snapRadius ?? 5).toFixed(2)}m</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Fixed Mode Controls */}
-                    {(drawing.snapping?.config?.mode ?? 'adaptive') === 'fixed' && (
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{
-                          fontSize: '12px',
-                          color: '#6B7280',
-                          marginBottom: '8px'
-                        }}>
-                          Snap Radius: <strong>{drawing.snapping?.config?.snapRadius ?? 5}m</strong>
-                        </div>
-                        <input
-                          type="range"
-                          min="1"
-                          max="20"
-                          step="1"
-                          value={drawing.snapping?.config?.snapRadius ?? 5}
-                          onChange={(e) => {
-                            const newValue = Number(e.target.value);
-                            useAppStore.setState((state) => ({
-                              drawing: {
-                                ...state.drawing,
-                                snapping: {
-                                  ...state.drawing.snapping,
-                                  config: {
-                                    ...state.drawing.snapping.config,
-                                    snapRadius: newValue
-                                  }
-                                }
-                              }
-                            }));
-                          }}
-                          style={{
-                            width: '100%',
-                            marginBottom: '8px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <div style={{
-                          fontSize: '11px',
-                          color: '#9CA3AF',
-                          display: 'flex',
-                          justifyContent: 'space-between'
-                        }}>
-                          <span>1m</span>
-                          <span>20m</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Snap Type Checkboxes */}
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#6B7280',
-                      marginBottom: '8px'
-                    }}>
-                      Snap Types:
-                    </div>
-
-                    {([
-                      { type: 'endpoint' as const, label: '🔵 Corners', color: '#3B82F6' },
-                      { type: 'midpoint' as const, label: '🟠 Edges', color: '#F59E0B' },
-                      { type: 'center' as const, label: '🟢 Centers', color: '#22C55E' },
-                      { type: 'grid' as const, label: '◇ Grid', color: '#9CA3AF' }
-                    ] as const).map(({ type, label, color }) => (
-                      <label
-                        key={type}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          fontSize: '12px',
-                          color: '#4B5563',
-                          marginBottom: '6px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={drawing.snapping?.config?.activeTypes?.has(type) ?? true}
-                          onChange={() => {
-                            const currentTypes = drawing.snapping?.config?.activeTypes ?? new Set(['endpoint', 'midpoint', 'center', 'grid']);
-                            const newTypes = new Set(currentTypes);
-                            if (newTypes.has(type)) {
-                              newTypes.delete(type);
-                            } else {
-                              newTypes.add(type);
-                            }
-                            useAppStore.setState((state) => ({
-                              drawing: {
-                                ...state.drawing,
-                                snapping: {
-                                  ...state.drawing.snapping,
-                                  config: {
-                                    ...state.drawing.snapping.config,
-                                    activeTypes: newTypes
-                                  }
-                                }
-                              }
-                            }));
-                          }}
-                          style={{
-                            width: '14px',
-                            height: '14px',
-                            cursor: 'pointer',
-                            accentColor: color
-                          }}
-                        />
-                        <span>{label}</span>
-                      </label>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              {/* Mouse Coordinates */}
-              <div style={{
-                background: '#f0fdf4',
-                border: '1px solid #22c55e',
-                borderRadius: '8px',
-                padding: '16px'
-              }}>
-                <h3 style={{
-                  margin: '0 0 12px 0',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#15803d'
-                }}>
-                  Mouse Coordinates
-                </h3>
-                <div style={{ fontSize: '14px', color: '#166534' }}>
-                  <p style={{ margin: '0 0 4px 0' }}>
-                    Real-time coordinates are displayed in the 3D scene
-                  </p>
-                  <p style={{ margin: '0 0 8px 0' }}>
-                    <strong>Format:</strong> X: [meters], Z: [meters]
-                  </p>
-                  <div style={{
-                    background: 'rgba(34, 197, 94, 0.1)',
-                    padding: '8px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontFamily: 'monospace'
-                  }}>
-                    Grid snap: {drawing.snapToGrid ? `ON (${drawing.gridSize}m)` : 'OFF'}
-                    <br />
-                    Shape snap: {drawing.snapping?.config?.enabled ? 'ON' : 'OFF'}
-                    <br />
-                    Units: Meters (m)
-                  </div>
-                </div>
-              </div>
-            </div>
+              />
+            </UIErrorBoundary>
           </div>
         )}
 
@@ -4264,6 +3827,29 @@ function App(): React.JSX.Element {
         customPresets={presets.customPresets}
         recentPresets={presets.recentPresets}
       />
+
+      {/* Text Modal removed - now using Canva-style inline editing */}
+      {/* See InlineTextEditor in TextRenderer and TextFormattingControls in PropertiesPanel */}
+
+      {/* Phase 5: Label Modal for shape labels (still uses modal for advanced editing) */}
+      <TextModal
+        isOpen={labelModalOpen}
+        onClose={() => {
+          setLabelModalOpen(false);
+          setLabelShapeId(null);
+          setLabelPosition(null);
+          setEditingLabel(undefined);
+        }}
+        onSave={handleLabelModalSave}
+        initialData={editingLabel}
+        mode={editingLabel ? 'edit' : 'create'}
+        isLabel={true}
+      />
+
+      {/* Inline Text Overlay - shown when inline editing is active */}
+      {isInlineEditing && inlineEditingTextId && inlineEditScreenPosition && (
+        <InlineTextOverlay position={inlineEditScreenPosition} />
+      )}
 
       {/* Floating 2D/3D Toggle Button */}
       <View2DToggleButton />

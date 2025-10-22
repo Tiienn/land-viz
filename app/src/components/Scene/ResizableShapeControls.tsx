@@ -97,6 +97,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   const drawing = useAppStore(state => state.drawing);
   const shapes = useAppStore(state => state.shapes);
   const activeTool = useAppStore(state => state.drawing.activeTool);
+  const selectedShapeIds = useAppStore(state => state.selectedShapeIds);
   const setResizeHandle = useAppStore(state => state.setResizeHandle);
   const setMaintainAspectRatio = useAppStore(state => state.setMaintainAspectRatio);
   const resizeShape = useAppStore(state => state.resizeShape);
@@ -338,7 +339,8 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     originalPoints: null as Point2D[] | null,
     startMousePos: null as Point2D | null,
     pointerId: null as number | null,
-    lastValidResizePoints: null as Point2D[] | null // Store last valid points for reliable capture
+    lastValidResizePoints: null as Point2D[] | null, // Store last valid points for reliable capture
+    shapeRotation: null as { angle: number; center: Point2D } | null // Store shape rotation for coordinate transformation
   });
   
   const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
@@ -660,10 +662,10 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   }, [maintainRectangleAspectRatio]);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
-    if (!dragState.current.isDragging || 
-        !dragState.current.handleType || 
+    if (!dragState.current.isDragging ||
+        !dragState.current.handleType ||
         dragState.current.handleIndex === null ||
-        !resizingShape || 
+        !resizingShape ||
         !dragState.current.originalPoints ||
         (dragState.current.pointerId !== null && event.pointerId !== dragState.current.pointerId)) {
       return;
@@ -681,15 +683,39 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     raycaster.setFromCamera(mouse, camera);
     const intersection = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
-      const newPoint: Point2D = { x: intersection.x, y: intersection.z };
-      
+      // COORDINATE SPACE FIX:
+      // - Mouse position is in WORLD space
+      // - For SINGLE-selection rotated shapes: points are in LOCAL space, rotation is metadata
+      // - For MULTI-selection rotated shapes: points are in WORLD space (already transformed)
+      // - We need to convert mouse WORLD position to LOCAL space for single-selection resizing
+      let newPoint: Point2D = { x: intersection.x, y: intersection.z };
+
+      // Apply inverse rotation ONLY if this is a single-selection rotated shape
+      // (Multi-selection shapes have points already in world space, no conversion needed)
+      if (dragState.current.shapeRotation && dragState.current.shapeRotation.angle !== 0 && dragState.current.isSingleSelection) {
+        const rotation = dragState.current.shapeRotation;
+
+        // Apply inverse rotation to convert mouse world position to shape's local space
+        const angleRadians = (-rotation.angle * Math.PI) / 180; // Negative for inverse
+        const cos = Math.cos(angleRadians);
+        const sin = Math.sin(angleRadians);
+
+        const dx = newPoint.x - rotation.center.x;
+        const dy = newPoint.y - rotation.center.y;
+
+        newPoint = {
+          x: rotation.center.x + (dx * cos - dy * sin),
+          y: rotation.center.y + (dx * sin + dy * cos)
+        };
+      }
+
       // Check if shift key is held for aspect ratio maintenance
       const maintainAspect = event.shiftKey;
       setMaintainAspectRatio(maintainAspect);
-      
-      // Calculate new points based on handle type and shape type
+
+      // Calculate new points based on handle type and shape type (in local space)
       let newPoints = [...dragState.current.originalPoints];
-      
+
       if (resizingShape.type === 'rectangle') {
         newPoints = calculateRectangleResize(
           dragState.current.originalPoints,
@@ -815,7 +841,24 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         raycaster.setFromCamera(mouse, camera);
         const intersection = new THREE.Vector3();
         if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
-          const currentPoint: Point2D = { x: intersection.x, y: intersection.z };
+          let currentPoint: Point2D = { x: intersection.x, y: intersection.z };
+
+          // Apply inverse rotation ONLY if this is a single-selection rotated shape
+          if (dragState.current.shapeRotation && dragState.current.shapeRotation.angle !== 0 && dragState.current.isSingleSelection) {
+            const rotation = dragState.current.shapeRotation;
+
+            const angleRadians = (-rotation.angle * Math.PI) / 180; // Negative for inverse
+            const cos = Math.cos(angleRadians);
+            const sin = Math.sin(angleRadians);
+
+            const dx = currentPoint.x - rotation.center.x;
+            const dy = currentPoint.y - rotation.center.y;
+
+            currentPoint = {
+              x: rotation.center.x + (dx * cos - dy * sin),
+              y: rotation.center.y + (dx * sin + dy * cos)
+            };
+          }
 
           // Calculate final points using the same logic as handlePointerMove
           if (resizingShape.type === 'rectangle') {
@@ -844,6 +887,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       dragState.current.startMousePos = null;
       dragState.current.pointerId = null;
       dragState.current.lastValidResizePoints = null;
+      dragState.current.shapeRotation = null;
 
       // ATOMIC COMMIT: Ensure the resize is committed atomically
       if (finalPoints && finalPoints.length >= 2) {
@@ -880,7 +924,10 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     };
   }, [handlePointerMove, handlePointerUp]);
 
-  if (!drawing.isResizeMode || !resizingShape || activeTool !== 'select') {
+  // CRITICAL: Don't show resize handles for multi-selection (use MultiSelectionBoundary instead)
+  const isMultiSelection = selectedShapeIds && selectedShapeIds.length > 1;
+
+  if (!drawing.isResizeMode || !resizingShape || activeTool !== 'select' || isMultiSelection) {
     return null;
   }
 
@@ -920,8 +967,32 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'corner';
                   dragState.current.handleIndex = index;
-                  dragState.current.originalPoints = [...resizingShape.points];
+
+                  // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
+                  // Also detect single vs multi-selection to determine coordinate space handling
+                  const selectedIds = selectedShapeIds || [];
+                  const isSingleSelection = selectedIds.length <= 1;
+
+                  if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
+                    // Convert 4-point format back to 2-point format for resize calculations
+                    const points = resizingShape.points;
+
+                    // Calculate bounding box to get 2-point format
+                    const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
+                    const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
+                    const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
+                    const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
+                    dragState.current.originalPoints = [
+                      { x: minX, y: minY },
+                      { x: maxX, y: maxY }
+                    ];
+                  } else {
+                    dragState.current.originalPoints = [...resizingShape.points];
+                  }
+
                   dragState.current.pointerId = event.nativeEvent.pointerId;
+                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+                  dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
 
                   // Set cursor for the entire drag operation
                   setCursorOverride(cornerCursor);
@@ -930,7 +1001,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   try {
                     event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
                   } catch (error) {
-                    console.warn('⚠️ Failed to capture pointer:', error);
+                    // Silently handle pointer capture errors
                   }
 
                   // Add global listeners with capture
@@ -965,43 +1036,43 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
           {resizeHandles.allHandles?.slice(4).map((point, index) => {
             const isSelected = drawing.resizeHandleType === 'edge' && drawing.resizeHandleIndex === index;
             const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
-            
+
             // Calculate parallel direction for this edge handle
             const baseRotation = resizingShape.rotation?.angle || 0;
-            
+
             // Each edge has a base parallel direction relative to unrotated rectangle:
             // Top edge (0): runs horizontally = 0°
             // Right edge (1): runs vertically = 90°
-            // Bottom edge (2): runs horizontally = 180°  
+            // Bottom edge (2): runs horizontally = 180°
             // Left edge (3): runs vertically = 270°
             const baseParallels = [0, 90, 180, 270];
             const parallelAngle = baseRotation + baseParallels[index];
-            
+
             // Normalize angle to 0-360 range
             const normalizedAngle = ((parallelAngle % 360) + 360) % 360;
-            
+
             // Determine handle orientation based on final parallel direction
-            // Vertical edges (running up/down): 45-135° and 225-315°  
+            // Vertical edges (running up/down): 45-135° and 225-315°
             // Horizontal edges (running left/right): 135-225° and 315-45°
-            const isEdgeVertical = (normalizedAngle >= 45 && normalizedAngle < 135) || 
+            const isEdgeVertical = (normalizedAngle >= 45 && normalizedAngle < 135) ||
                                   (normalizedAngle >= 225 && normalizedAngle < 315);
-            
+
             // Set handle dimensions to create thin bar parallel to edge direction
             let handleArgs: [number, number, number];
             let edgeCursor: string;
-            
+
             if (isEdgeVertical) {
               // Edge runs vertically - create thin vertical handle bar
-              handleArgs = [0.3, 0.3, 1.5]; 
+              handleArgs = [0.3, 0.3, 1.5];
               edgeCursor = 'ew-resize'; // Cursor for horizontal resize (perpendicular to vertical edge)
             } else {
-              // Edge runs horizontally - create thin horizontal handle bar  
+              // Edge runs horizontally - create thin horizontal handle bar
               handleArgs = [1.5, 0.3, 0.3];
               edgeCursor = 'ns-resize'; // Cursor for vertical resize (perpendicular to horizontal edge)
             }
-            
+
             const rotationRadians = parallelAngle * Math.PI / 180;
-            
+
             return (
               <Box
                 key={`resize-edge-${index}`}
@@ -1014,24 +1085,46 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 }}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  
+
                   setResizeHandle('edge', index);
-                  
+
                   // Save initial state to history before starting resize
-                  console.log('🔄 Saving initial state before resize');
                   saveToHistory();
-                  
+
                   // Set up drag state
                   document.title = 'EDGE DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'edge';
                   dragState.current.handleIndex = index;
-                  dragState.current.originalPoints = [...resizingShape.points];
+
+                  // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
+                  // Also detect single vs multi-selection to determine coordinate space handling
+                  const selectedIds = selectedShapeIds || [];
+                  const isSingleSelection = selectedIds.length <= 1;
+
+                  if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
+                    const points = resizingShape.points;
+
+                    // Calculate bounding box to get 2-point format
+                    const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
+                    const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
+                    const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
+                    const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
+                    dragState.current.originalPoints = [
+                      { x: minX, y: minY },
+                      { x: maxX, y: maxY }
+                    ];
+                  } else {
+                    dragState.current.originalPoints = [...resizingShape.points];
+                  }
+
                   dragState.current.pointerId = event.nativeEvent.pointerId;
-                  
+                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+                  dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
+
                   // Set cursor for the entire drag operation
                   setCursorOverride(edgeCursor);
-                  
+
                   // Capture pointer to ensure we get all events
                   event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
                   
@@ -1090,22 +1183,24 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 }}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  
+
                   setResizeHandle('corner', index);
-                  
+
                   // Save initial state to history before starting resize
-                  console.log('🔄 Saving initial state before resize');
                   saveToHistory();
-                  
-                  // Set up drag state  
-                  console.log('🎯 SPHERE CLICKED! Corner index:', index);
+
+                  // Set up drag state
                   document.title = 'CORNER DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'corner';
                   dragState.current.handleIndex = index;
+
+                  // For circles, keep original points as-is
                   dragState.current.originalPoints = [...resizingShape.points];
+
                   dragState.current.pointerId = event.nativeEvent.pointerId;
-                  
+                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+
                   // Set cursor for the entire drag operation
                   setCursorOverride(cornerCursor);
                   
@@ -1144,17 +1239,17 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
           {resizeHandles.edges.map((point, index) => {
             const isSelected = drawing.resizeHandleType === 'edge' && drawing.resizeHandleIndex === index;
             const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
-            
+
             // Edge handles allow oval distortion by stretching in one direction
             let edgeCursor = 'ns-resize'; // Top/Bottom handles (0, 2) - vertical stretch
             if (index === 1 || index === 3) edgeCursor = 'ew-resize'; // Right/Left handles (1, 3) - horizontal stretch
-            
+
             // Make edge handles directional - wider in the direction they stretch
             let handleArgs: [number, number, number] = [1.2, 0.3, 0.4]; // Horizontal handles for top/bottom (wider horizontally)
             if (index === 1 || index === 3) { // Right and left handles
               handleArgs = [0.4, 0.3, 1.2]; // Vertical handles (wider vertically)
             }
-            
+
             return (
               <Box
                 key={`resize-circle-edge-${index}`}
@@ -1166,24 +1261,46 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 }}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  
+
                   setResizeHandle('edge', index);
-                  
+
                   // Save initial state to history before starting resize
-                  console.log('🔄 Saving initial state before resize');
                   saveToHistory();
-                  
+
                   // Set up drag state
                   document.title = 'EDGE DRAG START ' + index;
                   dragState.current.isDragging = true;
                   dragState.current.handleType = 'edge';
                   dragState.current.handleIndex = index;
-                  dragState.current.originalPoints = [...resizingShape.points];
+
+                  // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
+                  // Also detect single vs multi-selection to determine coordinate space handling
+                  const selectedIds = selectedShapeIds || [];
+                  const isSingleSelection = selectedIds.length <= 1;
+
+                  if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
+                    const points = resizingShape.points;
+
+                    // Calculate bounding box to get 2-point format
+                    const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
+                    const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
+                    const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
+                    const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
+                    dragState.current.originalPoints = [
+                      { x: minX, y: minY },
+                      { x: maxX, y: maxY }
+                    ];
+                  } else {
+                    dragState.current.originalPoints = [...resizingShape.points];
+                  }
+
                   dragState.current.pointerId = event.nativeEvent.pointerId;
-                  
+                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+                  dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
+
                   // Set cursor for the entire drag operation
                   setCursorOverride(edgeCursor);
-                  
+
                   // Capture pointer to ensure we get all events
                   event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
                   
@@ -1233,20 +1350,20 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             }}
             onPointerDown={(event) => {
               event.stopPropagation();
-              
+
               setResizeHandle('corner', index);
-              
+
               // Save initial state to history before starting resize
-              console.log('🔄 Saving initial state before resize');
               saveToHistory();
-              
+
               // Set up drag state
               dragState.current.isDragging = true;
               dragState.current.handleType = 'corner';
               dragState.current.handleIndex = index;
               dragState.current.originalPoints = [...resizingShape.points];
               dragState.current.pointerId = event.nativeEvent.pointerId;
-              
+              dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+
               // Set cursor for the entire drag operation
               setCursorOverride('move');
               

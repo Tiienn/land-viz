@@ -46,7 +46,6 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
       if (file.size > MAX_IMPORT_SIZE) {
         const maxSizeMB = (MAX_IMPORT_SIZE / 1024 / 1024).toFixed(1);
         logger.error(`File too large: ${file.size} bytes (max: ${MAX_IMPORT_SIZE} bytes)`);
-        console.error(`Import failed: File size exceeds maximum of ${maxSizeMB}MB`);
         return;
       }
 
@@ -59,7 +58,6 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
           const sanitized = sanitizeJSON(data, { maxSize: MAX_IMPORT_SIZE });
           if (!sanitized) {
             logger.error('Invalid JSON data or size exceeded');
-            console.error('✗ Failed to import: Invalid JSON format or file too large');
             return;
           }
 
@@ -69,19 +67,15 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
 
           if (success) {
             logger.log('Workflows imported successfully');
-            console.log('✓ Workflows imported successfully!');
           } else {
             logger.error('Failed to import workflows: Invalid file format');
-            console.error('✗ Failed to import workflows. Invalid file format.');
           }
         } catch (error) {
           logger.error('Import error:', error);
-          console.error('✗ An error occurred during import:', error);
         }
       };
       reader.onerror = () => {
         logger.error('File read error');
-        console.error('✗ Failed to read file');
       };
       reader.readAsText(file);
     };

@@ -5,6 +5,7 @@ import { Html } from '@react-three/drei';
 import { REFERENCE_OBJECTS } from '../../data/referenceObjects';
 import { ObjectPositioner } from '../../utils/objectPositioning';
 import { getFieldMarkingsService, FieldMarkingsService } from '../../services/FieldMarkingsService';
+import { logger } from '../../utils/logger';
 import type { ReferenceObject, BoundingBox } from '../../types/referenceObjects';
 import type { SportType } from '../../types/fieldMarkings';
 
@@ -125,7 +126,7 @@ function ReferenceObjectMesh({
         setGeometryOrGroup(geometry);
       }
     }).catch((error) => {
-      console.error('Failed to create geometry for object:', object.id, error);
+      logger.error('[ReferenceObjectRenderer]', 'Failed to create geometry for object:', object.id, error);
     });
 
     return () => {

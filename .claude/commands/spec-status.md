@@ -159,9 +159,14 @@ specs/
 
 ## Related Commands
 
-- `/specify` - Create new specification
+- `/speckit.specify` - Create new specification
+- `/speckit.clarify` - Clarify ambiguities
+- `/speckit.plan` - Create implementation plan
+- `/speckit.tasks` - Generate task breakdown
+- `/speckit.analyze` - Analyze cross-artifact consistency
+- `/speckit.checklist` - Generate quality checklists
+- `/speckit.implement` - Execute implementation
 - `/spec-workflow` - Complete workflow
-- `/spec-tasks` - View specific tasks
 - `/review-plan` - Review implementation plan
 
 ## Quick Start

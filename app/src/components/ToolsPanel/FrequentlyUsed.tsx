@@ -3,6 +3,7 @@ import { useToolHistoryStore } from '../../store/useToolHistoryStore';
 import { useAppStore } from '../../store/useAppStore';
 import type { ActionType, DrawingTool } from '../../types';
 import Icon from '../Icon';
+import { logger } from '../../utils/logger';
 
 // Valid drawing tools for type safety
 const VALID_DRAWING_TOOLS: DrawingTool[] = ['select', 'rectangle', 'polyline', 'circle', 'line', 'measure', 'rotate', 'polygon', 'edit'];
@@ -31,7 +32,7 @@ export const FrequentlyUsed: React.FC = () => {
       if (VALID_DRAWING_TOOLS.includes(toolName as DrawingTool)) {
         setActiveTool(toolName as DrawingTool);
       } else {
-        console.warn('Invalid tool type:', toolName);
+        logger.warn('[FrequentlyUsed]', 'Invalid tool type:', toolName);
       }
     }
     // Panel actions and other actions will be handled in Phase 3

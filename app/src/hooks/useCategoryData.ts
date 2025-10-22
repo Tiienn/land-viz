@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ReferenceCategory } from '../types/referenceObjects';
+import { logger } from '../utils/logger';
 
 /**
  * Hook for lazy loading category data to prevent mixed import issues
@@ -26,7 +27,7 @@ export function useCategoryData() {
         setCategoryDisplayNames(CATEGORY_DISPLAY_NAMES);
         setCategoryIcons(CATEGORY_ICONS);
       } catch (error) {
-        console.error('Failed to load category data:', error);
+        logger.error('[useCategoryData]', 'Failed to load category data:', error);
         // Keep fallback data
       } finally {
         setLoading(false);

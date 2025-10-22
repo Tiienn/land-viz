@@ -6,6 +6,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { AlignmentService } from '../../services/alignmentService';
+import { logger } from '../../utils/logger';
 // import { TidyUpService, type TidyUpOptions } from '../../services/tidyUpService';
 
 // Icon components (simplified inline SVGs for now)
@@ -239,7 +240,7 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
   // TidyUp functions (simplified to prevent infinite loops)
   const handleTidyUp = useCallback(async () => {
     if (selectedShapes.length < 3) {
-      console.warn('TidyUp requires at least 3 selected shapes');
+      logger.warn('[AlignmentControls]', 'TidyUp requires at least 3 selected shapes');
       return;
     }
 
@@ -287,21 +288,21 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
           updateShape(shape.id, { points: updatedPoints });
         });
 
-        console.log(`TidyUp completed: distributed ${sortedShapes.length} shapes`);
-        console.log('Original positions used:', originalPositions.size);
-        console.log('updateShape function:', updateShape);
-        console.log('Current selectedShapes:', selectedShapes.map(s => ({ id: s.id, points: s.points })));
+        logger.debug('[AlignmentControls]', `TidyUp completed: distributed ${sortedShapes.length} shapes`);
+        logger.debug('[AlignmentControls]', 'Original positions used:', originalPositions.size);
+        logger.debug('[AlignmentControls]', 'updateShape function:', updateShape);
+        logger.debug('[AlignmentControls]', 'Current selectedShapes:', selectedShapes.map(s => ({ id: s.id, points: s.points })));
 
         // Add a small delay to check if shapes update in the store
         setTimeout(() => {
           const currentShapes = useAppStore.getState().shapes;
-          console.log('Shapes in store after TidyUp:', currentShapes.filter(s => selectedShapes.some(sel => sel.id === s.id)).map(s => ({ id: s.id, points: s.points })));
+          logger.debug('[AlignmentControls]', 'Shapes in store after TidyUp:', currentShapes.filter(s => selectedShapes.some(sel => sel.id === s.id)).map(s => ({ id: s.id, points: s.points })));
 
           // Force a re-render by updating the selected shapes
-          console.log('Forcing re-render...');
+          logger.debug('[AlignmentControls]', 'Forcing re-render...');
         }, 100);
 
-        console.log('Shape movements:', sortedShapes.map(({ shape, originalBounds }, index) => {
+        logger.debug('[AlignmentControls]', 'Shape movements:', sortedShapes.map(({ shape, originalBounds }, index) => {
           const newCenterX = leftMost + (spacing * index);
           const offsetX = newCenterX - originalBounds.centerX;
           const originalShape = originalPositions.get(shape.id);
@@ -316,7 +317,7 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
         }));
       }
     } catch (error) {
-      console.error('TidyUp failed:', error);
+      logger.error('[AlignmentControls]', 'TidyUp failed:', error);
     } finally {
       setTidyUpInProgress(false);
     }
@@ -408,9 +409,9 @@ export const AlignmentControls: React.FC<AlignmentControlsProps> = ({
         });
       }
 
-      console.log(`Space evenly completed: ${direction} distribution`);
+      logger.debug('[AlignmentControls]', `Space evenly completed: ${direction} distribution`);
     } catch (error) {
-      console.error('Space evenly failed:', error);
+      logger.error('[AlignmentControls]', 'Space evenly failed:', error);
     } finally {
       setTidyUpInProgress(false);
     }

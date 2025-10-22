@@ -9,6 +9,12 @@
 - Professional ribbon with SVG icons and tool grouping
 - Full Three.js/React Three Fiber 3D scene
 - Drawing tools: Rectangle, circle, polyline (with imaginary line)
+- **📝 Text Tool: Canva-style inline text editing with live formatting controls**
+  - Click → Type immediately (no modal interruption)
+  - Real-time formatting (font, size, color, alignment)
+  - Shape labels via double-click
+  - Full CRUD operations with undo/redo
+  - Properties Panel integration
 - **📐 Direct Dimension Input: Enter exact sizes before creating shapes**
   - Rectangle: Width × Height input (e.g., "10x15", "33ft x 50ft")
   - Circle: Radius/Diameter mode with unit selection (r/d toggle)
@@ -289,6 +295,40 @@ npm run test:coverage       # Generate coverage report
 ## Recent Updates & Bug Fixes
 
 ### January 2025
+**Multi-Selection Rotation Fix - Complete (January 20, 2025)** ⭐⭐⭐
+**Phase 1: Drag Rotation Multi-Selection**
+- **Issues Fixed**: Rotation handles disappeared, only primary shape rotated, multi-selection cleared
+- **Root Causes**: 8 separate issues across rotation workflow
+- **Solutions**:
+  - Updated rotation handle visibility for multi-selection
+  - Fixed `exitResizeMode()` to preserve multi-selection
+  - Fixed `enterRotateMode()` to preserve multi-selection (priority: existing → group → single)
+  - Updated rotation logic to support multi-selection group rotation
+
+**Phase 2: Rotate Button & Cursor Rotation Mode**
+- **Issues Fixed**: Rotate button disabled, cursor rotation mode didn't support multi-selection
+- **Solutions**:
+  - Updated toolbar Rotate button to check for multi-selection
+  - Fixed `enterCursorRotationMode()` to preserve multi-selection
+  - Both drag and cursor rotation modes now work for multi-selection
+
+**Phase 3: Canva-Style Rotation Behavior**
+- **Issues Fixed**: Rotation centered on primary shape instead of group center
+- **Research**: Analyzed Canva's rotation behavior via web search
+- **Solutions**:
+  - Rotation center calculated from group bounding box center
+  - Rotation handle positioned at group center (not primary shape)
+  - Cursor styling updated to match Canva (`alias` hover, `grabbing` drag)
+  - All shapes rotate around collective center maintaining relative positions
+
+**Group Rotation Algorithm**: Each shape's center rotates around group center, points offset by delta
+**Result**: ✅ Perfect Canva-style multi-selection rotation
+**Documentation**: See `docs/fixes/MULTI_SELECTION_ROTATION_FIX.md` for complete 700+ line technical guide
+**Files Modified**:
+  - `app/src/components/Scene/RotationControls.tsx` - Handle visibility, group center, cursor styling
+  - `app/src/store/useAppStore.ts` - All rotation functions, preserve multi-selection
+  - `app/src/App.tsx` - Rotate button multi-selection support
+
 **Context Menu Drag Detection Fix (January 12, 2025)**
 - **Issue**: Context menu appearing after right-click camera drag in 3D mode
 - **Solution**: Hybrid distance + time threshold detection (industry standard)
@@ -377,6 +417,25 @@ npm run test:coverage       # Generate coverage report
   - `components/ImageImport/TemplateLibrary.tsx` - 1 console.error → logger.error
 - **Benefits**: Environment-based logging, production console silence, consistent `[ServiceName]` format
 - **Result**: Production-ready logging infrastructure with automatic suppression in builds
+
+**Properties Panel Architecture Fix (January 14, 2025)** ⭐
+- **Issue**: Text feature Properties Panel didn't show text editing controls after 100+ debugging attempts
+- **Root Cause**: Dual implementation - PropertiesPanel.tsx component existed but was never rendered; App.tsx used 650+ lines of inline panel code without text support
+- **Solution**:
+  - Replaced inline panel with PropertiesPanel.tsx component (reduced code by 650+ lines)
+  - Added manual Zustand subscription with forced re-renders to fix state updates
+  - Fixed text size in 2D mode (distanceFactor 5→2.5, 50% reduction)
+  - Removed all debug console.log statements
+- **Impact**: Text editing controls now fully functional, cleaner architecture, production-ready
+- **Documentation**: See `docs/fixes/PROPERTIES_PANEL_ARCHITECTURE_FIX.md` for complete technical analysis
+- **Files Modified**:
+  - `app/src/App.tsx` - Import PropertiesPanel, removed 650+ lines of inline panel
+  - `app/src/components/PropertiesPanel.tsx` - Added manual subscription pattern
+  - `app/src/components/Text/TextObject.tsx` - Changed distanceFactor
+  - `app/src/components/Text/TextRenderer.tsx` - Removed debug logs
+  - `app/src/store/useTextStore.ts` - Removed debug logs
+- **Key Learning**: Always verify components are in React render tree before debugging state management
+- **Status**: ✅ Resolved - Text feature production-ready
 
 **Circle Dimension Input Bug Fix**
 - Fixed incorrect radius/area calculations when using dimension input (D=10m, r=10m)

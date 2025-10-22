@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/store/useAppStore';
-import type { Shape } from '@/types';
+import { useTextStore } from '@/store/useTextStore'; // Phase 9: Text integration (legacy)
+import type { Shape, Element } from '@/types';
+import { isShapeElement, isTextElement } from '@/types';
+import Icon from './Icon';
+import LayerThumbnail from './LayerPanel/LayerThumbnail';
 
 interface LayerPanelProps {
   isOpen: boolean;
@@ -12,14 +16,38 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
   const layers = useAppStore(state => state.layers);
   const shapes = useAppStore(state => state.shapes);
   const activeLayerId = useAppStore(state => state.activeLayerId);
+  const selectedLayerIds = useAppStore(state => state.selectedLayerIds) || []; // Phase 2: Multi-selection (safe fallback)
   // const createLayer = useAppStore(state => state.createLayer);
   const updateLayer = useAppStore(state => state.updateLayer);
   const deleteLayer = useAppStore(state => state.deleteLayer);
   const setActiveLayer = useAppStore(state => state.setActiveLayer);
+  const selectLayer = useAppStore(state => state.selectLayer); // Phase 2: Multi-selection
+  const selectLayerRange = useAppStore(state => state.selectLayerRange); // Phase 2: Multi-selection
+  // Phase 3: Folder management
+  const createFolder = useAppStore(state => state.createFolder);
+  const moveToFolder = useAppStore(state => state.moveToFolder);
+  const deleteFolder = useAppStore(state => state.deleteFolder);
+  const toggleFolderCollapse = useAppStore(state => state.toggleFolderCollapse);
+  const getFolderDepth = useAppStore(state => state.getFolderDepth);
+  const folderContains = useAppStore(state => state.folderContains);
   const moveLayerToFront = useAppStore(state => state.moveLayerToFront);
   const moveLayerForward = useAppStore(state => state.moveLayerForward);
   const moveLayerBackward = useAppStore(state => state.moveLayerBackward);
   const moveLayerToBack = useAppStore(state => state.moveLayerToBack);
+
+  // Phase 6: Element integration (unified elements array)
+  const elements = useAppStore(state => state.elements);
+  const selectedElementIds = useAppStore(state => state.selectedElementIds);
+  const selectElement = useAppStore(state => state.selectElement);
+  const updateElement = useAppStore(state => state.updateElement);
+  const deleteElement = useAppStore(state => state.deleteElement);
+
+  // Phase 9: Text store integration (legacy - still used for backwards compatibility)
+  const texts = useTextStore(state => state.texts);
+  const selectedTextId = useTextStore(state => state.selectedTextId);
+  const selectText = useTextStore(state => state.selectText);
+  const updateText = useTextStore(state => state.updateText);
+  const deleteText = useTextStore(state => state.deleteText);
 
   const [editingLayer, setEditingLayer] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,6 +56,35 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
   const [draggedLayer, setDraggedLayer] = useState<string | null>(null);
   const [dragOverLayer, setDragOverLayer] = useState<string | null>(null);
   const [isUsingOpacitySlider, setIsUsingOpacitySlider] = useState(false);
+  const [lastClickedLayerId, setLastClickedLayerId] = useState<string | null>(null); // Phase 2: For range selection
+  const [checkboxMode, setCheckboxMode] = useState(false); // Phase 2: Show checkboxes for multi-selection
+  // Phase 3: Enhanced drag-and-drop for folder nesting
+  const [dropZone, setDropZone] = useState<'above' | 'below' | 'inside' | null>(null);
+  const [dropValid, setDropValid] = useState<boolean>(true);
+  // Phase 3: Delete confirmation modal for folders
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
+  // Statistics panel collapse state
+  const [statisticsExpanded, setStatisticsExpanded] = useState(true);
+
+  // Phase 2: Multi-selection click handler
+  const handleLayerClick = (layerId: string, event: React.MouseEvent) => {
+    const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+    const isShift = event.shiftKey;
+
+    if (isShift && lastClickedLayerId) {
+      // Range selection: Select all layers between last clicked and current
+      selectLayerRange(lastClickedLayerId, layerId);
+    } else if (isCtrlOrCmd) {
+      // Toggle selection: Add/remove this layer from selection
+      selectLayer(layerId, true);
+      setLastClickedLayerId(layerId);
+    } else {
+      // Single selection: Clear all and select this one
+      selectLayer(layerId, false);
+      setLastClickedLayerId(layerId);
+    }
+  };
 
   // Cleanup opacity slider state on unmount or when panel closes
   useEffect(() => {
@@ -80,10 +137,44 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
     return shapes.filter(shape => shape.layerId === layerId).length;
   };
 
-  // Filter layers by search term
-  const filteredLayers = layers.filter(layer => 
-    layer.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Phase 9: Get text count for a layer
+  const getLayerTextCount = (layerId: string) => {
+    return texts.filter(text => text.layerId === layerId && text.type === 'floating').length;
+  };
+
+  // Phase 9: Get label count for a shape
+  const getShapeLabelCount = (shapeId: string) => {
+    const shape = shapes.find(s => s.id === shapeId);
+    return shape?.label ? 1 : 0;
+  };
+
+  // Phase 6: Get elements for a layer, sorted by creation time
+  const getLayerElements = useMemo(() => {
+    return (layerId: string): Element[] => {
+      // Safe fallback: elements might be undefined if migration hasn't run yet
+      return (elements || [])
+        .filter((el) => el.layerId === layerId)
+        .sort((a, b) => a.created.getTime() - b.created.getTime());
+    };
+  }, [elements]);
+
+  // Filter layers by search term AND hide empty layers
+  const filteredLayers = layers.filter(layer => {
+    const matchesSearch = layer.name.toLowerCase().includes(searchTerm.toLowerCase());
+    // Check both elements AND shapes (shapes are legacy but still in use)
+    const hasElements = getLayerElements(layer.id).length > 0 ||
+                        shapes.filter(s => s.layerId === layer.id).length > 0 ||
+                        layer.type === 'folder';
+    return matchesSearch && hasElements;
+  });
+
+  // Phase 3: Get root-level layers (no parent) for folder hierarchy
+  const rootLayers = filteredLayers.filter(layer => !layer.parentId);
+
+  // Phase 3: Get children of a folder
+  const getChildLayers = (parentId: string) => {
+    return filteredLayers.filter(layer => layer.parentId === parentId);
+  };
 
   // Helper function to get shape info for a layer
   const getLayerShapeInfo = (layerId: string) => {
@@ -187,9 +278,28 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
   };
 
   const handleDeleteLayer = (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+
+    // Phase 3: Special handling for folder deletion
+    if (layer?.type === 'folder') {
+      setFolderToDelete(layerId);
+      setDeleteModalOpen(true);
+      return;
+    }
+
+    // Regular layer deletion with confirmation
     const shapeCount = getLayerShapeCount(layerId);
-    if (shapeCount > 0) {
-      const confirmed = window.confirm(`This layer contains ${shapeCount} shapes. Are you sure you want to delete it?`);
+    const textCount = getLayerTextCount(layerId); // Phase 9: Include text count
+    const totalItems = shapeCount + textCount;
+
+    if (totalItems > 0) {
+      let message = `This layer contains ${shapeCount} shape${shapeCount !== 1 ? 's' : ''}`;
+      if (textCount > 0) {
+        message += ` and ${textCount} text object${textCount !== 1 ? 's' : ''}`;
+      }
+      message += '. Are you sure you want to delete it?';
+
+      const confirmed = window.confirm(message);
       if (!confirmed) return;
     }
     deleteLayer(layerId);
@@ -230,21 +340,97 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
 
   const handleDragOver = (e: React.DragEvent, layerId: string) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+
+    if (!draggedLayer || draggedLayer === layerId) {
+      setDragOverLayer(null);
+      setDropZone(null);
+      return;
+    }
+
+    const targetLayer = layers.find(l => l.id === layerId);
+    const draggedLayerObj = layers.find(l => l.id === draggedLayer);
+
+    if (!targetLayer || !draggedLayerObj) return;
+
+    // Check if target is a folder
+    const isFolder = targetLayer.type === 'folder';
+
+    // Calculate drop zone based on mouse Y position relative to the element
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
+    const height = rect.height;
+
+    let zone: 'above' | 'below' | 'inside' = 'above';
+
+    if (isFolder) {
+      // For folders, divide into three zones: top 30%, middle 40%, bottom 30%
+      if (relativeY < height * 0.3) {
+        zone = 'above';
+      } else if (relativeY > height * 0.7) {
+        zone = 'below';
+      } else {
+        zone = 'inside';
+      }
+    } else {
+      // For layers, divide into two zones: top 50%, bottom 50%
+      zone = relativeY < height * 0.5 ? 'above' : 'below';
+    }
+
+    // Validate drop is allowed
+    let valid = true;
+
+    if (zone === 'inside' && isFolder) {
+      // Check circular nesting: can't drop folder into itself or its descendants
+      if (draggedLayerObj.type === 'folder') {
+        if (draggedLayer === layerId || folderContains(draggedLayer, layerId)) {
+          valid = false;
+        }
+      }
+    }
+
+    e.dataTransfer.dropEffect = valid ? 'move' : 'none';
     setDragOverLayer(layerId);
+    setDropZone(zone);
+    setDropValid(valid);
   };
 
   const handleDragLeave = () => {
     setDragOverLayer(null);
+    setDropZone(null);
+    setDropValid(true);
   };
 
   const handleDrop = (e: React.DragEvent, targetLayerId: string) => {
     e.preventDefault();
-    if (draggedLayer && draggedLayer !== targetLayerId) {
-      // Simple reordering: move dragged layer to position of target layer
+
+    if (!draggedLayer || draggedLayer === targetLayerId || !dropValid) {
+      setDraggedLayer(null);
+      setDragOverLayer(null);
+      setDropZone(null);
+      setDropValid(true);
+      return;
+    }
+
+    const targetLayer = layers.find(l => l.id === targetLayerId);
+    const draggedLayerObj = layers.find(l => l.id === draggedLayer);
+
+    if (!targetLayer || !draggedLayerObj) {
+      setDraggedLayer(null);
+      setDragOverLayer(null);
+      setDropZone(null);
+      setDropValid(true);
+      return;
+    }
+
+    // Phase 3: Handle drop into folder
+    if (dropZone === 'inside' && targetLayer.type === 'folder') {
+      // Move dragged item into the folder
+      moveToFolder(draggedLayer, targetLayerId);
+    } else {
+      // Phase 3: Reordering (above/below) - maintain existing logic
       const draggedIndex = layers.findIndex(l => l.id === draggedLayer);
       const targetIndex = layers.findIndex(l => l.id === targetLayerId);
-      
+
       if (draggedIndex !== -1 && targetIndex !== -1) {
         // Move layer to the target position
         if (draggedIndex < targetIndex) {
@@ -260,13 +446,18 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
         }
       }
     }
+
     setDraggedLayer(null);
     setDragOverLayer(null);
+    setDropZone(null);
+    setDropValid(true);
   };
 
   const handleDragEnd = () => {
     setDraggedLayer(null);
     setDragOverLayer(null);
+    setDropZone(null);
+    setDropValid(true);
   };
 
   return (
@@ -365,91 +556,412 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
         </div>
       </div>
 
-      {/* Layer Count and Info */}
-      <div style={{
-        padding: '12px 20px',
-        borderBottom: '1px solid #f3f4f6',
-        background: '#f9fafb',
-        fontSize: '14px',
-        color: '#6b7280',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <span style={{ fontWeight: '500' }}>
-          {filteredLayers.length} Layer{filteredLayers.length !== 1 ? 's' : ''}
-        </span>
-        <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-          Auto-created
-        </span>
-      </div>
+      {/* Layer Count and Info - Only show if there are non-empty layers */}
+      {filteredLayers.length > 0 && (
+        <div style={{
+          padding: '12px 20px',
+          borderBottom: '1px solid #f3f4f6',
+          background: '#f9fafb',
+          fontSize: '14px',
+          color: '#6b7280',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span style={{ fontWeight: '500' }}>
+            {filteredLayers.length} Layer{filteredLayers.length !== 1 ? 's' : ''}
+            {selectedLayerIds.length > 1 && (
+              <span style={{ marginLeft: '8px', color: '#3b82f6', fontSize: '13px' }}>
+                ({selectedLayerIds.length} selected)
+              </span>
+            )}
+          </span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* Phase 3: New Folder Button */}
+            <button
+              onClick={() => {
+                const folderCount = layers.filter(l => l.type === 'folder').length;
+                createFolder(`Folder ${folderCount + 1}`);
+              }}
+              style={{
+                background: 'transparent',
+                color: '#6b7280',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                padding: '4px 12px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontWeight: '500'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#3b82f6';
+                e.currentTarget.style.color = '#3b82f6';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#d1d5db';
+                e.currentTarget.style.color = '#6b7280';
+              }}
+              title="Create new folder"
+            >
+              📁 New Folder
+            </button>
+            <button
+              onClick={() => setCheckboxMode(!checkboxMode)}
+              style={{
+                background: checkboxMode ? '#3b82f6' : 'transparent',
+                color: checkboxMode ? 'white' : '#6b7280',
+                border: `1px solid ${checkboxMode ? '#3b82f6' : '#d1d5db'}`,
+                borderRadius: '6px',
+                padding: '4px 12px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontWeight: '500'
+              }}
+              onMouseEnter={(e) => {
+                if (!checkboxMode) {
+                  e.currentTarget.style.borderColor = '#3b82f6';
+                  e.currentTarget.style.color = '#3b82f6';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!checkboxMode) {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.color = '#6b7280';
+                }
+              }}
+              title={checkboxMode ? 'Exit multi-select mode' : 'Enter multi-select mode'}
+            >
+              {checkboxMode ? '✓ Multi-Select' : 'Multi-Select'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 2: Bulk Operations Toolbar */}
+      {selectedLayerIds.length > 1 && (
+        <div style={{
+          padding: '12px 20px',
+          borderBottom: '1px solid #f3f4f6',
+          background: 'linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%)',
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center',
+          flexWrap: 'wrap'
+        }}>
+          <span style={{
+            fontSize: '13px',
+            fontWeight: '600',
+            color: '#1e40af',
+            marginRight: '8px'
+          }}>
+            Bulk Actions:
+          </span>
+
+          {/* Delete Selected Layers */}
+          <button
+            onClick={() => {
+              if (window.confirm(`Delete ${selectedLayerIds.length} selected layers?`)) {
+                selectedLayerIds.forEach(id => deleteLayer(id));
+              }
+            }}
+            style={{
+              background: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+            title="Delete all selected layers"
+          >
+            🗑️ Delete
+          </button>
+
+          {/* Toggle Visibility */}
+          <button
+            onClick={() => {
+              const allVisible = selectedLayerIds.every(id =>
+                layers.find(l => l.id === id)?.visible
+              );
+              selectedLayerIds.forEach(id => {
+                const layer = layers.find(l => l.id === id);
+                if (layer) {
+                  updateLayer(id, { visible: !allVisible });
+                }
+              });
+            }}
+            style={{
+              background: 'white',
+              color: '#1f2937',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#3b82f6';
+              e.currentTarget.style.color = '#3b82f6';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#d1d5db';
+              e.currentTarget.style.color = '#1f2937';
+            }}
+            title="Toggle visibility for all selected layers"
+          >
+            👁️ Toggle Visibility
+          </button>
+
+          {/* Toggle Lock */}
+          <button
+            onClick={() => {
+              const allLocked = selectedLayerIds.every(id =>
+                layers.find(l => l.id === id)?.locked
+              );
+              selectedLayerIds.forEach(id => {
+                const layer = layers.find(l => l.id === id);
+                if (layer) {
+                  updateLayer(id, { locked: !allLocked });
+                }
+              });
+            }}
+            style={{
+              background: 'white',
+              color: '#1f2937',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#3b82f6';
+              e.currentTarget.style.color = '#3b82f6';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#d1d5db';
+              e.currentTarget.style.color = '#1f2937';
+            }}
+            title="Toggle lock for all selected layers"
+          >
+            🔒 Toggle Lock
+          </button>
+
+          {/* Opacity Slider */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'white',
+            border: '1px solid #d1d5db',
+            borderRadius: '6px',
+            padding: '6px 12px',
+            fontSize: '12px'
+          }}>
+            <span style={{ color: '#6b7280', fontWeight: '500', fontSize: '12px' }}>
+              Opacity:
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              defaultValue="100"
+              onChange={(e) => {
+                const opacity = parseInt(e.target.value) / 100;
+                selectedLayerIds.forEach(id => {
+                  updateLayer(id, { opacity });
+                });
+              }}
+              style={{
+                width: '80px',
+                cursor: 'pointer',
+                accentColor: '#3b82f6'
+              }}
+              title="Set opacity for all selected layers"
+            />
+            <span style={{
+              color: '#6b7280',
+              fontSize: '11px',
+              minWidth: '35px',
+              textAlign: 'right'
+            }}>
+              {Math.round((layers.find(l => l.id === selectedLayerIds[0])?.opacity || 1) * 100)}%
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Layer List */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {filteredLayers.slice().reverse().map(layer => {
-          const isActive = layer.id === activeLayerId;
-          // const shapeCount = getLayerShapeCount(layer.id);
-          const isEditing = editingLayer === layer.id;
-          const shapeInfo = getLayerShapeInfo(layer.id);
+        {/* Phase 3: Recursive folder rendering function */}
+        {(() => {
+          const renderLayer = (layer: typeof layers[0], depth: number = 0): React.ReactNode => {
+            const isActive = layer.id === activeLayerId;
+            const isSelected = selectedLayerIds.includes(layer.id);
+            const isEditing = editingLayer === layer.id;
+            const shapeInfo = getLayerShapeInfo(layer.id);
+            const isFolder = layer.type === 'folder';
+            const isCollapsed = layer.collapsed;
+            const children = isFolder ? getChildLayers(layer.id) : [];
+            const indentPx = depth * 20;
 
           return (
-            <div
-              key={layer.id}
-              draggable={true}
-              onDragStart={(e) => handleDragStart(e, layer.id)}
-              onDragOver={(e) => handleDragOver(e, layer.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, layer.id)}
-              onDragEnd={handleDragEnd}
-              style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid #f3f4f6',
-                background: 
-                  dragOverLayer === layer.id && draggedLayer !== layer.id 
-                    ? '#e0f2fe' 
-                    : isActive 
-                      ? '#f0f9ff' 
-                      : 'white',
-                cursor: draggedLayer === layer.id ? 'grabbing' : 'pointer',
-                position: 'relative',
-                borderLeft: isActive ? '3px solid #3b82f6' : '3px solid transparent',
-                opacity: draggedLayer === layer.id ? 0.5 : 1,
-                transition: 'background-color 0.2s, opacity 0.2s'
-              }}
-              onClick={() => setActiveLayer(layer.id)}
-            >
+            <React.Fragment key={layer.id}>
+              <div
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, layer.id)}
+                onDragOver={(e) => handleDragOver(e, layer.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, layer.id)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  padding: '16px 20px',
+                  paddingLeft: `${20 + indentPx}px`, // Phase 3: Indentation for folder hierarchy
+                  background:
+                    dragOverLayer === layer.id && draggedLayer !== layer.id
+                      ? dropZone === 'inside'
+                        ? dropValid ? '#dbeafe' : '#fee2e2'  // Blue for valid drop into folder, red for invalid
+                        : '#f3f4f6'  // Light gray for above/below
+                      : isSelected
+                        ? '#f0f9ff'
+                        : 'white',
+                  cursor: draggedLayer === layer.id ? 'grabbing' : 'pointer',
+                  position: 'relative',
+                  borderLeft: isActive ? '3px solid #3b82f6' : isSelected ? '3px solid #93c5fd' : '3px solid transparent',
+                  opacity: draggedLayer === layer.id ? 0.5 : 1,
+                  transition: 'background-color 0.2s, opacity 0.2s',
+                  // Phase 3: Drop zone indicator borders
+                  borderTop: dragOverLayer === layer.id && dropZone === 'above' && dropValid ? '2px solid #3b82f6' : undefined,
+                  borderBottom: dragOverLayer === layer.id && dropZone === 'below' && dropValid ? '2px solid #3b82f6' : '1px solid #f3f4f6',
+                }}
+                onClick={(e) => handleLayerClick(layer.id, e)}
+              >
               {/* Tool Type Header */}
               <div style={{
                 fontSize: '12px',
                 color: '#9ca3af',
                 marginBottom: '8px',
-                fontWeight: '500'
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}>
-                {shapeInfo.type}
+                <span>{isFolder ? `📁 Folder (${children.length} items)` : shapeInfo.type}</span>
+                {/* Phase 3: Drop into folder indicator */}
+                {isFolder && dragOverLayer === layer.id && dropZone === 'inside' && (
+                  <span style={{
+                    fontSize: '11px',
+                    color: dropValid ? '#3b82f6' : '#ef4444',
+                    fontWeight: '600',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: dropValid ? '#eff6ff' : '#fef2f2'
+                  }}>
+                    {dropValid ? '↓ Drop into folder' : '✕ Cannot drop here'}
+                  </span>
+                )}
               </div>
 
               {/* Main Layer Content */}
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
                 gap: '12px',
                 marginBottom: '8px'
               }}>
+                {/* Phase 3: Folder expand/collapse icon */}
+                {isFolder ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFolderCollapse(layer.id);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      color: '#6b7280',
+                      flexShrink: 0,
+                      width: '18px',
+                      textAlign: 'center',
+                      transition: 'color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+                    title={isCollapsed ? 'Expand folder' : 'Collapse folder'}
+                  >
+                    {isCollapsed ? '▶' : '▼'}
+                  </button>
+                ) : checkboxMode && (
+                  <div style={{ width: '18px', flexShrink: 0 }} />
+                )}
+
+                {/* Phase 2: Checkbox for multi-selection mode */}
+                {checkboxMode && (
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      selectLayer(layer.id, true);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#3b82f6',
+                      flexShrink: 0
+                    }}
+                    title="Select layer"
+                  />
+                )}
+
                 {/* Drag Handle */}
-                <div 
+                <div
                   style={{
                     color: draggedLayer === layer.id ? '#3b82f6' : '#9ca3af',
                     fontSize: '14px',
                     cursor: draggedLayer === layer.id ? 'grabbing' : 'grab',
                     padding: '2px',
                     transition: 'color 0.2s'
-                  }} 
+                  }}
                   title="Drag to reorder"
                   onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
                   onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
                 >
                   ⋮⋮
                 </div>
+
+                {/* Layer Thumbnail - Phase 1: Visual preview (not for folders) */}
+                {!isFolder && <LayerThumbnail layer={layer} size={40} />}
+                {/* Phase 3: Folder icon */}
+                {isFolder && (
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '24px',
+                    flexShrink: 0
+                  }}>
+                    📁
+                  </div>
+                )}
 
                 {/* Layer Color Indicator - Clickable */}
                 <div style={{ position: 'relative' }}>
@@ -633,6 +1145,45 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                     )}
                   </button>
 
+                  {/* Lock/Unlock Toggle */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Toggle locked state for all elements in this layer
+                      const layerElements = getLayerElements(layer.id);
+                      const newLockedState = !layer.locked;
+                      layerElements.forEach(element => {
+                        updateElement(element.id, { locked: newLockedState });
+                      });
+                      updateLayer(layer.id, { locked: newLockedState });
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      opacity: layer.locked ? 1 : 0.4,
+                      color: '#6b7280'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    title={layer.locked ? 'Unlock layer' : 'Lock layer'}
+                  >
+                    {layer.locked ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                      </svg>
+                    )}
+                  </button>
+
                   {/* Layer Order Menu */}
                   {!isEditing && (
                     <div style={{ position: 'relative' }}>
@@ -713,7 +1264,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               </div>
 
               {/* Opacity Control */}
-              <div 
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -795,8 +1346,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                     cursor: 'pointer'
                   }}
                 />
-                <span style={{ 
-                  minWidth: '30px', 
+                <span style={{
+                  minWidth: '30px',
                   textAlign: 'right',
                   fontWeight: '500',
                   color: '#374151'
@@ -804,6 +1355,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                   {Math.round(layer.opacity * 100)}%
                 </span>
               </div>
+
 
               {/* Inline Layer Order Controls - Shows when expanded */}
               {expandedLayer === layer.id && (
@@ -950,48 +1502,318 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 </div>
               )}
             </div>
-          );
-        })}
 
-        {filteredLayers.length === 0 && (
+            {/* Phase 3: Recursive children rendering for folders */}
+            {isFolder && !isCollapsed && children.length > 0 && (
+              <React.Fragment key={`children-${layer.id}`}>
+                {children.slice().reverse().map(child => renderLayer(child, depth + 1))}
+              </React.Fragment>
+            )}
+          </React.Fragment>
+          );
+        };
+
+        // Phase 3: Render root-level layers (no parent)
+        return rootLayers.slice().reverse().map(layer => renderLayer(layer, 0));
+      })()}
+
+        {rootLayers.length === 0 && (
           <div style={{
-            padding: '12px 20px',
+            padding: '32px 20px',
             textAlign: 'center',
             color: '#6b7280',
             fontSize: '14px'
           }}>
-            <div style={{ marginBottom: '4px' }}>No layers found</div>
-            <div style={{ fontSize: '12px' }}>
-              {searchTerm ? 'Try a different search term' : 'Draw your first shape to create a layer'}
+            <div style={{ marginBottom: '8px', fontSize: '16px', fontWeight: '500' }}>
+              {searchTerm ? 'No layers found' : 'No layers yet'}
+            </div>
+            <div style={{ fontSize: '12px', lineHeight: '1.5' }}>
+              {searchTerm ? 'Try a different search term' : 'Create a shape or add text to get started'}
             </div>
           </div>
         )}
       </div>
 
-      {/* Layer Statistics */}
-      <div style={{
-        padding: '12px 16px',
-        borderTop: '1px solid #e5e7eb',
-        background: '#f9fafb',
-        fontSize: '12px',
-        color: '#6b7280',
-        flexShrink: 0
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <span>Total Layers:</span>
-          <span style={{ fontWeight: '500', color: '#374151' }}>{layers.length}</span>
+      {/* Layer Statistics - Only show if there are elements */}
+      {/* Safe fallback: elements might be undefined if migration hasn't run yet */}
+      {elements && elements.length > 0 && (
+        <div style={{
+          borderTop: '1px solid #e5e7eb',
+          background: '#f9fafb',
+          fontSize: '12px',
+          color: '#6b7280',
+          flexShrink: 0
+        }}>
+          {/* Statistics Header with Toggle */}
+          <div
+            onClick={() => setStatisticsExpanded(!statisticsExpanded)}
+            style={{
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              background: '#f3f4f6',
+              borderBottom: statisticsExpanded ? '1px solid #e5e7eb' : 'none',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#f3f4f6'}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontWeight: '600',
+              fontSize: '13px',
+              color: '#374151'
+            }}>
+              <span style={{
+                fontSize: '14px',
+                transition: 'transform 0.2s',
+                transform: statisticsExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+              }}>
+                ▶
+              </span>
+              Statistics
+            </div>
+            <div style={{
+              fontSize: '11px',
+              color: '#6b7280',
+              fontWeight: '500'
+            }}>
+              {filteredLayers.length} layers · {elements.length} elements
+            </div>
+          </div>
+
+          {/* Statistics Content - Collapsible */}
+          {statisticsExpanded && (
+            <div style={{ padding: '12px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>Total Layers:</span>
+                <span style={{ fontWeight: '500', color: '#374151' }}>{filteredLayers.length}</span>
+              </div>
+              {/* Phase 6: Element statistics */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>Total Elements:</span>
+                <span style={{ fontWeight: '500', color: '#374151' }}>{elements.length}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>- Shapes:</span>
+                <span style={{ fontWeight: '500', color: '#374151' }}>
+                  {elements.filter(el => isShapeElement(el)).length}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>- Text:</span>
+                <span style={{ fontWeight: '500', color: '#374151' }}>
+                  {elements.filter(el => isTextElement(el)).length}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Visible Layers:</span>
+                <span style={{ fontWeight: '500', color: '#374151' }}>
+                  {filteredLayers.filter(l => l.visible).length}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <span>Total Shapes:</span>
-          <span style={{ fontWeight: '500', color: '#374151' }}>{shapes.length}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>Visible Layers:</span>
-          <span style={{ fontWeight: '500', color: '#374151' }}>
-            {layers.filter(l => l.visible).length}
-          </span>
-        </div>
-      </div>
+      )}
+
+      {/* Phase 3: Folder Delete Confirmation Modal */}
+      {deleteModalOpen && folderToDelete && (() => {
+        const folder = layers.find(l => l.id === folderToDelete);
+        const children = folder ? getChildLayers(folderToDelete) : [];
+        const childCount = children.length;
+
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000
+            }}
+            onClick={() => {
+              setDeleteModalOpen(false);
+              setFolderToDelete(null);
+            }}
+          >
+            <div
+              style={{
+                background: 'white',
+                borderRadius: '8px',
+                padding: '24px',
+                maxWidth: '450px',
+                width: '90%',
+                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                color: '#1f2937',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '24px' }}>⚠️</span>
+                Delete Folder
+              </div>
+
+              {/* Message */}
+              <div style={{
+                fontSize: '14px',
+                color: '#4b5563',
+                marginBottom: '20px',
+                lineHeight: '1.5'
+              }}>
+                {childCount === 0 ? (
+                  <p>Are you sure you want to delete the folder <strong>"{folder?.name}"</strong>?</p>
+                ) : (
+                  <>
+                    <p style={{ marginBottom: '12px' }}>
+                      The folder <strong>"{folder?.name}"</strong> contains <strong>{childCount}</strong> item{childCount !== 1 ? 's' : ''}.
+                    </p>
+                    <p>What would you like to do?</p>
+                  </>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {childCount > 0 && (
+                  <>
+                    {/* Move children to parent */}
+                    <button
+                      onClick={() => {
+                        deleteFolder(folderToDelete, false);
+                        setDeleteModalOpen(false);
+                        setFolderToDelete(null);
+                      }}
+                      style={{
+                        background: '#3b82f6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '12px 16px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                        textAlign: 'left'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                    >
+                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                        📁 Delete folder only
+                      </div>
+                      <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                        Move {childCount} item{childCount !== 1 ? 's' : ''} to parent folder
+                      </div>
+                    </button>
+
+                    {/* Delete folder and all contents */}
+                    <button
+                      onClick={() => {
+                        deleteFolder(folderToDelete, true);
+                        setDeleteModalOpen(false);
+                        setFolderToDelete(null);
+                      }}
+                      style={{
+                        background: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '12px 16px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                        textAlign: 'left'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                    >
+                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                        🗑️ Delete folder and all contents
+                      </div>
+                      <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                        Permanently delete {childCount} item{childCount !== 1 ? 's' : ''} inside
+                      </div>
+                    </button>
+                  </>
+                )}
+
+                {childCount === 0 && (
+                  <button
+                    onClick={() => {
+                      deleteFolder(folderToDelete, false);
+                      setDeleteModalOpen(false);
+                      setFolderToDelete(null);
+                    }}
+                    style={{
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '12px 16px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                  >
+                    🗑️ Delete Folder
+                  </button>
+                )}
+
+                {/* Cancel button */}
+                <button
+                  onClick={() => {
+                    setDeleteModalOpen(false);
+                    setFolderToDelete(null);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    color: '#6b7280',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '12px 16px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#9ca3af';
+                    e.currentTarget.style.background = '#f9fafb';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

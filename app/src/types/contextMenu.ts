@@ -3,7 +3,7 @@
  * Defines types for the context menu system
  */
 
-export type ContextMenuType = 'canvas' | 'shape' | 'multi-selection';
+export type ContextMenuType = 'canvas' | 'shape' | 'multi-selection' | 'text';
 
 export interface MenuItem {
   id: string;
@@ -23,4 +23,5 @@ export interface ContextMenuState {
   type: ContextMenuType | null;
   position: { x: number; y: number };
   targetShapeId?: string | null;
+  targetTextId?: string | null; // Phase 7: Support for text context menu
 }

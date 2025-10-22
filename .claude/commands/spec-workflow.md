@@ -1,6 +1,6 @@
-# /spec-workflow - Complete Specification Workflow
+# /spec-workflow - Complete SpecKit Workflow
 
-Execute the full Specification-Driven Development workflow for a new feature.
+Execute the full GitHub SpecKit-compatible workflow for a new feature.
 
 ## Usage
 
@@ -10,12 +10,14 @@ Execute the full Specification-Driven Development workflow for a new feature.
 
 ## What This Command Does
 
-Guides you through the complete Spec-Kit workflow:
+Guides you through the complete SpecKit workflow:
 
-1. **📋 Specification** - Define what to build
-2. **📐 Planning** - Determine how to build it
-3. **✅ Tasks** - Break down into actionable steps
-4. **🚀 Implementation** - Ready-to-code roadmap
+1. **📋 Specification** (`/speckit.specify`) - Define what to build
+2. **🔍 Clarification** (`/speckit.clarify`) - Resolve ambiguities
+3. **📐 Planning** (`/speckit.plan`) - Determine how to build it
+4. **✅ Tasks** (`/speckit.tasks`) - Break down into actionable steps
+5. **✔️ Validation** (`/speckit.analyze`, `/speckit.checklist`) - Verify quality
+6. **🚀 Implementation** (`/speckit.implement`) - Execute the build
 
 ## Interactive Workflow
 
@@ -168,9 +170,14 @@ Every step ensures compliance with:
 
 ## Related Commands
 
-- `/specify` - Just create specification
-- `/spec-plan` - Just create plan
-- `/spec-tasks` - Just create tasks
+- `/speckit.specify` - Just create specification
+- `/speckit.clarify` - Just clarify ambiguities
+- `/speckit.plan` - Just create plan
+- `/speckit.tasks` - Just create tasks
+- `/speckit.analyze` - Analyze cross-artifact consistency
+- `/speckit.checklist` - Generate quality checklists
+- `/speckit.implement` - Execute implementation
+- `/speckit.constitution` - View/update project constitution
 - `/review-plan` - Review existing plan
 
 ## Quick Start

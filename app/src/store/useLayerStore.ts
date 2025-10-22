@@ -9,7 +9,7 @@ interface LayerStore {
   activeLayerId: string;
 
   // Layer actions
-  createLayer: (name: string) => void;
+  createLayer: (name: string) => Layer; // CRITICAL FIX: Return the created layer
   updateLayer: (id: string, updates: Partial<Layer>) => void;
   deleteLayer: (id: string) => void;
   setActiveLayer: (id: string) => void;
@@ -62,9 +62,9 @@ export const useLayerStore = create<LayerStore>()(
 
       // Layer actions
       createLayer: (name: string) => {
-        set((state) => {
-          const newLayer = createDefaultLayer(name);
+        const newLayer = createDefaultLayer(name);
 
+        set((state) => {
           logger.info('Creating layer', { layer: newLayer });
 
           return {
@@ -72,6 +72,8 @@ export const useLayerStore = create<LayerStore>()(
             activeLayerId: newLayer.id,
           };
         });
+
+        return newLayer; // CRITICAL FIX: Return the created layer
       },
 
       updateLayer: (id: string, updates: Partial<Layer>) => {

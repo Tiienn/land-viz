@@ -110,6 +110,26 @@ interface AppStore extends AppState {
   resizeShape: (shapeId: string, newPoints: Point2D[]) => void;
   resizeShapeLive: (shapeId: string, newPoints: Point2D[]) => void;
 
+  // Multi-selection resize actions
+  resizeMultiSelection: (
+    shapeIds: string[],
+    originalBounds: { minX: number; minY: number; maxX: number; maxY: number },
+    newBounds: { minX: number; minY: number; maxX: number; maxY: number },
+    scaleX: number,
+    scaleY: number,
+    translateX: number,
+    translateY: number
+  ) => void;
+  resizeMultiSelectionLive: (
+    shapeIds: string[],
+    originalBounds: { minX: number; minY: number; maxX: number; maxY: number },
+    newBounds: { minX: number; minY: number; maxX: number; maxY: number },
+    scaleX: number,
+    scaleY: number,
+    translateX: number,
+    translateY: number
+  ) => void;
+
   // Rotation mode actions (only available in 'select' mode)
   enterRotateMode: (shapeId: string) => void;
   exitRotateMode: () => void;
@@ -262,6 +282,26 @@ interface AppStore extends AppState {
   sendShapeToBack: (shapeId: string) => void;
   bringShapeForward: (shapeId: string) => void;
   sendShapeBackward: (shapeId: string) => void;
+
+  // Element management (unified system for shapes + text)
+  addElement: (element: Omit<import('../types').Element, 'id' | 'created' | 'modified'>) => import('../types').Element;
+  updateElement: (id: string, updates: Partial<import('../types').Element>) => void;
+  deleteElement: (id: string) => void;
+  deleteElements: (ids: string[]) => void;
+  selectElement: (id: string | null) => void;
+  selectMultipleElements: (ids: string[]) => void;
+  toggleElementSelection: (id: string) => void;
+  clearElementSelection: () => void;
+  hoverElement: (id: string | null) => void;
+  getElementById: (id: string) => import('../types').Element | undefined;
+  getElementsByLayer: (layerId: string) => import('../types').Element[];
+  getElementsByGroup: (groupId: string) => import('../types').Element[];
+  getSelectedElements: () => import('../types').Element[];
+  getVisibleElements: () => import('../types').Element[];
+  groupSelectedElements: () => void;
+  ungroupSelectedElements: () => void;
+  runMigration: () => void;
+  rollbackMigration: () => void;
 }
 
 const generateId = (): string => {
@@ -469,6 +509,12 @@ const createInitialState = (): AppState => {
   const defaultLayer = createDefaultLayer();
   // Removed default shape - start with empty canvas
   const baseState = {
+    // Unified element system
+    elements: [],
+    selectedElementIds: [],
+    hoveredElementId: null,
+
+    // Legacy systems (for backward compatibility)
     shapes: [],
     layers: [defaultLayer],
     selectedShapeId: null, // Don't auto-select default shape on page load
@@ -1801,9 +1847,22 @@ export const useAppStore = create<AppStore>()(
             newIds = [...currentIds, id];
           }
 
+          // CRITICAL: Exit resize mode when creating multi-selection
+          const isMultiSelection = newIds.length > 1;
+          const shouldExitResizeMode = isMultiSelection && state.drawing.isResizeMode;
+
           return {
             selectedShapeIds: newIds,
             selectedShapeId: newIds.length === 1 ? newIds[0] : null,
+            // Exit resize mode for multi-selection
+            drawing: shouldExitResizeMode ? {
+              ...state.drawing,
+              isResizeMode: false,
+              resizingShapeId: null,
+              resizeHandleType: null,
+              resizeHandleIndex: null,
+              liveResizePoints: null,
+            } : state.drawing,
           };
         }, false, 'toggleShapeSelection');
       },
@@ -1989,7 +2048,7 @@ export const useAppStore = create<AppStore>()(
               }
 
             } catch (error) {
-              console.warn('Drag snap/alignment detection failed:', error);
+              // Silently handle snap/alignment detection errors
             }
 
             window._dragComputationScheduled = false;
@@ -2213,33 +2272,59 @@ export const useAppStore = create<AppStore>()(
           ? `group_${Date.now()}`
           : undefined;
 
-        const duplicatedShapes: Shape[] = shapesToDuplicate.map(shape => ({
-          ...shape,
-          id: generateId(),
-          name: `${shape.name} Copy`,
-          points: shape.points.map(p => ({ x: p.x + 20, y: p.y + 20 })), // Offset slightly
-          groupId: newGroupId, // Assign new groupId or undefined
-          created: new Date(),
-          modified: new Date(),
-          // Preserve rotation metadata if present
-          rotation: shape.rotation ? {
-            angle: shape.rotation.angle,
-            center: {
-              x: shape.rotation.center.x + 20,
-              y: shape.rotation.center.y + 20
-            }
-          } : undefined
-        }));
+        // Create new layers for each duplicated shape
+        const newLayersAndShapes: { layer: Layer; shape: Shape }[] = shapesToDuplicate.map(shape => {
+          // Find the original layer
+          const originalLayer = state.layers.find(l => l.id === shape.layerId);
+
+          // Create a new layer with " copy" suffix
+          const newLayer: Layer = {
+            id: generateId(),
+            name: `${originalLayer?.name || 'Shape'} copy`,
+            visible: true,
+            locked: false,
+            color: originalLayer?.color || shape.color,
+            opacity: originalLayer?.opacity || 1,
+            created: new Date(),
+            modified: new Date()
+          };
+
+          // Create duplicated shape assigned to new layer
+          const duplicatedShape: Shape = {
+            ...shape,
+            id: generateId(),
+            name: `${shape.name} Copy`,
+            layerId: newLayer.id, // Assign to new layer
+            points: shape.points.map(p => ({ x: p.x + 20, y: p.y + 20 })), // Offset slightly
+            groupId: newGroupId, // Assign new groupId or undefined
+            created: new Date(),
+            modified: new Date(),
+            // Preserve rotation metadata if present
+            rotation: shape.rotation ? {
+              angle: shape.rotation.angle,
+              center: {
+                x: shape.rotation.center.x + 20,
+                y: shape.rotation.center.y + 20
+              }
+            } : undefined
+          };
+
+          return { layer: newLayer, shape: duplicatedShape };
+        });
+
+        const newLayers = newLayersAndShapes.map(item => item.layer);
+        const duplicatedShapes = newLayersAndShapes.map(item => item.shape);
 
         set(
           prevState => ({
+            layers: [...prevState.layers, ...newLayers],
             shapes: [...prevState.shapes, ...duplicatedShapes],
           }),
           false,
           'duplicateShape',
         );
 
-        logger.info(`Duplicated ${duplicatedShapes.length} shape(s)${newGroupId ? ` with new group ID: ${newGroupId}` : ''}`);
+        logger.info(`Duplicated ${duplicatedShapes.length} shape(s) with ${newLayers.length} new layer(s)${newGroupId ? ` with new group ID: ${newGroupId}` : ''}`);
       },
 
       // Point manipulation
@@ -2464,30 +2549,20 @@ export const useAppStore = create<AppStore>()(
 
         // Handle rectangles - ensure they have the correct structure
         if (validatedShape.type === 'rectangle') {
-          // If rectangle has 4 points, ensure they form a proper rectangle
-          if (validatedShape.points.length === 4) {
-            // Check if the rectangle is properly closed (4 distinct corners)
-            const points = validatedShape.points;
+          // CRITICAL FIX: DO NOT convert between 2-point and 4-point formats
+          // - Single-selection rotation uses 2-point format + rotation metadata
+          // - Multi-selection rotation uses 4-point format (points already transformed)
+          // - Converting between formats breaks coordinate space assumptions
 
-            // Ensure we have a proper rectangle structure
-            // Rectangle should have: top-left, top-right, bottom-right, bottom-left
-            const validRectangle = {
-              ...validatedShape,
-              points: points.slice(0, 4) // Keep only first 4 points if there are more
-            };
-            return validRectangle;
-          } else if (validatedShape.points.length === 2) {
-            // Convert 2-point format to 4-point format for consistency
-            const [topLeft, bottomRight] = validatedShape.points;
+          if (validatedShape.points.length === 4) {
+            // Keep 4-point format as-is (multi-selection case)
             return {
               ...validatedShape,
-              points: [
-                { x: topLeft.x, y: topLeft.y },      // Top left
-                { x: bottomRight.x, y: topLeft.y },  // Top right
-                { x: bottomRight.x, y: bottomRight.y }, // Bottom right
-                { x: topLeft.x, y: bottomRight.y }   // Bottom left
-              ]
+              points: validatedShape.points.slice(0, 4)
             };
+          } else if (validatedShape.points.length === 2) {
+            // Keep 2-point format as-is (single-selection case)
+            return validatedShape;
           }
         }
         
@@ -2772,9 +2847,15 @@ export const useAppStore = create<AppStore>()(
       // Resize mode actions (only available in 'select' mode)
       enterResizeMode: (shapeId: string) => {
         const state = get();
-        
+
         // Only allow resize mode when in 'select' mode and not in edit mode
         if (state.drawing.activeTool !== 'select' || state.drawing.isEditMode) {
+          return;
+        }
+
+        // CRITICAL: Don't enter resize mode for multi-selection (use MultiSelectionBoundary instead)
+        const isMultiSelection = state.selectedShapeIds && state.selectedShapeIds.length > 1;
+        if (isMultiSelection) {
           return;
         }
 
@@ -2815,9 +2896,23 @@ export const useAppStore = create<AppStore>()(
           'exitResizeMode',
         );
 
-        // Ensure the shape remains selected after resize
+        // MULTI-SELECTION FIX: Preserve multi-selection when exiting resize mode
+        // Don't call selectShape() as it clears selectedShapeIds!
+        // Only update selectedShapeId if needed, keep selectedShapeIds unchanged
         if (wasResizingShapeId && currentState.selectedShapeId !== wasResizingShapeId) {
-          get().selectShape(wasResizingShapeId);
+          // Check if we have a multi-selection
+          const hasMultiSelection = currentState.selectedShapeIds && currentState.selectedShapeIds.length > 1;
+
+          if (hasMultiSelection) {
+            // Preserve multi-selection, just update primary shape
+            set({
+              selectedShapeId: wasResizingShapeId,
+              // Keep selectedShapeIds unchanged
+            }, false, 'exitResizeMode-preserveMultiSelection');
+          } else {
+            // Single selection - use selectShape
+            get().selectShape(wasResizingShapeId);
+          }
         }
       },
 
@@ -2869,9 +2964,54 @@ export const useAppStore = create<AppStore>()(
           state => ({
             shapes: state.shapes.map(shape => {
               if (shape.id === shapeId) {
+                // CRITICAL FIX: Ensure rectangles are always stored in 2-point format
+                let normalizedPoints = newPoints;
+                if (shape.type === 'rectangle' && newPoints.length > 2) {
+                  // Convert any multi-point format to 2-point format
+                  const minX = Math.min(...newPoints.map(p => p.x));
+                  const maxX = Math.max(...newPoints.map(p => p.x));
+                  const minY = Math.min(...newPoints.map(p => p.y));
+                  const maxY = Math.max(...newPoints.map(p => p.y));
+                  normalizedPoints = [
+                    { x: minX, y: minY },
+                    { x: maxX, y: maxY }
+                  ];
+                  logger.log('📦 Normalized rectangle to 2-point format:', normalizedPoints);
+                }
+
+                // CRITICAL FIX: When resizing a rotated shape, recalculate the rotation center
+                // based on the NEW resized points (in local space)
+                let updatedRotation = shape.rotation;
+                if (shape.rotation && normalizedPoints.length >= 2) {
+                  // Calculate new center based on new points
+                  if (shape.type === 'rectangle' && normalizedPoints.length === 2) {
+                    // 2-point rectangle format
+                    const [topLeft, bottomRight] = normalizedPoints;
+                    updatedRotation = {
+                      angle: shape.rotation.angle, // Keep the same angle
+                      center: {
+                        x: (topLeft.x + bottomRight.x) / 2,
+                        y: (topLeft.y + bottomRight.y) / 2
+                      }
+                    };
+                  } else {
+                    // Multi-point format (calculate centroid)
+                    const center = {
+                      x: normalizedPoints.reduce((sum, p) => sum + p.x, 0) / normalizedPoints.length,
+                      y: normalizedPoints.reduce((sum, p) => sum + p.y, 0) / normalizedPoints.length
+                    };
+                    updatedRotation = {
+                      angle: shape.rotation.angle,
+                      center
+                    };
+                  }
+                  logger.log('🔄 Updated rotation center:', updatedRotation);
+                }
+
                 const updatedShape = {
                   ...shape,
-                  points: newPoints,
+                  points: normalizedPoints,
+                  rotation: updatedRotation,
                   modified: new Date(),
                 };
                 logger.log('✅ Updated shape in store:', updatedShape);
@@ -2990,11 +3130,169 @@ export const useAppStore = create<AppStore>()(
         }
       },
 
+      // Multi-selection resize actions
+      resizeMultiSelection: (
+        shapeIds: string[],
+        originalBounds: { minX: number; minY: number; maxX: number; maxY: number },
+        newBounds: { minX: number; minY: number; maxX: number; maxY: number },
+        scaleX: number,
+        scaleY: number,
+        translateX: number,
+        translateY: number
+      ) => {
+        const currentState = get();
+
+        // Filter out locked shapes
+        const validShapeIds = shapeIds.filter(id => {
+          const shape = currentState.shapes.find(s => s.id === id);
+          return shape && !shape.locked;
+        });
+
+        if (validShapeIds.length === 0) return;
+
+        // Check if this is uniform scaling (aspect ratio preservation)
+        const isUniformScaling = Math.abs(scaleX - scaleY) < 0.001;
+
+        // Calculate original center for transformation
+        const originalCenterX = (originalBounds.minX + originalBounds.maxX) / 2;
+        const originalCenterY = (originalBounds.minY + originalBounds.maxY) / 2;
+
+        // Apply transformation to all selected shapes
+        const updatedShapes = currentState.shapes.map(shape => {
+          if (!validShapeIds.includes(shape.id)) return shape;
+
+          // Transform each point based on scaling type
+          const newPoints = shape.points.map(point => {
+            if (isUniformScaling) {
+              // UNIFORM SCALING (Canva/Figma style): Scale the entire bounding box INCLUDING spacing
+              // Calculate normalized position within original bounds (0-1)
+              const normalizedX = (point.x - originalBounds.minX) / (originalBounds.maxX - originalBounds.minX);
+              const normalizedY = (point.y - originalBounds.minY) / (originalBounds.maxY - originalBounds.minY);
+
+              // Apply uniform scale to the bounding box dimensions
+              const newWidth = (originalBounds.maxX - originalBounds.minX) * scaleX;
+              const newHeight = (originalBounds.maxY - originalBounds.minY) * scaleX;
+
+              // Place point at the same normalized position within the new bounds
+              return {
+                x: originalBounds.minX + normalizedX * newWidth + translateX,
+                y: originalBounds.minY + normalizedY * newHeight + translateY
+              };
+            } else {
+              // NON-UNIFORM SCALING: Use bounds interpolation (allows distortion)
+              const relativeX = (point.x - originalBounds.minX) / (originalBounds.maxX - originalBounds.minX);
+              const relativeY = (point.y - originalBounds.minY) / (originalBounds.maxY - originalBounds.minY);
+
+              const newX = newBounds.minX + relativeX * (newBounds.maxX - newBounds.minX);
+              const newY = newBounds.minY + relativeY * (newBounds.maxY - newBounds.minY);
+
+              return { x: newX, y: newY };
+            }
+          });
+
+          // Invalidate geometry cache
+          GeometryCache.invalidateShape(shape);
+
+          return {
+            ...shape,
+            points: newPoints,
+            modified: new Date(),
+          };
+        });
+
+        set(
+          state => ({
+            ...state,
+            shapes: updatedShapes,
+            drawing: {
+              ...state.drawing,
+              liveResizePoints: null,
+            },
+          }),
+          false,
+          'resizeMultiSelection'
+        );
+      },
+
+      resizeMultiSelectionLive: (
+        shapeIds: string[],
+        originalBounds: { minX: number; minY: number; maxX: number; maxY: number },
+        newBounds: { minX: number; minY: number; maxX: number; maxY: number },
+        scaleX: number,
+        scaleY: number,
+        translateX: number,
+        translateY: number
+      ) => {
+        const currentState = get();
+
+        // Filter out locked shapes
+        const validShapeIds = shapeIds.filter(id => {
+          const shape = currentState.shapes.find(s => s.id === id);
+          return shape && !shape.locked;
+        });
+
+        if (validShapeIds.length === 0) return;
+
+        // Check if this is uniform scaling (aspect ratio preservation)
+        const isUniformScaling = Math.abs(scaleX - scaleY) < 0.001;
+
+        // Apply transformation to all selected shapes
+        const updatedShapes = currentState.shapes.map(shape => {
+          if (!validShapeIds.includes(shape.id)) return shape;
+
+          // Transform each point based on scaling type
+          const newPoints = shape.points.map(point => {
+            if (isUniformScaling) {
+              // UNIFORM SCALING (Canva/Figma style): Scale the entire bounding box INCLUDING spacing
+              // Calculate normalized position within original bounds (0-1)
+              const normalizedX = (point.x - originalBounds.minX) / (originalBounds.maxX - originalBounds.minX);
+              const normalizedY = (point.y - originalBounds.minY) / (originalBounds.maxY - originalBounds.minY);
+
+              // Apply uniform scale to the bounding box dimensions
+              const newWidth = (originalBounds.maxX - originalBounds.minX) * scaleX;
+              const newHeight = (originalBounds.maxY - originalBounds.minY) * scaleX;
+
+              // Place point at the same normalized position within the new bounds
+              return {
+                x: originalBounds.minX + normalizedX * newWidth + translateX,
+                y: originalBounds.minY + normalizedY * newHeight + translateY
+              };
+            } else {
+              // NON-UNIFORM SCALING: Use bounds interpolation (allows distortion)
+              const relativeX = (point.x - originalBounds.minX) / (originalBounds.maxX - originalBounds.minX);
+              const relativeY = (point.y - originalBounds.minY) / (originalBounds.maxY - originalBounds.minY);
+
+              const newX = newBounds.minX + relativeX * (newBounds.maxX - newBounds.minX);
+              const newY = newBounds.minY + relativeY * (newBounds.maxY - newBounds.minY);
+
+              return { x: newX, y: newY };
+            }
+          });
+
+          // Invalidate geometry cache
+          GeometryCache.invalidateShape(shape);
+
+          return {
+            ...shape,
+            points: newPoints,
+          };
+        });
+
+        set(
+          state => ({
+            ...state,
+            shapes: updatedShapes,
+          }),
+          false,
+          'resizeMultiSelectionLive'
+        );
+      },
+
       // Rotation mode actions
       enterRotateMode: (shapeId: string) => {
-        // Save state to history BEFORE entering rotate mode
-        // This captures the state the user started from
-        get().saveToHistory();
+        // PERFORMANCE FIX: Defer history save to avoid blocking UI during drag start
+        // History will be saved when rotation completes (in rotateShape)
+        // This eliminates the freeze when starting rotation drag
 
         // Defensive programming: Ensure we exit resize mode if currently active
         const currentState = get();
@@ -3011,13 +3309,21 @@ export const useAppStore = create<AppStore>()(
         const currentShape = get().shapes.find(shape => shape.id === shapeId);
         const originalRotation = currentShape?.rotation || { angle: 0, center: { x: 0, y: 0 } };
 
-        // Canva-style grouping: If shape is part of a group, select ALL group members
-        // This ensures group rotation works even when clicking rotation handle directly
-        let groupMemberIds: string[] = [shapeId];
-        if (currentShape?.groupId) {
+        // MULTI-SELECTION FIX: Preserve existing multi-selection or use group members
+        // Priority: 1) Existing multi-selection 2) Group members 3) Single shape
+        let shapesToRotate: string[] = [shapeId];
+
+        // Check if there's already a multi-selection active
+        const existingSelection = currentState.selectedShapeIds || [];
+
+        if (existingSelection.length > 1 && existingSelection.includes(shapeId)) {
+          // Preserve the existing multi-selection
+          shapesToRotate = existingSelection;
+        } else if (currentShape?.groupId) {
+          // Canva-style grouping: If shape is part of a group, select ALL group members
           const groupMembers = currentState.shapes.filter(s => s.groupId === currentShape.groupId);
-          groupMemberIds = groupMembers.map(s => s.id);
-          logger.info(`Entering rotate mode for group: ${currentShape.groupId} (${groupMemberIds.length} shapes)`);
+          shapesToRotate = groupMembers.map(s => s.id);
+          logger.info(`Entering rotate mode for group: ${currentShape.groupId} (${shapesToRotate.length} shapes)`);
         }
 
         set(
@@ -3039,9 +3345,9 @@ export const useAppStore = create<AppStore>()(
               resizeHandleIndex: null,
               maintainAspectRatio: false,
             },
-            // Select all group members if grouped, or just the single shape
+            // Preserve multi-selection, group selection, or single shape
             selectedShapeId: shapeId,
-            selectedShapeIds: groupMemberIds,
+            selectedShapeIds: shapesToRotate,
           }),
           false,
           'enterRotateMode',
@@ -3069,11 +3375,10 @@ export const useAppStore = create<AppStore>()(
       rotateShapeLive: (shapeId: string, angle: number, center: Point2D) => {
         const state = get();
 
-        // Canva-style grouping: Check if rotating a grouped shape with other selected shapes
-        const targetShape = state.shapes.find(s => s.id === shapeId);
+        // MULTI-SELECTION FIX: Rotate all selected shapes together
         const selectedIds = state.selectedShapeIds || [];
-        const shapesToRotate = (targetShape?.groupId && selectedIds.length > 1)
-          ? selectedIds  // Rotate all selected shapes in group
+        const shapesToRotate = (selectedIds.length > 1)
+          ? selectedIds  // Rotate all selected shapes together
           : [shapeId];   // Rotate single shape
 
         // Invalidate geometry cache for all shapes being rotated
@@ -3084,20 +3389,71 @@ export const useAppStore = create<AppStore>()(
           }
         });
 
-        // The angle parameter is already the final absolute angle we want to apply
-        // (calculated from original rotation + delta in RotationControls)
-        // For group rotation: all shapes rotate around the same group center
+        // Helper: Calculate shape center
+        const calculateShapeCenter = (points: Point2D[]): Point2D => {
+          if (points.length === 0) return { x: 0, y: 0 };
+          return {
+            x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+            y: points.reduce((sum, p) => sum + p.y, 0) / points.length
+          };
+        };
+
+        // Helper: Rotate a point around a center
+        const rotatePoint = (point: Point2D, center: Point2D, angleDegrees: number): Point2D => {
+          const angleRadians = (angleDegrees * Math.PI) / 180;
+          const cos = Math.cos(angleRadians);
+          const sin = Math.sin(angleRadians);
+          const dx = point.x - center.x;
+          const dy = point.y - center.y;
+          return {
+            x: center.x + (dx * cos - dy * sin),
+            y: center.y + (dx * sin + dy * cos)
+          };
+        };
+
+        // For multi-selection: rotate each shape around the group center
+        // For single selection: apply rotation metadata
         set(
           state => ({
             shapes: state.shapes.map(shape => {
-              if (shapesToRotate.includes(shape.id)) {
+              if (!shapesToRotate.includes(shape.id)) return shape;
+
+              if (shapesToRotate.length > 1) {
+                // MULTI-SELECTION: Calculate new points by rotating around group center
+                const originalPoints = shape.rotation?.center
+                  ? shape.points // Points are already in world space if shape was previously rotated
+                  : shape.points;
+
+                // Calculate the shape's center
+                const shapeCenter = calculateShapeCenter(originalPoints);
+
+                // Rotate the shape's center around the group center
+                const newShapeCenter = rotatePoint(shapeCenter, center, angle);
+
+                // Calculate offset to move shape
+                const offsetX = newShapeCenter.x - shapeCenter.x;
+                const offsetY = newShapeCenter.y - shapeCenter.y;
+
+                // Move all points by the offset and store rotation metadata
+                const newPoints = originalPoints.map(p => ({
+                  x: p.x + offsetX,
+                  y: p.y + offsetY
+                }));
+
+                return {
+                  ...shape,
+                  points: newPoints,
+                  rotation: { angle, center: newShapeCenter }, // Rotate around new center
+                  modified: new Date(),
+                };
+              } else {
+                // SINGLE SELECTION: Just apply rotation metadata (rendering handles transform)
                 return {
                   ...shape,
                   rotation: { angle, center },
                   modified: new Date(),
                 };
               }
-              return shape;
             }),
           }),
           false,
@@ -3108,11 +3464,10 @@ export const useAppStore = create<AppStore>()(
       rotateShape: (shapeId: string, angle: number, center: Point2D) => {
         const state = get();
 
-        // Canva-style grouping: Check if rotating a grouped shape with other selected shapes
-        const targetShape = state.shapes.find(s => s.id === shapeId);
+        // MULTI-SELECTION FIX: Rotate all selected shapes together
         const selectedIds = state.selectedShapeIds || [];
-        const shapesToRotate = (targetShape?.groupId && selectedIds.length > 1)
-          ? selectedIds  // Rotate all selected shapes in group
+        const shapesToRotate = (selectedIds.length > 1)
+          ? selectedIds  // Rotate all selected shapes together
           : [shapeId];   // Rotate single shape
 
         // Invalidate geometry cache for all shapes being rotated
@@ -3123,19 +3478,71 @@ export const useAppStore = create<AppStore>()(
           }
         });
 
-        // Apply the final rotation to all shapes
-        // For group rotation: all shapes rotate around the same group center
+        // Helper: Calculate shape center
+        const calculateShapeCenter = (points: Point2D[]): Point2D => {
+          if (points.length === 0) return { x: 0, y: 0 };
+          return {
+            x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+            y: points.reduce((sum, p) => sum + p.y, 0) / points.length
+          };
+        };
+
+        // Helper: Rotate a point around a center
+        const rotatePoint = (point: Point2D, center: Point2D, angleDegrees: number): Point2D => {
+          const angleRadians = (angleDegrees * Math.PI) / 180;
+          const cos = Math.cos(angleRadians);
+          const sin = Math.sin(angleRadians);
+          const dx = point.x - center.x;
+          const dy = point.y - center.y;
+          return {
+            x: center.x + (dx * cos - dy * sin),
+            y: center.y + (dx * sin + dy * cos)
+          };
+        };
+
+        // For multi-selection: rotate each shape around the group center
+        // For single selection: apply rotation metadata
         set(
           state => ({
             shapes: state.shapes.map(shape => {
-              if (shapesToRotate.includes(shape.id)) {
+              if (!shapesToRotate.includes(shape.id)) return shape;
+
+              if (shapesToRotate.length > 1) {
+                // MULTI-SELECTION: Calculate new points by rotating around group center
+                const originalPoints = shape.rotation?.center
+                  ? shape.points // Points are already in world space if shape was previously rotated
+                  : shape.points;
+
+                // Calculate the shape's center
+                const shapeCenter = calculateShapeCenter(originalPoints);
+
+                // Rotate the shape's center around the group center
+                const newShapeCenter = rotatePoint(shapeCenter, center, angle);
+
+                // Calculate offset to move shape
+                const offsetX = newShapeCenter.x - shapeCenter.x;
+                const offsetY = newShapeCenter.y - shapeCenter.y;
+
+                // Move all points by the offset and store rotation metadata
+                const newPoints = originalPoints.map(p => ({
+                  x: p.x + offsetX,
+                  y: p.y + offsetY
+                }));
+
+                return {
+                  ...shape,
+                  points: newPoints,
+                  rotation: { angle, center: newShapeCenter }, // Rotate around new center
+                  modified: new Date(),
+                };
+              } else {
+                // SINGLE SELECTION: Just apply rotation metadata (rendering handles transform)
                 return {
                   ...shape,
                   rotation: { angle, center },
                   modified: new Date(),
                 };
               }
-              return shape;
             }),
           }),
           false,
@@ -3163,13 +3570,21 @@ export const useAppStore = create<AppStore>()(
         // Save current state to history before entering mode
         state.saveToHistory();
 
-        // Canva-style grouping: If shape is part of a group, select ALL group members
-        // This ensures group rotation works from the Rotate button
-        let groupMemberIds: string[] = [shapeId];
-        if (shape.groupId) {
+        // MULTI-SELECTION FIX: Preserve existing multi-selection or use group members
+        // Priority: 1) Existing multi-selection 2) Group members 3) Single shape
+        let shapesToRotate: string[] = [shapeId];
+
+        // Check if there's already a multi-selection active
+        const existingSelection = state.selectedShapeIds || [];
+
+        if (existingSelection.length > 1 && existingSelection.includes(shapeId)) {
+          // Preserve the existing multi-selection
+          shapesToRotate = existingSelection;
+        } else if (shape.groupId) {
+          // Canva-style grouping: If shape is part of a group, select ALL group members
           const groupMembers = state.shapes.filter(s => s.groupId === shape.groupId);
-          groupMemberIds = groupMembers.map(s => s.id);
-          logger.info(`Entering cursor rotation mode for group: ${shape.groupId} (${groupMemberIds.length} shapes)`);
+          shapesToRotate = groupMembers.map(s => s.id);
+          logger.info(`Entering cursor rotation mode for group: ${shape.groupId} (${shapesToRotate.length} shapes)`);
         }
 
         // Enter cursor rotation mode (keep current tool as 'select')
@@ -3180,7 +3595,7 @@ export const useAppStore = create<AppStore>()(
               cursorRotationMode: true,
               cursorRotationShapeId: shapeId,
             },
-            selectedShapeIds: groupMemberIds, // Select all group members or just single shape
+            selectedShapeIds: shapesToRotate, // Preserve multi-selection, group, or single shape
           }),
           false,
           'enterCursorRotationMode'
@@ -3284,12 +3699,37 @@ export const useAppStore = create<AppStore>()(
       },
 
       flipSelectedShapes: (direction: 'horizontal' | 'vertical') => {
-        const { selectedShapeIds, flipShapes } = get();
+        const { selectedShapeIds, shapes, flipShapes } = get();
         if (selectedShapeIds.length === 0) {
           logger.warn('[Store] No shapes selected for flip');
           return;
         }
-        flipShapes(selectedShapeIds, direction);
+
+        // Expand selection to include ALL shapes from any groups
+        const directlySelectedShapes = shapes.filter(s =>
+          selectedShapeIds.includes(s.id)
+        );
+
+        // Get all group IDs from selected shapes
+        const groupIds = new Set(
+          directlySelectedShapes
+            .filter(s => s.groupId)
+            .map(s => s.groupId!)
+        );
+
+        // Get all shapes that should be flipped (selected + all from groups)
+        const shapesToFlip = shapes.filter(s =>
+          selectedShapeIds.includes(s.id) ||
+          (s.groupId && groupIds.has(s.groupId))
+        );
+
+        const shapeIdsToFlip = shapesToFlip.map(s => s.id);
+
+        if (groupIds.size > 0) {
+          logger.info(`[Store] Expanding flip to include ${shapesToFlip.length} shapes from ${groupIds.size} group(s)`);
+        }
+
+        flipShapes(shapeIdsToFlip, direction);
       },
 
       // Measurement actions
@@ -4807,8 +5247,22 @@ selectAllShapes: () => {
 groupShapes: () => {
   set(
     (state) => {
-      const shapesToGroup = state.shapes.filter((s) =>
+      // First, get directly selected shapes
+      const directlySelectedShapes = state.shapes.filter((s) =>
         state.selectedShapeIds.includes(s.id)
+      );
+
+      // Expand selection to include ALL shapes from any existing groups
+      const existingGroupIds = new Set(
+        directlySelectedShapes
+          .filter(s => s.groupId)
+          .map(s => s.groupId!)
+      );
+
+      // Get all shapes that should be grouped (selected + all from existing groups)
+      const shapesToGroup = state.shapes.filter((s) =>
+        state.selectedShapeIds.includes(s.id) ||
+        (s.groupId && existingGroupIds.has(s.groupId))
       );
 
       // Need at least 2 shapes to group
@@ -4820,19 +5274,20 @@ groupShapes: () => {
       // Generate unique group ID
       const groupId = `group_${Date.now()}`;
 
-      // Assign groupId to all selected shapes
+      // Assign groupId to all shapes (selected + from existing groups)
       const updatedShapes = state.shapes.map((s) =>
         shapesToGroup.some((sg) => sg.id === s.id)
           ? { ...s, groupId, modified: new Date() }
           : s
       );
 
-      logger.info(`Grouped ${shapesToGroup.length} shapes with ID: ${groupId}`);
+      logger.info(`Grouped ${shapesToGroup.length} shapes with ID: ${groupId}` +
+        (existingGroupIds.size > 0 ? ` (merged ${existingGroupIds.size} existing group(s))` : ''));
 
       return {
         shapes: updatedShapes,
-        // Keep shapes selected
-        selectedShapeIds: state.selectedShapeIds,
+        // Update selection to include all grouped shapes
+        selectedShapeIds: shapesToGroup.map(s => s.id),
       };
     },
     false,
@@ -5232,6 +5687,420 @@ sendShapeBackward: (shapeId: string) => {
   );
   get().saveToHistory();
 },
+
+      // ============================================================
+      // ELEMENT MANAGEMENT (Unified System for Shapes + Text)
+      // ============================================================
+
+      /**
+       * Add a new element to the unified elements array
+       * Automatically generates ID and timestamps
+       * Dual-writes to legacy stores (shapes or text) for backward compatibility
+       */
+      addElement: (element) => {
+        const id = generateId();
+        const now = new Date();
+        const newElement = {
+          ...element,
+          id,
+          created: now,
+          modified: now,
+        } as import('../types').Element;
+
+        set((state) => ({
+          elements: [...state.elements, newElement],
+        }), false, 'addElement');
+
+        // Dual-write to legacy stores
+        if (newElement.elementType === 'shape') {
+          const shapeElement = newElement as import('../types').ShapeElement;
+          const legacyShape: Shape = {
+            id: shapeElement.id,
+            type: shapeElement.type,
+            points: shapeElement.points,
+            center: shapeElement.center,
+            rotation: shapeElement.rotation,
+            layerId: shapeElement.layerId,
+            visible: shapeElement.visible,
+            locked: shapeElement.locked,
+            groupId: shapeElement.groupId,
+            created: shapeElement.created,
+            modified: shapeElement.modified,
+            name: shapeElement.name,
+          };
+          set((state) => ({
+            shapes: [...state.shapes, legacyShape],
+          }), false, 'addElement:legacyShape');
+        } else if (newElement.elementType === 'text') {
+          const textElement = newElement as import('../types').TextElement;
+          const legacyText: import('../types/text').TextObject = {
+            id: textElement.id,
+            type: 'floating',
+            content: textElement.content,
+            position: {
+              x: textElement.position.x,
+              y: textElement.position.y,
+              z: textElement.z,
+            },
+            fontFamily: textElement.fontFamily,
+            fontSize: textElement.fontSize,
+            color: textElement.color,
+            alignment: textElement.alignment,
+            opacity: textElement.opacity || 1,
+            bold: textElement.bold || false,
+            italic: textElement.italic || false,
+            underline: textElement.underline || false,
+            uppercase: textElement.uppercase || false,
+            letterSpacing: textElement.letterSpacing || 0,
+            lineHeight: textElement.lineHeight || 1.2,
+            backgroundOpacity: textElement.backgroundOpacity || 100,
+            rotation: textElement.rotation,
+            layerId: textElement.layerId,
+            locked: textElement.locked,
+            visible: textElement.visible,
+            createdAt: textElement.created.getTime(),
+            updatedAt: textElement.modified.getTime(),
+          };
+          import('../store/useTextStore').useTextStore.getState().addText(legacyText);
+        }
+
+        return newElement;
+      },
+
+      /**
+       * Update an existing element
+       * Syncs to legacy stores
+       */
+      updateElement: (id, updates) => {
+        set((state) => ({
+          elements: state.elements.map((el) =>
+            el.id === id
+              ? { ...el, ...updates, modified: new Date() }
+              : el
+          ),
+        }), false, 'updateElement');
+
+        // Dual-write to legacy stores
+        const element = get().elements.find(el => el.id === id);
+        if (!element) return;
+
+        if (element.elementType === 'shape') {
+          get().updateShape(id, updates as Partial<Shape>);
+        } else if (element.elementType === 'text') {
+          import('../store/useTextStore').useTextStore.getState().updateText(id, updates as Partial<import('../types/text').TextObject>);
+        }
+      },
+
+      /**
+       * Delete an element by ID
+       * Syncs to legacy stores and updates selection
+       */
+      deleteElement: (id) => {
+        const element = get().elements.find(el => el.id === id);
+
+        set((state) => ({
+          elements: state.elements.filter((el) => el.id !== id),
+          selectedElementIds: state.selectedElementIds.filter((elId) => elId !== id),
+          hoveredElementId: state.hoveredElementId === id ? null : state.hoveredElementId,
+        }), false, 'deleteElement');
+
+        // Dual-write to legacy stores
+        if (element?.elementType === 'shape') {
+          get().deleteShape(id);
+        } else if (element?.elementType === 'text') {
+          // Direct deletion from useTextStore without triggering deleteElement again
+          import('../store/useTextStore').useTextStore.setState((state) => ({
+            texts: state.texts.filter((t) => t.id !== id),
+            selectedTextId: state.selectedTextId === id ? null : state.selectedTextId,
+          }));
+        }
+      },
+
+      /**
+       * Delete multiple elements at once
+       */
+      deleteElements: (ids) => {
+        ids.forEach((id) => get().deleteElement(id));
+      },
+
+      /**
+       * Select a single element (or clear with null)
+       */
+      selectElement: (id) => {
+        set(() => ({
+          selectedElementIds: id ? [id] : [],
+        }), false, 'selectElement');
+
+        // Dual-write to legacy stores
+        const element = id ? get().elements.find(el => el.id === id) : null;
+        if (element?.elementType === 'shape') {
+          get().selectShape(id);
+        } else if (element?.elementType === 'text') {
+          import('../store/useTextStore').useTextStore.getState().selectText(id);
+        } else {
+          // Clearing selection
+          get().selectShape(null);
+          import('../store/useTextStore').useTextStore.getState().selectText(null);
+        }
+      },
+
+      /**
+       * Select multiple elements
+       */
+      selectMultipleElements: (ids) => {
+        set(() => ({
+          selectedElementIds: ids,
+        }), false, 'selectMultipleElements');
+
+        // Dual-write to legacy stores
+        const shapeIds = ids.filter((id) => {
+          const element = get().elements.find(el => el.id === id);
+          return element?.elementType === 'shape';
+        });
+        get().selectMultipleShapes(shapeIds);
+      },
+
+      /**
+       * Toggle element selection (for shift-click)
+       */
+      toggleElementSelection: (id) => {
+        set((state) => {
+          const isSelected = state.selectedElementIds.includes(id);
+          return {
+            selectedElementIds: isSelected
+              ? state.selectedElementIds.filter((elId) => elId !== id)
+              : [...state.selectedElementIds, id],
+          };
+        }, false, 'toggleElementSelection');
+      },
+
+      /**
+       * Clear all element selection
+       */
+      clearElementSelection: () => {
+        set(() => ({
+          selectedElementIds: [],
+        }), false, 'clearElementSelection');
+
+        // Dual-write to legacy stores
+        get().selectShape(null);
+        import('../store/useTextStore').useTextStore.getState().selectText(null);
+      },
+
+      /**
+       * Set hovered element
+       */
+      hoverElement: (id) => {
+        set(() => ({
+          hoveredElementId: id,
+        }), false, 'hoverElement');
+
+        // Dual-write to legacy stores
+        const element = id ? get().elements.find(el => el.id === id) : null;
+        if (element?.elementType === 'shape') {
+          get().hoverShape(id);
+        }
+      },
+
+      /**
+       * Get element by ID
+       */
+      getElementById: (id) => {
+        return get().elements.find((el) => el.id === id);
+      },
+
+      /**
+       * Get all elements in a layer
+       */
+      getElementsByLayer: (layerId) => {
+        return get().elements.filter((el) => el.layerId === layerId);
+      },
+
+      /**
+       * Get all elements in a group
+       */
+      getElementsByGroup: (groupId) => {
+        return get().elements.filter((el) => el.groupId === groupId);
+      },
+
+      /**
+       * Get all selected elements
+       */
+      getSelectedElements: () => {
+        const { elements, selectedElementIds } = get();
+        return elements.filter((el) => selectedElementIds.includes(el.id));
+      },
+
+      /**
+       * Get all visible elements
+       */
+      getVisibleElements: () => {
+        return get().elements.filter((el) => el.visible === true);
+      },
+
+      /**
+       * Group selected elements
+       */
+      groupSelectedElements: () => {
+        const { selectedElementIds, elements } = get();
+        const selectedElements = elements.filter((el) => selectedElementIds.includes(el.id));
+
+        // Filter out locked elements
+        const unlocked = selectedElements.filter((el) => !el.locked);
+
+        if (unlocked.length < 2) {
+          logger.warn('[Store] Cannot group: need at least 2 unlocked elements');
+          return;
+        }
+
+        const groupId = `group_${Date.now()}`;
+
+        set((state) => ({
+          elements: state.elements.map((el) =>
+            unlocked.some((selected) => selected.id === el.id)
+              ? { ...el, groupId, modified: new Date() }
+              : el
+          ),
+        }), false, 'groupSelectedElements');
+
+        logger.info(`[Store] Grouped ${unlocked.length} elements with ID: ${groupId}`);
+      },
+
+      /**
+       * Ungroup selected elements
+       */
+      ungroupSelectedElements: () => {
+        const { selectedElementIds, elements } = get();
+        const selectedElements = elements.filter((el) => selectedElementIds.includes(el.id));
+
+        const groupIds = new Set(
+          selectedElements.filter((el) => el.groupId).map((el) => el.groupId!)
+        );
+
+        if (groupIds.size === 0) {
+          logger.warn('[Store] No groups to ungroup');
+          return;
+        }
+
+        set((state) => ({
+          elements: state.elements.map((el) =>
+            groupIds.has(el.groupId || '')
+              ? { ...el, groupId: undefined, modified: new Date() }
+              : el
+          ),
+        }), false, 'ungroupSelectedElements');
+
+        logger.info(`[Store] Ungrouped ${groupIds.size} group(s)`);
+      },
+
+      /**
+       * Run migration from legacy stores to unified elements
+       */
+      runMigration: () => {
+        const migrated = localStorage.getItem('land-viz:elements-migrated');
+        if (migrated === 'true') {
+          logger.info('[Store] Migration already completed, skipping');
+          return;
+        }
+
+        logger.info('[Store] Running migration: shapes + texts → elements');
+
+        const { shapes } = get();
+        const { texts } = import('../store/useTextStore').useTextStore.getState();
+
+        // Backup before migration
+        localStorage.setItem('land-viz:migration-backup:shapes', JSON.stringify(shapes));
+        localStorage.setItem('land-viz:migration-backup:texts', JSON.stringify(texts));
+
+        const migratedElements: import('../types').Element[] = [];
+
+        // Migrate shapes
+        shapes.forEach((shape) => {
+          const shapeElement: import('../types').ShapeElement = {
+            id: shape.id,
+            elementType: 'shape',
+            type: shape.type,
+            points: shape.points,
+            center: shape.center,
+            rotation: shape.rotation,
+            layerId: shape.layerId,
+            visible: shape.visible,
+            locked: shape.locked || false,
+            groupId: shape.groupId,
+            name: shape.name,
+            created: shape.created,
+            modified: shape.modified,
+          };
+          migratedElements.push(shapeElement);
+        });
+
+        // Migrate texts
+        texts.forEach((text) => {
+          const textElement: import('../types').TextElement = {
+            id: text.id,
+            elementType: 'text',
+            content: text.content,
+            position: { x: text.position.x, y: text.position.y },
+            z: text.position.z,
+            fontSize: text.fontSize,
+            fontFamily: text.fontFamily,
+            color: text.color,
+            alignment: text.alignment,
+            opacity: text.opacity,
+            bold: text.bold,
+            italic: text.italic,
+            underline: text.underline,
+            uppercase: text.uppercase,
+            letterSpacing: text.letterSpacing,
+            lineHeight: text.lineHeight,
+            backgroundOpacity: text.backgroundOpacity,
+            rotation: text.rotation,
+            layerId: text.layerId,
+            visible: text.visible,
+            locked: text.locked,
+            name: `Text: ${text.content.substring(0, 20)}${text.content.length > 20 ? '...' : ''}`,
+            created: new Date(text.createdAt),
+            modified: new Date(text.updatedAt),
+          };
+          migratedElements.push(textElement);
+        });
+
+        set(() => ({
+          elements: migratedElements,
+        }), false, 'runMigration');
+
+        localStorage.setItem('land-viz:elements-migrated', 'true');
+        logger.info(`[Store] Migration complete: ${migratedElements.length} elements created`);
+      },
+
+      /**
+       * Rollback migration to legacy stores
+       */
+      rollbackMigration: () => {
+        logger.warn('[Store] Rolling back migration');
+
+        const shapesBackup = localStorage.getItem('land-viz:migration-backup:shapes');
+        const textsBackup = localStorage.getItem('land-viz:migration-backup:texts');
+
+        if (shapesBackup) {
+          set(() => ({
+            shapes: JSON.parse(shapesBackup),
+          }), false, 'rollbackMigration:shapes');
+        }
+
+        if (textsBackup) {
+          import('../store/useTextStore').useTextStore.setState({
+            texts: JSON.parse(textsBackup),
+          });
+        }
+
+        set(() => ({
+          elements: [],
+        }), false, 'rollbackMigration:elements');
+
+        localStorage.removeItem('land-viz:elements-migrated');
+        logger.info('[Store] Migration rolled back successfully');
+      },
     }),
     {
       name: 'land-visualizer-store',

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ReferenceObject, ReferenceCategory } from '../types/referenceObjects';
+import { logger } from '../utils/logger';
 
 /**
  * Hook for lazy loading reference objects to prevent mixed import issues
@@ -18,7 +19,7 @@ export function useReferenceObjects() {
         setSearchFunction(() => module.searchReferenceObjects);
         setFilterFunction(() => module.filterByCategory);
       } catch (error) {
-        console.error('Failed to load reference objects:', error);
+        logger.error('[useReferenceObjects]', 'Failed to load reference objects:', error);
         setReferenceObjects([]);
         setSearchFunction(null);
         setFilterFunction(null);

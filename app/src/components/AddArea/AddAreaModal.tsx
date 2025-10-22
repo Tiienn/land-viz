@@ -3,6 +3,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { validateAddAreaConfig } from '@/utils/validation';
 import { calculateShapePreview } from '@/utils/areaCalculations';
 import type { AddAreaConfig, AreaUnit } from '@/types';
+import { logger } from '@/utils/logger';
 import AreaInput from './AreaInput';
 import UnitSelector from './UnitSelector';
 import ShapeTypeSelector from './ShapeTypeSelector';
@@ -47,7 +48,7 @@ export const AddAreaModal: React.FC<AddAreaModalProps> = ({ isOpen, onClose }) =
       await createAreaShape(config as AddAreaConfig);
       onClose();
     } catch (error) {
-      console.error('Failed to create area shape:', error);
+      logger.error('[AddAreaModal]', 'Failed to create area shape:', error);
     } finally {
       setIsLoading(false);
     }

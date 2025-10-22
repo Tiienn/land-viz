@@ -1,5 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
+import { useTextStore } from '@/store/useTextStore';
+import { TextPropertiesPanel } from './Text/TextPropertiesPanel';
+import { TextFormattingControls } from './Text/TextFormattingControls';
+import { TextModal } from './Text/TextModal';
+import Icon from './Icon';
+import type { TextObject } from '@/types/text';
 
 interface PropertiesPanelProps {
   isOpen: boolean;
@@ -15,14 +21,35 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
   const toggleSnapToGrid = useAppStore(state => state.toggleSnapToGrid);
   const setGridSize = useAppStore(state => state.setGridSize);
 
-  if (!isOpen) return null;
+  // Phase 6: Text editing state
+  const [textEditModalOpen, setTextEditModalOpen] = useState(false);
+  const [editingText, setEditingText] = useState<TextObject | undefined>(undefined);
+
+  // Get selectedTextId from store with proper subscription
+  const selectedTextId = useTextStore(state => state.selectedTextId);
+  const updateText = useTextStore(state => state.updateText);
+
+  // Phase 6: Handle text edit from properties panel
+  const handleTextEditClick = (text: TextObject) => {
+    setEditingText(text);
+    setTextEditModalOpen(true);
+  };
+
+  // Phase 6: Handle text modal save
+  const handleTextModalSave = (textData: Partial<TextObject>) => {
+    if (editingText) {
+      updateText(editingText.id, textData);
+    }
+    setTextEditModalOpen(false);
+    setEditingText(undefined);
+  };
 
   const getToolInstructions = () => {
     switch (activeTool) {
       case 'rectangle':
         return {
           title: 'Rectangle Tool',
-          icon: '⬜',
+          icon: 'rectangle',
           instructions: [
             isDrawing 
               ? 'Click to set the opposite corner of your rectangle'
@@ -41,7 +68,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
       case 'circle':
         return {
           title: 'Circle Tool',
-          icon: '⭕',
+          icon: 'circle',
           instructions: [
             isDrawing
               ? 'Click to set the radius of your circle'
@@ -62,7 +89,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
       case 'polyline':
         return {
           title: 'Polyline Tool',
-          icon: '📐',
+          icon: 'polyline',
           instructions: [
             isDrawing
               ? 'Click to add more points to your line'
@@ -85,7 +112,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
       default:
         return {
           title: 'Select Tool',
-          icon: '↖',
+          icon: 'select',
           instructions: [
             'Click on shapes to select and edit them',
             'Use the drawing tools above to create new shapes',
@@ -103,47 +130,55 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
 
   return (
     <div style={{
-      position: 'fixed',
-      top: 0,
-      right: isOpen ? 0 : '-400px',
-      width: '400px',
-      height: '100vh',
-      background: 'white',
-      boxShadow: '-2px 0 10px rgba(0,0,0,0.1)',
-      transition: 'right 0.3s ease',
-      zIndex: 1000,
+      height: '100%',
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      background: 'white'
     }}>
       {/* Header */}
       <div style={{
-        padding: '16px',
-        borderBottom: '1px solid #e5e5e5',
-        background: '#f9fafb',
         display: 'flex',
+        alignItems: 'center',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        padding: '16px 20px',
+        borderBottom: '1px solid #e5e7eb',
+        backgroundColor: '#fafafa',
+        flexShrink: 0
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#111827' }}>
-            Properties
-          </h2>
-        </div>
+        <h3 style={{
+          margin: 0,
+          fontSize: '16px',
+          fontWeight: 700,
+          color: '#1f2937',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          Properties
+        </h3>
         <button
           onClick={onClose}
           style={{
             background: 'none',
             border: 'none',
-            fontSize: '18px',
+            fontSize: '24px',
             cursor: 'pointer',
-            padding: '4px',
-            borderRadius: '4px',
-            color: '#6b7280'
+            color: '#6b7280',
+            padding: '4px 8px',
+            borderRadius: '6px',
+            transition: 'all 200ms ease',
+            lineHeight: 1,
+            fontWeight: 300
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          title="Collapse properties panel"
         >
-          ✕
+          ▶
         </button>
       </div>
 
@@ -153,21 +188,29 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
         overflowY: 'auto',
         padding: '16px'
       }}>
-        {/* Current Tool Section */}
-        <div style={{
-          background: '#f0f9ff',
-          border: '1px solid #0ea5e9',
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '20px'
-        }}>
+        {/* Canva-style inline text formatting - shown during inline editing */}
+        <TextFormattingControls />
+
+        {/* Phase 6: Text Properties Panel - shown when text is selected (PRIORITY VIEW) */}
+        {selectedTextId ? (
+          <TextPropertiesPanel onEditClick={handleTextEditClick} />
+        ) : (
+          <>
+            {/* Current Tool Section - only shown when no text is selected */}
+            <div style={{
+              background: '#f0f9ff',
+              border: '1px solid #0ea5e9',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '20px'
+            }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             marginBottom: '12px'
           }}>
-            <span style={{ fontSize: '24px' }}>{toolInfo.icon}</span>
+            <Icon name={toolInfo.icon} size={24} color="#0c4a6e" strokeWidth={2} />
             <h3 style={{
               margin: 0,
               fontSize: '18px',
@@ -387,7 +430,24 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
+
+      {/* Phase 6: Text Edit Modal */}
+      {textEditModalOpen && (
+        <TextModal
+          isOpen={textEditModalOpen}
+          onClose={() => {
+            setTextEditModalOpen(false);
+            setEditingText(undefined);
+          }}
+          onSave={handleTextModalSave}
+          initialData={editingText}
+          mode="edit"
+          isLabel={editingText?.type === 'label'}
+        />
+      )}
     </div>
   );
 };

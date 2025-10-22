@@ -18,9 +18,16 @@ import { useAppStore } from '@/store/useAppStore';
 import SimpleAlignmentGuides from './SimpleAlignmentGuides';
 import DraggableShapes from './DraggableShapes';
 import ResizableShapeControls from './ResizableShapeControls';
+import TextResizeControls from './TextResizeControls'; // Phase 4B: Text resize controls
+import TextRotationControls from './TextRotationControls'; // Phase 4C: Text rotation controls
 import RulerSystem from './RulerSystem';
 import { GroupBoundaryManager } from './GroupBoundaryManager';
+import { MultiSelectionBoundary } from './MultiSelectionBoundary';
+import { TextRenderer } from '../Text/TextRenderer';
+import { ShapeLabelRenderer } from '../Text/ShapeLabelRenderer';
+import { ElementRenderer } from './ElementRenderer'; // Phase 3: Unified element rendering
 import type { SceneSettings, Point3D, Point2D } from '@/types';
+import { isTextElement } from '@/types'; // Phase 4B: Type guard for text elements
 
 export interface SceneManagerRef {
   cameraController: React.RefObject<CameraControllerRef | null>;
@@ -92,6 +99,17 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const alignmentGuides = useAppStore(state => state.drawing.alignment?.activeGuides || []);
   const alignmentConfig = useAppStore(state => state.drawing.alignment?.config);
 
+  // Phase 4B: Get selected text elements for resize controls
+  const selectedElementIds = useAppStore(state => state.selectedElementIds);
+  const elements = useAppStore(state => state.elements);
+  const selectedTextElements = React.useMemo(() => {
+    // Safe fallback: elements might be undefined if migration hasn't run yet
+    if (!elements) return [];
+    return elements.filter(el =>
+      selectedElementIds.includes(el.id) && isTextElement(el)
+    ).filter(isTextElement); // Double filter to ensure TypeScript type narrowing
+  }, [elements, selectedElementIds]);
+
   // Get current view mode to adjust snap indicator distance
   const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
 
@@ -162,8 +180,22 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       <ShapeRenderer elevation={0.01} hideDimensions={hideDimensions} />
 
+      {/* Text objects rendering */}
+      <TextRenderer />
+
+      {/* Phase 5: Shape labels rendering */}
+      <ShapeLabelRenderer />
+
+      {/* Phase 3: Unified element rendering (Text as Layers) */}
+      {/* Note: Elements array empty until migration runs - backward compatible */}
+      {/* CRITICAL FIX: Show dimensions here since ElementRenderer now renders all new shapes */}
+      <ElementRenderer elevation={0.01} hideDimensions={hideDimensions} />
+
       {/* Group boundaries for Canva-style grouping */}
       <GroupBoundaryManager />
+
+      {/* Multi-selection boundary with resize handles */}
+      <MultiSelectionBoundary elevation={0.02} />
 
       {/* Measurement visualization */}
       <MeasurementRenderer elevation={0.03} />
@@ -173,6 +205,24 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
       {/* Resize handles for selected shapes */}
       <ResizableShapeControls elevation={0.02} />
+
+      {/* Phase 4B: Resize handles for selected text elements */}
+      {selectedTextElements.map(textElement => (
+        <TextResizeControls
+          key={`text-resize-${textElement.id}`}
+          element={textElement}
+          elevation={0.02}
+        />
+      ))}
+
+      {/* Phase 4C: Rotation handles for selected text elements */}
+      {selectedTextElements.map(textElement => (
+        <TextRotationControls
+          key={`text-rotation-${textElement.id}`}
+          element={textElement}
+          elevation={0.02}
+        />
+      ))}
 
       {/* Snap Indicators - Dynamic distance based on view mode */}
       <SnapIndicator maxDistance={snapIndicatorDistance} />

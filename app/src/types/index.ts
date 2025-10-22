@@ -14,12 +14,19 @@ export interface Point3D {
 export interface Layer {
   id: string;
   name: string;
+  type?: 'layer' | 'folder';  // Phase 3: Distinguish layers from folders (default: 'layer')
   visible: boolean;
   locked: boolean;
   color: string;
   opacity: number;
   created: Date;
   modified: Date;
+  // Phase 1: Layer thumbnails (40×40px visual preview)
+  thumbnail?: string;  // base64 data URL
+  thumbnailUpdated?: Date;  // Last thumbnail generation timestamp
+  // Phase 3: Folder support
+  parentId?: string;  // Parent folder ID (null/undefined = root level)
+  collapsed?: boolean;  // Folder collapsed state (only for type: 'folder')
 }
 
 // Rotation metadata for shapes
@@ -28,7 +35,93 @@ export interface ShapeRotation {
   center: Point2D;  // rotation pivot point
 }
 
+// ================================
+// UNIFIED ELEMENT SYSTEM
+// ================================
+
+/**
+ * Element type discriminator
+ */
+export type ElementType = 'shape' | 'text';
+
+/**
+ * Base properties shared by all elements
+ */
+export interface BaseElement {
+  id: string;
+  elementType: ElementType;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  layerId: string;
+  groupId?: string;
+  created: Date;
+  modified: Date;
+}
+
+/**
+ * Shape element - geometric shapes with points
+ */
+export interface ShapeElement extends BaseElement {
+  elementType: 'shape';
+  shapeType: ShapeType;
+  points: Point2D[];
+  color: string;
+  rotation?: ShapeRotation;
+  label?: import('./text').TextObject;
+}
+
+/**
+ * Text element - text objects as first-class elements
+ */
+export interface TextElement extends BaseElement {
+  elementType: 'text';
+  position: Point2D;
+  z: number;
+  content: string;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  alignment: import('./text').TextAlignment;
+  opacity: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  uppercase: boolean;
+  letterSpacing: number;
+  lineHeight: number;
+  backgroundColor?: string;
+  backgroundOpacity: number;
+  rotation: number;
+  attachedToShapeId?: string;
+  offset?: { x: number; y: number };
+}
+
+/**
+ * Unified element type
+ */
+export type Element = ShapeElement | TextElement;
+
+/**
+ * Type guard to check if element is a shape
+ */
+export function isShapeElement(element: Element): element is ShapeElement {
+  return element.elementType === 'shape';
+}
+
+/**
+ * Type guard to check if element is text
+ */
+export function isTextElement(element: Element): element is TextElement {
+  return element.elementType === 'text';
+}
+
 // Shape types
+
+/**
+ * @deprecated Use ShapeElement instead. Legacy type for backward compatibility.
+ * Will be removed in v2.0.
+ */
 export interface Shape {
   id: string;
   name: string;
@@ -50,7 +143,7 @@ export type ShapeType = 'polygon' | 'rectangle' | 'circle' | 'polyline' | 'line'
 export type { ViewState };
 
 // Drawing tool types
-export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate' | 'measure' | 'line';
+export type DrawingTool = 'polygon' | 'rectangle' | 'circle' | 'select' | 'edit' | 'polyline' | 'rotate' | 'measure' | 'line' | 'text';
 
 // ================================
 // WORKFLOW SYSTEM TYPES
@@ -492,6 +585,14 @@ export interface ViewState {
 
 // Application state
 export interface AppState {
+  // NEW: Unified elements array
+  elements: Element[];
+
+  // NEW: Element selection
+  selectedElementIds: string[];
+  hoveredElementId: string | null;
+
+  // LEGACY: Keep for backward compatibility (will be phased out)
   shapes: Shape[];
   layers: Layer[];
   selectedShapeId: string | null;
@@ -500,7 +601,10 @@ export interface AppState {
   hoveredGroupId: string | null; // ID of the group being hovered (Canva-style)
   highlightedShapeId: string | null; // Specific shape highlighted within a group
   dragState: DragState;
-  activeLayerId: string;
+
+  // Phase 2: Layer multi-selection support
+  activeLayerId: string; // Primary active layer (backward compatible)
+  selectedLayerIds: string[]; // Multi-selection array
   drawing: DrawingState;
   measurements: Record<string, Measurements>;
   history: HistoryState;
@@ -515,11 +619,26 @@ export interface AppState {
 
 export interface DragState {
   isDragging: boolean;
-  draggedShapeId: string | null;
+  draggedShapeId: string | null; // Legacy: for backward compatibility
   startPosition: Point2D | null;
   currentPosition: Point2D | null;
   originalShapePoints: Point2D[] | null; // Legacy: for single shape
   originalShapesData?: Map<string, { points: Point2D[]; rotation?: { angle: number; center: Point2D } }>; // Canva-style grouping: for multiple shapes
+
+  // Phase 4: Element-aware drag support
+  draggedElementId?: string | null; // Unified element ID (primary element)
+  draggedElementIds?: string[]; // Multi-selection: All element IDs being dragged
+  elementType?: 'shape' | 'text'; // Element type for type-specific drag logic
+  originalElementData?: {
+    position?: Point3D; // For text elements
+    points?: Point2D[]; // For shape elements
+    rotation?: { angle: number; center: Point2D }; // Shape rotation metadata
+  };
+  originalElementsData?: Record<string, {
+    position?: Point3D;
+    points?: Point2D[];
+    rotation?: { angle: number; center: Point2D };
+  }>; // Multi-selection: Original data for all dragged elements
 }
 
 export interface HistoryState {

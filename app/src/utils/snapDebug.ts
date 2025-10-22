@@ -43,10 +43,6 @@ export class SnapDebugger {
    */
   enable(): void {
     this.debugMode = true;
-    console.log('🔍 Snap Debug Mode: ENABLED');
-    console.log('Available commands:');
-    console.log('- snapDebug.getMetrics() - View current metrics');
-    console.log('- snapDebug.disable() - Disable debug mode');
   }
 
   /**
@@ -54,7 +50,6 @@ export class SnapDebugger {
    */
   disable(): void {
     this.debugMode = false;
-    console.log('🔍 Snap Debug Mode: DISABLED');
   }
 
   /**
@@ -64,14 +59,6 @@ export class SnapDebugger {
     if (!this.debugMode) return;
 
     this.metrics = { ...this.metrics, ...info };
-
-    console.group('🎯 Snap Detection Update');
-    console.log('Generated Points:', this.metrics.snapPointsGenerated);
-    console.log('Filtered Points:', this.metrics.snapPointsFiltered);
-    console.log('Cursor Position:', this.metrics.cursorPosition);
-    console.log('Active Snap:', this.metrics.activeSnapPoint?.type || 'none');
-    console.log('Performance:', this.metrics.performanceMetrics);
-    console.groupEnd();
   }
 
   /**
@@ -79,8 +66,6 @@ export class SnapDebugger {
    */
   logPerformance(operation: string, duration: number): void {
     if (!this.debugMode) return;
-
-    console.log(`⚡ ${operation}: ${duration.toFixed(2)}ms`);
   }
 
   /**
@@ -91,11 +76,6 @@ export class SnapDebugger {
 
     if (operation === 'hit') {
       this.metrics.performanceMetrics.cacheHits++;
-      console.log(`🎯 Cache HIT: ${key}`);
-    } else if (operation === 'miss') {
-      console.log(`❌ Cache MISS: ${key}`);
-    } else if (operation === 'clear') {
-      console.log('🧹 Cache CLEARED');
     }
   }
 
@@ -121,10 +101,6 @@ export class SnapDebugger {
         cacheHits: 0
       }
     };
-
-    if (this.debugMode) {
-      console.log('📊 Snap Debug Metrics Reset');
-    }
   }
 
   /**
@@ -132,8 +108,6 @@ export class SnapDebugger {
    */
   logSnapRadius(mode: '2D' | '3D', radius: number): void {
     if (!this.debugMode) return;
-
-    console.log(`📏 Snap Radius (${mode} mode): ${radius}m`);
   }
 
   /**
@@ -141,8 +115,6 @@ export class SnapDebugger {
    */
   logGridGeneration(generated: number, cached: number): void {
     if (!this.debugMode) return;
-
-    console.log(`🔲 Grid Points - Generated: ${generated}, From Cache: ${cached}`);
   }
 }
 

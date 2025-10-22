@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { AreaUnit, AreaValidation } from '../../types';
 import { validateAreaInput, getUnitLabel, analyzeGridSnapImpact, type GridSnapImpact } from '../../utils/areaCalculations';
 import { useAppStore } from '../../store/useAppStore';
+import { logger } from '../../utils/logger';
 
 interface InsertAreaModalProps {
   isOpen: boolean;
@@ -80,7 +81,7 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
       await onSubmit(validation.numValue, selectedUnit);
       onClose();
     } catch (error) {
-      console.error('Error creating shape:', error);
+      logger.error('[InsertAreaModal]', 'Error creating shape:', error);
     } finally {
       setIsSubmitting(false);
     }

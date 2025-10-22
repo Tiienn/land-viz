@@ -1,9 +1,11 @@
 /**
  * Simple Alignment System for Land Visualizer
  * Provides Canva-style alignment guides without complex dependencies
+ * Phase 7: Extended to support text elements
  */
 
-import type { Shape } from '../types/index';
+import type { Shape, Element } from '../types/index';
+import { isShapeElement, isTextElement } from '../types/index';
 
 export interface AlignmentGuide {
   id: string;
@@ -47,6 +49,7 @@ export class SimpleAlignment {
   private static readonly THRESHOLD = 5; // pixels
   private static readonly SEQUENCE_ALIGNMENT_THRESHOLD = 15; // pixels for sequence detection
   private static readonly EQUAL_SPACING_TOLERANCE = 3; // meters tolerance for equal spacing
+  private static idCounter = 0; // Counter for unique spacing measurement IDs
 
   /**
    * Calculate bounds for a shape
@@ -72,6 +75,50 @@ export class SimpleAlignment {
       centerX: (left + right) / 2,
       centerY: (top + bottom) / 2
     };
+  }
+
+  /**
+   * Phase 7: Calculate text bounding box
+   * Estimates bounds based on fontSize and content
+   */
+  static getTextBounds(element: import('../types/index').TextElement) {
+    // Estimate text dimensions
+    const estimatedWidth = element.fontSize * element.content.length * 0.6;
+    const estimatedHeight = element.fontSize * element.lineHeight;
+
+    const left = element.position.x - estimatedWidth / 2;
+    const right = element.position.x + estimatedWidth / 2;
+    const top = element.position.y - estimatedHeight / 2;
+    const bottom = element.position.y + estimatedHeight / 2;
+
+    return {
+      left,
+      right,
+      top,
+      bottom,
+      centerX: element.position.x,
+      centerY: element.position.y
+    };
+  }
+
+  /**
+   * Phase 7: Calculate bounds for any element (shape or text)
+   */
+  static getElementBounds(element: Element) {
+    if (isShapeElement(element)) {
+      return this.getShapeBounds({
+        ...element,
+        type: element.shapeType,
+        name: element.name,
+        created: element.created,
+        modified: element.modified
+      });
+    } else if (isTextElement(element)) {
+      return this.getTextBounds(element);
+    }
+
+    // Fallback
+    return { left: 0, right: 0, top: 0, bottom: 0, centerX: 0, centerY: 0 };
   }
 
   /**
@@ -419,7 +466,7 @@ export class SimpleAlignment {
     // Left edge alignment
     if (Math.abs(draggedBounds.left - otherBounds.left) < threshold) {
       guides.push({
-        id: `left-${draggedId}-${otherId}-${Date.now()}`,
+        id: `left-${draggedId}-${otherId}-${Date.now()}-${SimpleAlignment.idCounter++}`,
         type: 'vertical',
         position: otherBounds.left,
         start: Math.min(draggedBounds.top, otherBounds.top) - 20,
@@ -431,7 +478,7 @@ export class SimpleAlignment {
     // Right edge alignment
     if (Math.abs(draggedBounds.right - otherBounds.right) < threshold) {
       guides.push({
-        id: `right-${draggedId}-${otherId}-${Date.now()}`,
+        id: `right-${draggedId}-${otherId}-${Date.now()}-${SimpleAlignment.idCounter++}`,
         type: 'vertical',
         position: otherBounds.right,
         start: Math.min(draggedBounds.top, otherBounds.top) - 20,
@@ -443,7 +490,7 @@ export class SimpleAlignment {
     // Center vertical alignment
     if (Math.abs(draggedBounds.centerX - otherBounds.centerX) < threshold) {
       guides.push({
-        id: `vcenter-${draggedId}-${otherId}-${Date.now()}`,
+        id: `vcenter-${draggedId}-${otherId}-${Date.now()}-${SimpleAlignment.idCounter++}`,
         type: 'vertical',
         position: otherBounds.centerX,
         start: Math.min(draggedBounds.top, otherBounds.top) - 20,
@@ -468,7 +515,7 @@ export class SimpleAlignment {
     // Top edge alignment
     if (Math.abs(draggedBounds.top - otherBounds.top) < threshold) {
       guides.push({
-        id: `top-${draggedId}-${otherId}-${Date.now()}`,
+        id: `top-${draggedId}-${otherId}-${Date.now()}-${SimpleAlignment.idCounter++}`,
         type: 'horizontal',
         position: otherBounds.top,
         start: Math.min(draggedBounds.left, otherBounds.left) - 20,
@@ -480,7 +527,7 @@ export class SimpleAlignment {
     // Bottom edge alignment
     if (Math.abs(draggedBounds.bottom - otherBounds.bottom) < threshold) {
       guides.push({
-        id: `bottom-${draggedId}-${otherId}-${Date.now()}`,
+        id: `bottom-${draggedId}-${otherId}-${Date.now()}-${SimpleAlignment.idCounter++}`,
         type: 'horizontal',
         position: otherBounds.bottom,
         start: Math.min(draggedBounds.left, otherBounds.left) - 20,
@@ -492,7 +539,7 @@ export class SimpleAlignment {
     // Center horizontal alignment
     if (Math.abs(draggedBounds.centerY - otherBounds.centerY) < threshold) {
       guides.push({
-        id: `hcenter-${draggedId}-${otherId}-${Date.now()}`,
+        id: `hcenter-${draggedId}-${otherId}-${Date.now()}-${SimpleAlignment.idCounter++}`,
         type: 'horizontal',
         position: otherBounds.centerY,
         start: Math.min(draggedBounds.left, otherBounds.left) - 20,
@@ -585,5 +632,274 @@ export class SimpleAlignment {
         });
       }
     }
+  }
+
+  /**
+   * Phase 7: Detect sequences of aligned elements (shapes + text, 3 or more)
+   */
+  static detectElementSequences(elements: Element[]): ShapeSequence[] {
+    const sequences: ShapeSequence[] = [];
+
+    if (elements.length < 3) return sequences;
+
+    // Detect horizontal sequences
+    const horizontalGroups = new Map<number, Element[]>();
+
+    elements.forEach(element => {
+      const bounds = this.getElementBounds(element);
+      const centerY = bounds.centerY;
+
+      // Find existing group with similar Y position
+      let foundGroup = false;
+      horizontalGroups.forEach((group, groupY) => {
+        if (Math.abs(centerY - groupY) < this.SEQUENCE_ALIGNMENT_THRESHOLD) {
+          group.push(element);
+          foundGroup = true;
+        }
+      });
+
+      if (!foundGroup) {
+        horizontalGroups.set(centerY, [element]);
+      }
+    });
+
+    // Process horizontal groups
+    horizontalGroups.forEach(group => {
+      if (group.length >= 3) {
+        // Sort elements by X position (left to right)
+        group.sort((a, b) => {
+          const boundsA = this.getElementBounds(a);
+          const boundsB = this.getElementBounds(b);
+          return boundsA.centerX - boundsB.centerX;
+        });
+
+        // Calculate spacings between consecutive elements
+        const spacings: number[] = [];
+        for (let i = 0; i < group.length - 1; i++) {
+          const bounds1 = this.getElementBounds(group[i]);
+          const bounds2 = this.getElementBounds(group[i + 1]);
+          const spacing = bounds2.left - bounds1.right;
+          spacings.push(spacing);
+        }
+
+        // Check if spacings are equal
+        const avgSpacing = spacings.reduce((a, b) => a + b, 0) / spacings.length;
+        const isEquallySpaced = spacings.every(spacing =>
+          Math.abs(spacing - avgSpacing) <= this.EQUAL_SPACING_TOLERANCE
+        );
+
+        // Calculate overall bounds
+        const groupBounds = group.reduce((acc, element) => {
+          const bounds = this.getElementBounds(element);
+          return {
+            left: Math.min(acc.left, bounds.left),
+            right: Math.max(acc.right, bounds.right),
+            top: Math.min(acc.top, bounds.top),
+            bottom: Math.max(acc.bottom, bounds.bottom)
+          };
+        }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
+
+        sequences.push({
+          id: `hseq-${group.map(el => el.id).join('-')}`,
+          shapes: group.map(el => el.id),
+          direction: 'horizontal',
+          spacings,
+          isEquallySpaced,
+          patternSpacing: isEquallySpaced ? avgSpacing : undefined,
+          bounds: groupBounds
+        });
+      }
+    });
+
+    // Detect vertical sequences
+    const verticalGroups = new Map<number, Element[]>();
+
+    elements.forEach(element => {
+      const bounds = this.getElementBounds(element);
+      const centerX = bounds.centerX;
+
+      // Find existing group with similar X position
+      let foundGroup = false;
+      verticalGroups.forEach((group, groupX) => {
+        if (Math.abs(centerX - groupX) < this.SEQUENCE_ALIGNMENT_THRESHOLD) {
+          group.push(element);
+          foundGroup = true;
+        }
+      });
+
+      if (!foundGroup) {
+        verticalGroups.set(centerX, [element]);
+      }
+    });
+
+    // Process vertical groups
+    verticalGroups.forEach(group => {
+      if (group.length >= 3) {
+        // Sort elements by Y position (top to bottom)
+        group.sort((a, b) => {
+          const boundsA = this.getElementBounds(a);
+          const boundsB = this.getElementBounds(b);
+          return boundsA.centerY - boundsB.centerY;
+        });
+
+        // Calculate spacings between consecutive elements
+        const spacings: number[] = [];
+        for (let i = 0; i < group.length - 1; i++) {
+          const bounds1 = this.getElementBounds(group[i]);
+          const bounds2 = this.getElementBounds(group[i + 1]);
+          const spacing = bounds2.top - bounds1.bottom;
+          spacings.push(spacing);
+        }
+
+        // Check if spacings are equal
+        const avgSpacing = spacings.reduce((a, b) => a + b, 0) / spacings.length;
+        const isEquallySpaced = spacings.every(spacing =>
+          Math.abs(spacing - avgSpacing) <= this.EQUAL_SPACING_TOLERANCE
+        );
+
+        // Calculate overall bounds
+        const groupBounds = group.reduce((acc, element) => {
+          const bounds = this.getElementBounds(element);
+          return {
+            left: Math.min(acc.left, bounds.left),
+            right: Math.max(acc.right, bounds.right),
+            top: Math.min(acc.top, bounds.top),
+            bottom: Math.max(acc.bottom, bounds.bottom)
+          };
+        }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
+
+        sequences.push({
+          id: `vseq-${group.map(el => el.id).join('-')}`,
+          shapes: group.map(el => el.id),
+          direction: 'vertical',
+          spacings,
+          isEquallySpaced,
+          patternSpacing: isEquallySpaced ? avgSpacing : undefined,
+          bounds: groupBounds
+        });
+      }
+    });
+
+    return sequences;
+  }
+
+  /**
+   * Phase 7: Detect alignment guides when dragging an element (shape or text)
+   */
+  static detectElementAlignments(draggedElement: Element, otherElements: Element[]): AlignmentResult {
+    const guides: AlignmentGuide[] = [];
+    const spacings: SpacingMeasurement[] = [];
+    const draggedBounds = this.getElementBounds(draggedElement);
+    let snapPosition: { x: number; y: number } | undefined;
+
+    // Check if we're dealing with a sequence
+    const allElements = [...otherElements, draggedElement];
+    const sequences = this.detectElementSequences(allElements);
+
+    // If we have sequences, generate spacing measurements for all consecutive elements
+    if (sequences.length > 0) {
+      sequences.forEach(sequence => {
+        if (sequence.shapes.includes(draggedElement.id)) {
+          // Calculate target spacing for equal distribution
+          let targetSpacing: number | undefined;
+
+          // If sequence already has equal spacing, maintain it
+          if (sequence.isEquallySpaced && sequence.patternSpacing) {
+            targetSpacing = sequence.patternSpacing;
+          } else if (sequence.spacings.length > 0) {
+            // Use the average of existing spacings as target
+            targetSpacing = sequence.spacings.reduce((a, b) => a + b, 0) / sequence.spacings.length;
+          }
+
+          // Generate spacing measurements for all consecutive pairs in this sequence
+          for (let i = 0; i < sequence.shapes.length - 1; i++) {
+            const element1 = allElements.find(el => el.id === sequence.shapes[i]);
+            const element2 = allElements.find(el => el.id === sequence.shapes[i + 1]);
+
+            if (element1 && element2) {
+              const bounds1 = this.getElementBounds(element1);
+              const bounds2 = this.getElementBounds(element2);
+
+              if (sequence.direction === 'horizontal') {
+                const distance = bounds2.left - bounds1.right;
+                if (distance > 10) {
+                  const labelX = bounds1.right + distance / 2;
+                  const labelY = (bounds1.centerY + bounds2.centerY) / 2;
+
+                  // Check if this spacing is equal to target
+                  const isEqualDistribution = targetSpacing ?
+                    Math.abs(distance - targetSpacing) <= this.EQUAL_SPACING_TOLERANCE : false;
+
+                  // Check if we're close to achieving equal spacing
+                  const isSnappable = targetSpacing ?
+                    Math.abs(distance - targetSpacing) <= this.THRESHOLD * 2 : false;
+
+                  spacings.push({
+                    id: `seq-hspacing-${element1.id}-${element2.id}`,
+                    distance: Math.round(distance * 10) / 10,
+                    position: { x: labelX, y: labelY },
+                    direction: 'horizontal',
+                    fromShape: element1.id,
+                    toShape: element2.id,
+                    isEqualDistribution,
+                    targetSpacing: targetSpacing ? Math.round(targetSpacing * 10) / 10 : undefined,
+                    isSnappable
+                  });
+                }
+              } else {
+                const distance = bounds2.top - bounds1.bottom;
+                if (distance > 10) {
+                  const labelX = (bounds1.centerX + bounds2.centerX) / 2;
+                  const labelY = bounds1.bottom + distance / 2;
+
+                  // Check if this spacing is equal to target
+                  const isEqualDistribution = targetSpacing ?
+                    Math.abs(distance - targetSpacing) <= this.EQUAL_SPACING_TOLERANCE : false;
+
+                  // Check if we're close to achieving equal spacing
+                  const isSnappable = targetSpacing ?
+                    Math.abs(distance - targetSpacing) <= this.THRESHOLD * 2 : false;
+
+                  spacings.push({
+                    id: `seq-vspacing-${element1.id}-${element2.id}`,
+                    distance: Math.round(distance * 10) / 10,
+                    position: { x: labelX, y: labelY },
+                    direction: 'vertical',
+                    fromShape: element1.id,
+                    toShape: element2.id,
+                    isEqualDistribution,
+                    targetSpacing: targetSpacing ? Math.round(targetSpacing * 10) / 10 : undefined,
+                    isSnappable
+                  });
+                }
+              }
+            }
+          }
+        }
+      });
+    } else {
+      // Normal pairwise detection when no sequence is found
+      otherElements.forEach(otherElement => {
+        const otherBounds = this.getElementBounds(otherElement);
+
+        // Vertical alignments (left, right, center)
+        this.checkVerticalAlignment(draggedBounds, otherBounds, draggedElement.id, otherElement.id, guides);
+
+        // Horizontal alignments (top, bottom, center)
+        this.checkHorizontalAlignment(draggedBounds, otherBounds, draggedElement.id, otherElement.id, guides);
+
+        // Spacing measurements
+        this.checkSpacingMeasurements(draggedBounds, otherBounds, draggedElement.id, otherElement.id, spacings);
+      });
+    }
+
+    // Always generate alignment guides
+    otherElements.forEach(otherElement => {
+      const otherBounds = this.getElementBounds(otherElement);
+      this.checkVerticalAlignment(draggedBounds, otherBounds, draggedElement.id, otherElement.id, guides);
+      this.checkHorizontalAlignment(draggedBounds, otherBounds, draggedElement.id, otherElement.id, guides);
+    });
+
+    return { guides, spacings, sequences, snapPosition };
   }
 }

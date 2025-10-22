@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { logger } from '../utils/logger';
 
 /**
  * Hook for lazy loading comparison calculator to prevent mixed import issues
@@ -13,7 +14,7 @@ export function useComparisonCalculator() {
         const { ComparisonCalculator: Calculator } = await import('../utils/comparisonCalculations');
         setComparisonCalculator(() => Calculator);
       } catch (error) {
-        console.error('Failed to load comparison calculator:', error);
+        logger.error('[useComparisonCalculator]', 'Failed to load comparison calculator:', error);
         setComparisonCalculator(null);
       } finally {
         setLoading(false);

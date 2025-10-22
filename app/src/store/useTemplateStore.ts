@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PropertyTemplate, TemplateFilter } from '../types/template';
 import { templateStorage } from '../services/templateStorage';
+import { logger } from '../utils/logger';
 
 /**
  * Template Store
@@ -48,7 +49,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
       const templates = await templateStorage.getAllTemplates();
       set({ templates });
     } catch (error) {
-      console.error('Failed to load templates:', error);
+      logger.error('[TemplateStore]', 'Failed to load templates:', error);
     }
   },
 
@@ -99,7 +100,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
       });
       await get().loadAllTemplates();
     } catch (error) {
-      console.error('Failed to toggle favorite:', error);
+      logger.error('[TemplateStore]', 'Failed to toggle favorite:', error);
     }
   },
 
@@ -109,7 +110,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
       await templateStorage.deleteTemplate(id);
       await get().loadAllTemplates();
     } catch (error) {
-      console.error('Failed to delete template:', error);
+      logger.error('[TemplateStore]', 'Failed to delete template:', error);
       throw error;
     }
   },

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useCallback } from 'react';
 import { Sphere } from '@react-three/drei';
 import { useAppStore } from '@/store/useAppStore';
+import { useLayerStore } from '@/store/useLayerStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -25,6 +26,26 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
   const convertRectangleToPolygonLive = useAppStore(state => state.convertRectangleToPolygonLive);
   const saveToHistory = useAppStore(state => state.saveToHistory);
 
+  // Get layers for visibility checking
+  const layers = useLayerStore(state => state.layers);
+
+  // Helper function to check if layer is visible (including parent folders)
+  const isLayerVisible = useCallback((layerId: string): boolean => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return false;
+
+    // Layer itself must be visible
+    if (layer.visible === false) return false;
+
+    // If layer has a parent folder, check parent visibility recursively
+    if (layer.parentId) {
+      return isLayerVisible(layer.parentId);
+    }
+
+    // No parent or all parents are visible
+    return true;
+  }, [layers]);
+
   // Find the shape being edited
   const editingShape = useMemo(() => {
     if (!isEditMode || !editingShapeId) return null;
@@ -35,8 +56,13 @@ const EditableShapeControls: React.FC<EditableShapeControlsProps> = ({ elevation
       return null;
     }
 
+    // Don't show edit controls if shape's layer (or parent folders) are hidden
+    if (shape && !isLayerVisible(shape.layerId)) {
+      return null;
+    }
+
     return shape;
-  }, [shapes, isEditMode, editingShapeId]);
+  }, [shapes, isEditMode, editingShapeId, isLayerVisible]);
 
   // Simple corner points for editing
   const cornerPoints = useMemo(() => {

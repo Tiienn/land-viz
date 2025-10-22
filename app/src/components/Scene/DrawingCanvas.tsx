@@ -3,12 +3,14 @@ import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Vector2, Vector3, type Mesh } from 'three';
 import { useAppStore } from '@/store/useAppStore';
 import { useDimensionStore } from '@/store/useDimensionStore';
+import { useTextStore } from '@/store/useTextStore';
 import type { Point2D } from '@/types';
 import { RaycastManager } from '../../utils/RaycastManager';
 import { SnapGrid } from '../../utils/SnapGrid';
 import { alignmentService } from '../../services/alignmentService';
 import { useAdaptiveSnapRadius } from '../../hooks/useAdaptiveSnapRadius';
 import { parseDimension, convertToMeters } from '@/services/dimensionParser';
+import { generateTextId, createDefaultTextObject } from '@/utils/textUtils';
 
 interface DrawingCanvasProps {
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
@@ -34,6 +36,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   // Right-click drag detection (prevent context menu after camera drag)
   const rightClickStartPos = useRef<{x: number, y: number} | null>(null);
   const rightClickStartTime = useRef<number | null>(null);
+
+  // Text selection tracking (prevent text deselection on text click)
+  const textClickedRef = useRef<boolean>(false);
 
   // Cached vectors for performance
   const mousePosition = useRef(new Vector2());
@@ -386,11 +391,32 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     // Handle deselection when select tool is active and clicking empty space
     if (activeTool === 'select') {
-      // Clear all selections when clicking empty space
+      // Store current text selection state BEFORE any events fire
+      const textBeforeClick = useTextStore.getState().selectedTextId;
+
+      // Always clear shape selection immediately
       if (!event.shiftKey) {
         clearSelection();
-        exitRotateMode(); // Clear rotation handles when clicking empty space
+        exitRotateMode();
       }
+
+      // Use Promise microtask to check text selection AFTER all DOM events complete
+      // This allows text onClick to fire and set selectedTextId first
+      Promise.resolve().then(() => {
+        // Check if text selection changed (text was clicked)
+        const textAfterClick = useTextStore.getState().selectedTextId;
+
+        if (textAfterClick && textAfterClick !== textBeforeClick) {
+          // Text was just selected - keep it selected
+          return;
+        }
+
+        // No new text selection - clear any existing text selection
+        if (!event.shiftKey) {
+          useTextStore.getState().selectText(null);
+        }
+      });
+
       return;
     }
 
@@ -665,6 +691,65 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           finishDrawing();
         }
         break;
+
+      case 'text':
+        // Text tool - Canva-style inline editing
+        // Create text object immediately and start inline editing
+
+        // Get active layer (or default to 'main')
+        const activeLayerId = useAppStore.getState().activeLayerId || 'main';
+
+        // Create text position in 3D space
+        // snappedPos is a 2D point where x=X and y=Z (the horizontal plane)
+        // 3D coordinate system: X = left/right, Y = up/down, Z = forward/back
+        const textPosition = {
+          x: snappedPos.x,
+          y: 0.1,           // Height above grid (Y axis)
+          z: snappedPos.y   // 2D Y maps to 3D Z (depth)
+        };
+
+        // Generate unique text ID
+        const textId = generateTextId();
+
+        // Create TextObject using the existing text store
+        const newTextObject: import('../types/text').TextObject = {
+          id: textId,
+          type: 'floating',
+          content: '', // Empty initially - user will type
+          position: textPosition,
+          fontFamily: 'Nunito Sans',
+          fontSize: 24,
+          color: '#000000',
+          alignment: 'left',
+          opacity: 1,
+          bold: false,
+          italic: false,
+          underline: false,
+          uppercase: false,
+          letterSpacing: 0,
+          lineHeight: 1.2,
+          backgroundOpacity: 100,
+          rotation: 0,
+          layerId: activeLayerId,
+          locked: false,
+          visible: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        // Add to text store
+        useTextStore.getState().addText(newTextObject);
+
+        // Get screen position for the inline editor overlay
+        const rect = gl.domElement.getBoundingClientRect();
+        const screenPosition = {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+
+        // Start inline editing with screen position for overlay
+        useTextStore.getState().startInlineEdit(textId, textPosition, '', screenPosition);
+        break;
     }
   }, [
     activeTool,
@@ -816,6 +901,16 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       if (alignmentRafRef.current !== null) {
         cancelAnimationFrame(alignmentRafRef.current);
       }
+    };
+  }, []);
+
+  // Expose text click flag to text store for coordination
+  useEffect(() => {
+    // Store the ref so TextRenderer can set it when text is clicked
+    (window as any).__textClickedRef = textClickedRef;
+
+    return () => {
+      delete (window as any).__textClickedRef;
     };
   }, []);
 

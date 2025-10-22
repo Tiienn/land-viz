@@ -4,6 +4,7 @@ import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { logger } from '@/utils/logger';
 
 interface RotationControlsProps {
   elevation?: number;
@@ -105,10 +106,11 @@ const calculateGroupCenter = (shapes: any[]): Point2D => {
 
 const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 }) => {
   const { camera, raycaster, gl } = useThree();
-  
+
   // Get rotation state from store
   const drawing = useAppStore(state => state.drawing);
   const shapes = useAppStore(state => state.shapes);
+  const elements = useAppStore(state => state.elements); // CRITICAL FIX: Also get elements array
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const selectedShapeId = useAppStore(state => state.selectedShapeId);
   const selectedShapeIds = useAppStore(state => state.selectedShapeIds); // For group rotation
@@ -121,6 +123,10 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
   // Get global drag state to handle shape dragging transforms
   const globalDragState = useAppStore(state => state.dragState);
+
+  // CRITICAL FIX: Get layers from useAppStore, not useLayerStore
+  // useAppStore.layers is the source of truth (where finishDrawing() adds layers)
+  const layers = useAppStore(state => state.layers);
   
   // Local state for rotation interaction
   const [isRotating, setIsRotating] = React.useState(false);
@@ -163,21 +169,70 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     }
   }, [cursorOverride, gl.domElement]);
 
+  // Helper function to check if layer is visible (including parent folders)
+  const isLayerVisible = useCallback((layerId: string): boolean => {
+    const layer = layers.find(l => l.id === layerId);
+
+    if (!layer) {
+      return false;
+    }
+
+    // Layer itself must be visible
+    if (layer.visible === false) {
+      return false;
+    }
+
+    // If layer has a parent folder, check parent visibility recursively
+    if (layer.parentId) {
+      return isLayerVisible(layer.parentId);
+    }
+
+    // No parent or all parents are visible
+    return true;
+  }, [layers]);
+
   // Find the shape being rotated or show rotation handle for selected shape
   const targetShape = useMemo(() => {
     let shape = null;
 
+    // CRITICAL FIX: Combine shapes and elements arrays to find shapes
+    // During migration, new shapes are in elements array as ShapeElements
+    // Safe fallback: elements might be undefined if migration hasn't run yet
+    const allShapes = [
+      ...shapes,
+      ...(elements || []).filter(el => el.elementType === 'shape').map(el => ({
+        id: el.id,
+        type: el.shapeType,
+        points: el.points,
+        color: el.color,
+        visible: el.visible,
+        locked: el.locked,
+        layerId: el.layerId,
+        rotation: el.rotation,
+        created: el.created,
+        modified: el.modified
+      }))
+    ];
+
     // Cursor rotation mode: show handle for the shape being rotated
     if (cursorRotationMode && cursorRotationShapeId) {
-      shape = shapes.find(s => s.id === cursorRotationShapeId) || null;
+      shape = allShapes.find(s => s.id === cursorRotationShapeId) || null;
     }
     else if (drawing.isRotateMode && drawing.rotatingShapeId) {
-      shape = shapes.find(s => s.id === drawing.rotatingShapeId) || null;
+      shape = allShapes.find(s => s.id === drawing.rotatingShapeId) || null;
     }
-    // Show rotation handle for selected shape (when not in edit mode)
+    // Show rotation handle for selected shape OR multi-selection (when not in edit mode)
     // Allow rotation handles to show even if just finished drawing or in resize mode
-    else if (selectedShapeId && activeTool === 'select' && !drawing.isEditMode) {
-      shape = shapes.find(s => s.id === selectedShapeId) || null;
+    else if (activeTool === 'select' && !drawing.isEditMode) {
+      // MULTI-SELECTION FIX: Show handle for multi-selection or single selection
+      if (selectedShapeIds && selectedShapeIds.length > 1) {
+        // Multi-selection: use primary shape if available, otherwise first selected shape
+        const targetId = selectedShapeId || selectedShapeIds[0];
+        shape = allShapes.find(s => s.id === targetId) || null;
+      } else if (selectedShapeId) {
+        // Single selection: use primary selected shape
+        shape = allShapes.find(s => s.id === selectedShapeId) || null;
+      }
     }
 
     // Don't show rotation controls for locked shapes
@@ -185,22 +240,40 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       return null;
     }
 
+    // Don't show rotation controls if shape's layer (or parent folders) are hidden
+    if (shape && !isLayerVisible(shape.layerId)) {
+      return null;
+    }
+
     return shape;
-  }, [shapes, cursorRotationMode, cursorRotationShapeId, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, drawing.isDrawing, shapes.length]);
+  }, [shapes, elements, cursorRotationMode, cursorRotationShapeId, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, isLayerVisible]);
 
   // Calculate rotation handle position and rotation center
   const rotationHandlePosition = useMemo(() => {
     if (!targetShape) return null;
 
-    // Canva-style grouping: Check if we're rotating a group
-    const isGroupRotation = targetShape.groupId && selectedShapeIds && selectedShapeIds.length > 1;
+    // CRITICAL FIX: Combine shapes and elements for group rotation calculations
+    // Safe fallback: elements might be undefined if migration hasn't run yet
+    const allShapes = [
+      ...shapes,
+      ...(elements || []).filter(el => el.elementType === 'shape').map(el => ({
+        id: el.id,
+        type: el.shapeType,
+        points: el.points,
+        groupId: el.groupId,
+        rotation: el.rotation
+      }))
+    ];
+
+    // MULTI-SELECTION FIX: Check if we're rotating multiple shapes (grouped OR multi-selected)
+    const isMultiRotation = selectedShapeIds && selectedShapeIds.length > 1;
     let originalCenter: Point2D;
 
-    if (isGroupRotation) {
-      // Get all shapes in the group
-      const groupShapes = shapes.filter(s => selectedShapeIds.includes(s.id));
+    if (isMultiRotation) {
+      // Multi-selection OR group: Get all selected shapes
+      const selectedShapes = allShapes.filter(s => selectedShapeIds.includes(s.id));
       // Calculate group center (bounding box center) for rotation
-      originalCenter = calculateGroupCenter(groupShapes);
+      originalCenter = calculateGroupCenter(selectedShapes);
     } else {
       // Single shape rotation - use shape's own center
       let originalPoints = targetShape.points;
@@ -284,17 +357,25 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       }
     }
 
-    const displayCenter = calculateShapeCenter({...targetShape, points: transformedPoints});
+    // CANVA-STYLE FIX: For multi-selection, display handle at group center, not primary shape
+    let displayCenter: Point2D;
+    if (isMultiRotation) {
+      // Multi-selection: Use group center for handle display
+      displayCenter = originalCenter;
+    } else {
+      // Single selection: Use shape's transformed center for handle display
+      displayCenter = calculateShapeCenter({...targetShape, points: transformedPoints});
+    }
 
-    // Position handle below the shape and area text
-    const handleOffset = 4.0; // Distance below shape center (increased to clear area text)
+    // Position handle below the shape/group and area text
+    const handleOffset = 4.0; // Distance below center (increased to clear area text)
     return {
       x: displayCenter.x,
       y: displayCenter.y + handleOffset,
       center: originalCenter, // Use original center (single shape OR group center) for rotation calculations
       displayCenter: displayCenter // Use display center for visual positioning
     };
-  }, [targetShape, globalDragState, selectedShapeIds, shapes]);
+  }, [targetShape, globalDragState, selectedShapeIds, shapes, elements]); // isMultiRotation calculated inside
 
   // Handle pointer events
   const handlePointerMove = useCallback((event: PointerEvent) => {
@@ -403,9 +484,17 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
   // Separate function to initialize rotation interaction (MUST be before early return)
   const initializeRotation = useCallback((eventData: { clientX: number, clientY: number, pointerId: number, currentTarget: any }) => {
+    // CRITICAL FIX: Get CURRENT state, not closure state (prevents stale state after timeout)
+    const currentState = useAppStore.getState();
+
     // Enter rotation mode if not already in it
-    if (!drawing.isRotateMode) {
+    if (!currentState.drawing.isRotateMode) {
       enterRotateMode(targetShape.id);
+
+      // Save history asynchronously after mode entered (non-blocking)
+      requestAnimationFrame(() => {
+        useAppStore.getState().saveToHistory();
+      });
     }
 
     setIsRotating(true);
@@ -433,11 +522,17 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       const initialAngle = originalRotation?.angle || 0;
       setCurrentAngle(initialAngle);
       angleRef.current = initialAngle; // Store in ref for immediate access
-      setCursorOverride('grab');
+      setCursorOverride('grabbing'); // Canva-style: 'grabbing' cursor during drag
 
-      // Capture pointer (safely check if target still exists)
+      // Capture pointer (safely check if target still exists and pointer is active)
       if (eventData.currentTarget && eventData.currentTarget.setPointerCapture) {
-        eventData.currentTarget.setPointerCapture(eventData.pointerId);
+        try {
+          eventData.currentTarget.setPointerCapture(eventData.pointerId);
+        } catch (error) {
+          // Pointer may have already ended (e.g., when transitioning from resize mode)
+          // This is safe to ignore - the rotation will still work via global listeners
+          logger.log('Pointer capture failed (expected during mode transitions):', error);
+        }
       }
 
       // Add global listeners
@@ -646,6 +741,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     return null;
   }
 
+
   const handleRotationStart = (event: any) => {
     event.stopPropagation();
     event.preventDefault();
@@ -657,7 +753,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
     // Defensive check: Ensure targetShape exists
     if (!targetShape) {
-      console.warn('Rotation handle clicked but targetShape is null');
+      logger.warn('[RotationControls]', 'Rotation handle clicked but targetShape is null');
       return;
     }
 
@@ -671,7 +767,6 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
     // CRITICAL: Force exit from resize mode with proper state clearing
     if (drawing.isResizeMode) {
-      console.log('Rotation handle clicked - forcing exit from resize mode');
       const { exitResizeMode } = useAppStore.getState();
       exitResizeMode();
 
@@ -702,7 +797,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       >
         <div
           onPointerDown={handleRotationStart}
-          onPointerEnter={() => setCursorOverride('grab')}
+          onPointerEnter={() => setCursorOverride('alias')}
           onPointerLeave={() => !isRotating && setCursorOverride(null)}
           style={{
             width: '32px',
@@ -711,7 +806,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
             backgroundColor: drawing.isRotateMode ? 'rgba(29, 78, 216, 0.95)' : 'rgba(34, 197, 94, 0.95)',
             border: '3px solid rgba(255, 255, 255, 0.9)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            cursor: 'grab',
+            cursor: 'alias', // Canva-style rotation cursor (circular arrows)
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -721,7 +816,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
             transition: 'all 0.2s ease',
             transform: isRotating ? 'scale(1.1)' : 'scale(1)',
           }}
-          title="Drag to rotate shape"
+          title="Drag to rotate (Shift for 45° snap)"
         >
           ↻
         </div>
