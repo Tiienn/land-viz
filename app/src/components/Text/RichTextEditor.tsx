@@ -140,28 +140,34 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({
     }
 
     // Only update if content actually changed and is different from current DOM
-    if (editorRef.current.innerHTML !== initialContent) {
-      editorRef.current.innerHTML = initialContent;
+    const contentToSet = is2DMode ? initialContent.replace(/\n/g, '<br>') : initialContent;
+    if (editorRef.current.innerHTML !== contentToSet) {
+      editorRef.current.innerHTML = contentToSet;
     }
-  }, [initialContent, hasInitialized]);
+  }, [initialContent, hasInitialized, is2DMode]);
 
-  // Handle content changes - SAME AS TextPropertiesPanel
+  // Handle content changes - Let browser maintain cursor naturally
   const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
     if (!textId) return;
 
-    // Save cursor position before update
-    const cursorPos = saveCursorPosition();
+    // Get content from editor
+    let newContent = e.currentTarget.innerHTML;
+
+    // In 2D mode, convert <br> tags back to \n for storage
+    // This keeps data format consistent (stored as \n, displayed as <br> in 2D)
+    if (is2DMode) {
+      newContent = newContent.replace(/<br>/gi, '\n');
+    }
 
     // Update content directly in store (no debounce)
-    const newContent = e.currentTarget.innerHTML;
     updateText(textId, { content: newContent });
     onContentChange(newContent);
 
-    // Restore cursor position after React re-renders
-    requestAnimationFrame(() => {
-      restoreCursorPosition(cursorPos);
-    });
-  }, [textId, updateText, onContentChange, saveCursorPosition, restoreCursorPosition]);
+    // NOTE: No cursor save/restore needed during typing!
+    // The browser naturally maintains cursor position in contentEditable.
+    // Cursor save/restore is only needed for external formatting changes
+    // (handled by TextPropertiesPanel's applyFormatting function).
+  }, [textId, updateText, onContentChange, is2DMode]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -196,6 +202,11 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({
   // Get font stack
   const fontStack = getFontStack(initialFontFamily);
 
+  // Convert newlines to <br> tags for 2D mode (matches TextObject behavior)
+  const contentForDisplay = is2DMode
+    ? initialContent.replace(/\n/g, '<br>')
+    : initialContent;
+
   const editorStyle: React.CSSProperties = {
     fontFamily: fontStack,
     fontSize: `${initialFontSize}px`,
@@ -214,7 +225,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({
     outline: 'none',
     boxShadow: 'none',
     cursor: 'text',
-    whiteSpace: is2DMode ? 'nowrap' as const : 'pre-wrap' as const,
+    whiteSpace: is2DMode ? 'nowrap' as const : 'pre-wrap' as const, // Match TextObject behavior
     wordWrap: 'break-word' as const,
     overflowWrap: 'break-word' as const,
     wordBreak: 'break-word' as const,
@@ -245,7 +256,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
-          {...(!hasInitialized && { dangerouslySetInnerHTML: { __html: initialContent } })}
+          {...(!hasInitialized && { dangerouslySetInnerHTML: { __html: contentForDisplay } })}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}

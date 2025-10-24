@@ -740,6 +740,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         // Add to text store
         useTextStore.getState().addText(newTextObject);
 
+        // Select the newly created text so Properties Panel can edit it
+        useTextStore.getState().selectText(textId);
+
         // Get screen position for the inline editor overlay
         const rect = gl.domElement.getBoundingClientRect();
         const screenPosition = {

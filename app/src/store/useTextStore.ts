@@ -77,10 +77,6 @@ export const useTextStore = create<TextStore>((set, get) => ({
 
   // Update an existing text object
   updateText: (id: string, updates: Partial<TextObject>) => {
-    console.log('[updateText] Updating text:');
-    console.log('  id:', id);
-    console.log('  updates.content:', updates.content);
-
     // Only save to history if the text already has content (not during initial creation)
     const existingText = get().texts.find(t => t.id === id);
     if (existingText && existingText.content && existingText.content.trim() !== '') {
@@ -94,9 +90,6 @@ export const useTextStore = create<TextStore>((set, get) => ({
           : text
       )
     }));
-
-    const updatedText = get().texts.find(t => t.id === id);
-    console.log('[updateText] Text updated. New content:', updatedText?.content);
   },
 
   // Delete a text object
@@ -218,6 +211,9 @@ export const useTextStore = create<TextStore>((set, get) => ({
         draftTextContent: '',
         originalTextContent: ''
       });
+
+      // Switch back to select tool after finishing text
+      useAppStore.getState().setActiveTool('select');
       return;
     }
 
@@ -252,6 +248,9 @@ export const useTextStore = create<TextStore>((set, get) => ({
 
       // Save to history after the atomic update
       useAppStore.getState().saveToHistory();
+
+      // Switch back to select tool after finishing text
+      useAppStore.getState().setActiveTool('select');
     } else {
 
       // Clear editing state even if text not found
@@ -263,6 +262,9 @@ export const useTextStore = create<TextStore>((set, get) => ({
         draftTextContent: '',
         originalTextContent: ''
       });
+
+      // Switch back to select tool after finishing text
+      useAppStore.getState().setActiveTool('select');
     }
   },
 
@@ -299,6 +301,9 @@ export const useTextStore = create<TextStore>((set, get) => ({
       draftTextContent: '',
       originalTextContent: ''
     });
+
+    // Switch back to select tool after canceling text
+    useAppStore.getState().setActiveTool('select');
   },
 
   // Get text by ID

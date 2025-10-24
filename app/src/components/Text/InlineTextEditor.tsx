@@ -55,8 +55,15 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = React.memo(({
 
   // Auto-focus ONLY on mount (not on content changes)
   useEffect(() => {
+    console.log('[InlineTextEditor] Mount - initialContent:', JSON.stringify(initialContent));
+    console.log('[InlineTextEditor] Has newlines:', initialContent.includes('\n'));
+    console.log('[InlineTextEditor] Has BR tags:', initialContent.includes('<br>'));
+
     const focusTextarea = () => {
       if (textareaRef.current) {
+        console.log('[InlineTextEditor] Textarea value:', JSON.stringify(textareaRef.current.value));
+        console.log('[InlineTextEditor] Textarea defaultValue:', JSON.stringify(textareaRef.current.defaultValue));
+
         // Force focus
         textareaRef.current.focus();
 
@@ -220,7 +227,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = React.memo(({
     outline: 'none', // No outline
     boxShadow: 'none', // No shadow
     cursor: 'text',
-    whiteSpace: is2DMode ? 'nowrap' as const : 'pre-wrap' as const, // Match TextObject 2D mode
+    whiteSpace: 'pre-wrap' as const, // Always allow multi-line editing
     wordWrap: 'break-word' as const,
     overflowWrap: 'break-word' as const,
     wordBreak: 'break-word' as const,

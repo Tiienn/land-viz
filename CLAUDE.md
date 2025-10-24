@@ -295,6 +295,50 @@ npm run test:coverage       # Generate coverage report
 ## Recent Updates & Bug Fixes
 
 ### January 2025
+**Multi-Line Text Inline Editing Fix (January 25, 2025)** ⭐⭐⭐
+- **Issue**: Multi-line text collapsed to single line when double-clicking to edit inline; cursor didn't move down on Shift+Enter
+- **Root Causes**: 3 critical issues
+  1. Wrong CSS `whiteSpace: nowrap` in 2D mode collapsed newlines
+  2. Missing bidirectional conversion between `\n` (storage) and `<br>` (display)
+  3. Unnecessary cursor save/restore during typing interfered with natural browser behavior
+- **Solutions**:
+  - Implemented bidirectional conversion: `\n` → `<br>` for display, `<br>` → `\n` for storage
+  - Kept `whiteSpace: nowrap` in 2D mode but added `<br>` tag support
+  - Removed cursor save/restore from `handleInput` - let browser maintain cursor naturally
+  - Matched TextObject's proven rendering pattern for consistency
+- **Result**: ✅ Multi-line text displays correctly in inline editor, cursor moves naturally on Shift+Enter
+- **Test Scenarios**: All passing (create multi-line, edit multi-line, Shift+Enter, 2D/3D mode switching)
+- **Documentation**: See `docs/fixes/MULTILINE_TEXT_INLINE_EDITING_FIX.md` for complete technical guide
+- **Files Modified**:
+  - `app/src/components/Text/RichTextEditor.tsx` - Bidirectional conversion, removed cursor interference
+  - `app/src/components/Text/TextRenderer.tsx` - Debug logs cleanup
+  - `app/src/store/useTextStore.ts` - Debug logs cleanup
+
+**Text Properties Panel Synchronization Fix (January 25, 2025)** ⭐⭐⭐
+- **Issue**: New text created on canvas couldn't be edited via Properties Panel textarea - text didn't appear on canvas when typing
+- **Root Causes**: 6 interconnected issues
+  1. React keys didn't include timestamp - content changes not detected
+  2. React.memo blocking re-renders on text components
+  3. Newly created text not auto-selected
+  4. Inline editing overlay interfered with Properties Panel
+  5. Store subscription pattern needed verification
+  6. Update timing coordination
+- **Solutions**:
+  - Updated React keys to include `updatedAt` timestamp: `key={text.id}-${text.updatedAt}`
+  - Removed React.memo from TextObject and TextElementRenderer
+  - Auto-select text on creation: `selectText(textId)`
+  - Exit inline editing when focusing Properties Panel textarea
+- **Result**: ✅ Real-time bidirectional sync between canvas and Properties Panel
+- **Test Scenarios**: All passing (create→edit, overlay→edit, existing edit)
+- **Documentation**: See `docs/fixes/TEXT_PROPERTIES_PANEL_SYNC_FIX.md` for complete technical guide
+- **Files Modified**:
+  - `app/src/components/Text/TextRenderer.tsx:143` - Updated key with timestamp
+  - `app/src/components/Scene/ElementRenderer.tsx:286` - Updated key with timestamp
+  - `app/src/components/Text/TextObject.tsx:23,173` - Removed React.memo
+  - `app/src/components/Scene/TextElementRenderer.tsx:25,161` - Removed React.memo
+  - `app/src/components/Scene/DrawingCanvas.tsx:743-744` - Auto-select on creation
+  - `app/src/components/Text/TextPropertiesPanel.tsx:28-30,452-459` - Exit inline edit on focus
+
 **Multi-Selection Rotation Fix - Complete (January 20, 2025)** ⭐⭐⭐
 **Phase 1: Drag Rotation Multi-Selection**
 - **Issues Fixed**: Rotation handles disappeared, only primary shape rotated, multi-selection cleared

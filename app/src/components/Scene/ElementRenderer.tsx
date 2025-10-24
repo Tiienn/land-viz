@@ -283,7 +283,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
 
         return (
           <TextElementRenderer
-            key={element.id}
+            key={`${element.id}-${element.updatedAt}`}
             element={element}
             isSelected={isSelected}
             onClick={handleElementClick(element.id, 'text')}

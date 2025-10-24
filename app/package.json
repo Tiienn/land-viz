@@ -41,6 +41,7 @@
     "react-dom": "^19.1.1",
     "tesseract.js": "^6.0.1",
     "three": "^0.179.1",
+    "zod": "^4.1.12",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

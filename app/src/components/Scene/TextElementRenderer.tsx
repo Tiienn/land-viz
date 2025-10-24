@@ -22,7 +22,7 @@ interface TextElementRendererProps {
   onPointerDown?: (event: React.MouseEvent) => void;
 }
 
-export const TextElementRenderer = React.memo<TextElementRendererProps>(({
+export const TextElementRenderer: React.FC<TextElementRendererProps> = ({
   element,
   isSelected,
   onClick,
@@ -158,8 +158,6 @@ export const TextElementRenderer = React.memo<TextElementRendererProps>(({
       />
     </Html>
   );
-});
-
-TextElementRenderer.displayName = 'TextElementRenderer';
+};
 
 export default TextElementRenderer;

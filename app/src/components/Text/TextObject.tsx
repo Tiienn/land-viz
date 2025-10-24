@@ -20,16 +20,9 @@ interface TextObjectProps {
   onContextMenu?: (event: React.MouseEvent) => void; // Phase 7: Context menu support
 }
 
-export const TextObject = React.memo<TextObjectProps>(({ text, isSelected, onClick, onDoubleClick, onContextMenu }) => {
+export const TextObject: React.FC<TextObjectProps> = ({ text, isSelected, onClick, onDoubleClick, onContextMenu }) => {
   // Get view mode to adjust text rendering
   const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
-
-  // Debug: Log when text content changes
-  React.useEffect(() => {
-    console.log('[TextObject] Text content updated:');
-    console.log('  id:', text.id);
-    console.log('  content:', text.content);
-  }, [text.content, text.id]);
 
   // Phase 11: Use font stack with fallbacks
   const fontStack = useMemo(() => getFontStack(text.fontFamily), [text.fontFamily]);
@@ -71,6 +64,9 @@ export const TextObject = React.memo<TextObjectProps>(({ text, isSelected, onCli
 
   if (is2DMode) {
     // 2D Mode: Flat text for orthographic top-down view
+    // Convert plain newlines to <br> tags for rendering (whiteSpace: nowrap ignores \n)
+    const contentWith2DBreaks = text.content.replace(/\n/g, '<br>');
+
     return (
       <Html
         position={[text.position.x, text.position.y, text.position.z]}
@@ -116,7 +112,7 @@ export const TextObject = React.memo<TextObjectProps>(({ text, isSelected, onCli
             maxWidth: 'none', // Remove width constraint
             writingMode: 'horizontal-tb' as const // Force horizontal text rendering in 2D mode
           }}
-          dangerouslySetInnerHTML={{ __html: text.content }}
+          dangerouslySetInnerHTML={{ __html: contentWith2DBreaks }}
         />
 
       </Html>
@@ -170,6 +166,4 @@ export const TextObject = React.memo<TextObjectProps>(({ text, isSelected, onCli
       />
     </Html>
   );
-});
-
-TextObject.displayName = 'TextObject';
+};

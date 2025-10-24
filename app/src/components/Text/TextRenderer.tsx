@@ -140,7 +140,7 @@ export const TextRenderer: React.FC = () => {
 
         return (
           <TextObject
-            key={text.id}
+            key={`${text.id}-${text.updatedAt}`}
             text={text}
             isSelected={text.id === selectedTextId}
             onClick={() => {

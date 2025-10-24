@@ -25,9 +25,35 @@ export const TextPropertiesPanel: React.FC<TextPropertiesPanelProps> = ({ onEdit
   const deleteText = useTextStore(state => state.deleteText);
   const selectText = useTextStore(state => state.selectText);
 
+  // Get inline editing state
+  const isInlineEditing = useTextStore(state => state.isInlineEditing);
+  const finishInlineEdit = useTextStore(state => state.finishInlineEdit);
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const editableRef = useRef<HTMLDivElement>(null);
   const [editorKey, setEditorKey] = useState(0);
+  const isEditingRef = useRef(false); // Track if user is actively typing
+  const lastContentRef = useRef<string>(''); // Track last content to prevent unnecessary updates
+
+  // Initialize content on mount and when text selection changes
+  React.useEffect(() => {
+    if (editableRef.current && selectedText) {
+      editableRef.current.innerHTML = selectedText.content;
+      lastContentRef.current = selectedText.content;
+    }
+  }, [selectedTextId]); // Only run when text selection changes, not content
+
+  // Sync external content changes (from canvas editing) to the textarea
+  // But ONLY when user is not actively typing in the textarea
+  React.useEffect(() => {
+    if (!isEditingRef.current && editableRef.current && selectedText) {
+      // Only update if content is different from what we last set
+      if (selectedText.content !== lastContentRef.current) {
+        editableRef.current.innerHTML = selectedText.content;
+        lastContentRef.current = selectedText.content;
+      }
+    }
+  }, [selectedText?.content]);
 
   // Save and restore cursor position
   const saveCursorPosition = useCallback(() => {
@@ -444,7 +470,24 @@ export const TextPropertiesPanel: React.FC<TextPropertiesPanelProps> = ({ onEdit
           ref={editableRef}
           contentEditable
           suppressContentEditableWarning
-          dangerouslySetInnerHTML={{ __html: selectedText.content }}
+          onFocus={(e) => {
+            // If inline editing is active (overlay is showing), exit it
+            // This allows the Properties Panel to take full control
+            if (isInlineEditing) {
+              finishInlineEdit();
+            }
+            // Mark that user started editing
+            isEditingRef.current = true;
+          }}
+          onBlur={(e) => {
+            // Mark that user stopped editing and save final content
+            isEditingRef.current = false;
+            if (selectedTextId) {
+              const finalContent = e.currentTarget.innerHTML;
+              updateText(selectedTextId, { content: finalContent });
+              lastContentRef.current = finalContent;
+            }
+          }}
           onKeyDown={(e) => {
             // Press Enter to confirm/finish editing (Shift+Enter for new line)
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -455,21 +498,13 @@ export const TextPropertiesPanel: React.FC<TextPropertiesPanelProps> = ({ onEdit
           onInput={(e) => {
             if (!selectedTextId) return;
 
-            // Save cursor position before update
-            const cursorPos = saveCursorPosition();
-
-            // Update content
             const newContent = e.currentTarget.innerHTML;
-            console.log('[TextPropertiesPanel] onInput - Updating text:');
-            console.log('  selectedTextId:', selectedTextId);
-            console.log('  newContent:', newContent);
-            console.log('  oldContent:', selectedText?.content);
-            updateText(selectedTextId, { content: newContent });
 
-            // Restore cursor position after React re-renders
-            requestAnimationFrame(() => {
-              restoreCursorPosition(cursorPos);
-            });
+            // Track the content we're setting
+            lastContentRef.current = newContent;
+
+            // Direct store update without triggering component re-render
+            useTextStore.getState().updateText(selectedTextId, { content: newContent });
           }}
           style={{
             width: '100%',
