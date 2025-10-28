@@ -4,14 +4,20 @@
  * Manages rendering of all floating text objects in the scene.
  * Filters by layer visibility and handles text selection.
  * Includes performance monitoring and warnings.
+ *
+ * Phase 5: Text Transform Controls
+ * - Drag-to-move for text objects
+ * - Resize handles (corner + edge handles)
+ * - Rotation handle with live preview
  */
 
-import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import React, { useMemo, useCallback, useEffect } from 'react';
 import { useTextStore } from '../../store/useTextStore';
 import { useLayerStore } from '../../store/useLayerStore';
 import { useAppStore } from '../../store/useAppStore';
 import { TextObject } from './TextObject';
 import { RichTextEditor } from './RichTextEditor';
+import { TextTransformControls } from './TextTransformControls';
 import { checkTextCountPerformance, calculateTextStatistics } from '../../utils/textPerformance';
 import { logger } from '../../utils/logger';
 
@@ -20,11 +26,6 @@ export const TextRenderer: React.FC = () => {
   const selectedTextId = useTextStore(state => state.selectedTextId);
   const selectText = useTextStore(state => state.selectText);
   const layers = useLayerStore(state => state.layers);
-
-  // Debug: Log when texts array changes
-  React.useEffect(() => {
-    console.log('[TextRenderer] texts array updated:', texts.map(t => ({ id: t.id, content: t.content })));
-  }, [texts]);
 
   // Inline editing state (Canva-style)
   const isInlineEditing = useTextStore(state => state.isInlineEditing);
@@ -41,8 +42,6 @@ export const TextRenderer: React.FC = () => {
   // Filter visible texts
   // IMPORTANT: Check both text/layer visibility AND parent folder visibility recursively
   const visibleTexts = useMemo(() => {
-    console.log('[TextRenderer] visibleTexts recalculating with texts:', texts.length, texts.map(t => ({ id: t.id, content: t.content })));
-
     // Helper function to check if layer is visible (including parent folders)
     const isLayerVisible = (layerId: string): boolean => {
       const layer = layers.find(l => l.id === layerId);
@@ -129,6 +128,11 @@ export const TextRenderer: React.FC = () => {
     return inlineEditingTextId ? texts.find(t => t.id === inlineEditingTextId) : undefined;
   }, [inlineEditingTextId, texts]);
 
+  // Get selected text for transform controls
+  const selectedText = useMemo(() => {
+    return selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
+  }, [selectedTextId, texts]);
+
   return (
     <group name="text-objects">
       {/* Render text objects - hide the one being edited to show editor clearly */}
@@ -144,13 +148,22 @@ export const TextRenderer: React.FC = () => {
             text={text}
             isSelected={text.id === selectedTextId}
             onClick={() => {
+              // Phase 4: Select text for grouping
               selectText(text.id);
+
+              // IMPORTANT: For now, just select the text
+              // Multi-selection with shapes will be handled in a future update
             }}
             onDoubleClick={handleDoubleClick(text.id)}
             onContextMenu={handleContextMenu(text.id)}
           />
         );
       })}
+
+      {/* Phase 5: Render transform controls for selected text (drag, resize, rotate) */}
+      {selectedText && !isInlineEditing && (
+        <TextTransformControls text={selectedText} elevation={0.01} />
+      )}
 
       {/* Render rich text editor when editing text - but NOT if we're using the overlay (screen position set) */}
       {isInlineEditing && editingText && !inlineEditScreenPosition && (

@@ -110,7 +110,9 @@
       "Bash(do )",
       "Bash(npx eslint src/components/Scene/ResizableShapeControls.tsx src/store/useAppStore.ts --max-warnings=0)",
       "Bash(command -v:*)",
-      "Bash(cmd //c \"taskkill /F /IM node.exe\")"
+      "Bash(cmd //c \"taskkill /F /IM node.exe\")",
+      "Bash(git log:*)",
+      "Bash(npm audit:*)"
     ],
     "deny": [],
     "ask": []

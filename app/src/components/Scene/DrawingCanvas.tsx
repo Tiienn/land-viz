@@ -11,6 +11,7 @@ import { alignmentService } from '../../services/alignmentService';
 import { useAdaptiveSnapRadius } from '../../hooks/useAdaptiveSnapRadius';
 import { parseDimension, convertToMeters } from '@/services/dimensionParser';
 import { generateTextId, createDefaultTextObject } from '@/utils/textUtils';
+import { generateId } from '@/utils/validation';
 
 interface DrawingCanvasProps {
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
@@ -696,9 +697,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         // Text tool - Canva-style inline editing
         // Create text object immediately and start inline editing
 
-        // Get active layer (or default to 'main')
-        const activeLayerId = useAppStore.getState().activeLayerId || 'main';
-
         // Create text position in 3D space
         // snappedPos is a 2D point where x=X and y=Z (the horizontal plane)
         // 3D coordinate system: X = left/right, Y = up/down, Z = forward/back
@@ -710,6 +708,24 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
         // Generate unique text ID
         const textId = generateTextId();
+
+        // AUTO-CREATE LAYER FOR TEXT (like shapes do)
+        // Count existing text objects to number the layer
+        const existingTexts = useTextStore.getState().texts.length;
+        const textLayerName = `Text ${existingTexts + 1}`;
+
+        // Create new layer for this text using the proper store action
+        useAppStore.getState().createLayer(textLayerName);
+
+        // Get the newly created layer ID (it's now the active layer)
+        // IMPORTANT: Get fresh state AFTER createLayer to read updated activeLayerId
+        const newTextLayerId = useAppStore.getState().activeLayerId;
+
+        // Update layer properties for text (gray color, proper type)
+        useAppStore.getState().updateLayer(newTextLayerId, {
+          color: '#6B7280', // Gray color for text layers
+          type: 'layer'
+        });
 
         // Create TextObject using the existing text store
         const newTextObject: import('../types/text').TextObject = {
@@ -730,7 +746,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           lineHeight: 1.2,
           backgroundOpacity: 100,
           rotation: 0,
-          layerId: activeLayerId,
+          layerId: newTextLayerId, // Link to the new layer
           locked: false,
           visible: true,
           createdAt: Date.now(),

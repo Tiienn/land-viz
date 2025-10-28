@@ -282,7 +282,10 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                 fontSize: '16px',
                 color: gridSnapImpact.recommendDisableSnapping ? '#EF4444' : '#F59E0B'
               }}>
-                {gridSnapImpact.recommendDisableSnapping ? '⚠️' : 'ℹ️'}
+                <Icon
+                  name={gridSnapImpact.recommendDisableSnapping ? 'warning' : 'info'}
+                  size={16}
+                />
               </span>
               <div style={{ flex: 1 }}>
                 <p style={{

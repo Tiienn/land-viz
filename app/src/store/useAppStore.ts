@@ -22,6 +22,7 @@ import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingSt
 import type { AreaPreset, PresetsState, PresetCategory } from '../types/presets';
 import type { ConversionActions } from '../types/conversion';
 import type { ContextMenuState, ContextMenuType } from '../types/contextMenu';
+import { useTextStore } from './useTextStore'; // Phase 4: Import for text grouping
 
 interface AppStore extends AppState {
   // Layer actions
@@ -2017,8 +2018,78 @@ export const useAppStore = create<AppStore>()(
                 };
               }
 
-              // Alignment Detection (visual guides only, no snapping during drag)
-              const result = SimpleAlignment.detectAlignments(tempShape, otherShapes);
+              // Phase 6: Alignment Detection with Text Support (visual guides only, no snapping during drag)
+              // Convert shapes to ShapeElement objects
+              const draggedShapeElement: import('../types').ShapeElement = {
+                id: tempShape.id,
+                elementType: 'shape',
+                shapeType: tempShape.type,
+                name: tempShape.name || `${tempShape.type} ${tempShape.id}`,
+                visible: tempShape.visible ?? true,
+                locked: tempShape.locked ?? false,
+                layerId: tempShape.layerId || 'main',
+                groupId: tempShape.groupId,
+                points: tempShape.points,
+                color: tempShape.color || '#3b82f6',
+                rotation: tempShape.rotation,
+                created: tempShape.created || new Date(),
+                modified: tempShape.modified || new Date()
+              };
+
+              const otherShapeElements: import('../types').ShapeElement[] = otherShapes.map(shape => ({
+                id: shape.id,
+                elementType: 'shape' as const,
+                shapeType: shape.type,
+                name: shape.name || `${shape.type} ${shape.id}`,
+                visible: shape.visible ?? true,
+                locked: shape.locked ?? false,
+                layerId: shape.layerId || 'main',
+                groupId: shape.groupId,
+                points: shape.points,
+                color: shape.color || '#3b82f6',
+                rotation: shape.rotation,
+                created: shape.created || new Date(),
+                modified: shape.modified || new Date()
+              }));
+
+              // Phase 6: Get text objects and convert to TextElement objects
+              const allTextObjects = useTextStore.getState().texts;
+              const textElements: import('../types').TextElement[] = allTextObjects.map(text => ({
+                id: text.id,
+                elementType: 'text' as const,
+                name: text.content.substring(0, 30) || 'Text',
+                visible: text.visible ?? true,
+                locked: text.locked ?? false,
+                layerId: text.layerId || 'main',
+                groupId: text.groupId,
+                position: text.position,
+                z: text.z,
+                content: text.content,
+                fontSize: text.fontSize,
+                fontFamily: text.fontFamily,
+                color: text.color,
+                alignment: text.alignment,
+                opacity: text.opacity,
+                bold: text.bold,
+                italic: text.italic,
+                underline: text.underline,
+                uppercase: text.uppercase,
+                letterSpacing: text.letterSpacing,
+                lineHeight: text.lineHeight,
+                backgroundColor: text.backgroundColor,
+                backgroundOpacity: text.backgroundOpacity,
+                rotation: text.rotation,
+                attachedToShapeId: text.attachedToShapeId,
+                offset: text.offset,
+                created: text.created || new Date(),
+                modified: text.updatedAt || new Date()
+              }));
+
+              // Phase 6: Combine all elements for alignment detection
+              const otherElements: import('../types').Element[] = [...otherShapeElements, ...textElements];
+
+              // Phase 6: Use element-based alignment detection to include text
+              const result = SimpleAlignment.detectElementAlignments(draggedShapeElement, otherElements);
 
               // PERFORMANCE FIX: DO NOT apply snap corrections during drag
               // This prevents jumping/jittering between snap points
@@ -5245,12 +5316,32 @@ selectAllShapes: () => {
 
 // Keyboard shortcuts - Grouping
 groupShapes: () => {
+  // Phase 4: Also handle text objects from useTextStore
+  const { selectText: selectTextFn, updateText: updateTextFn, selectedTextId, texts } = useTextStore.getState();
+
   set(
     (state) => {
+      // DEBUG: Log selection state before grouping
+      logger.info('[groupShapes] Selection state:', {
+        selectedShapeIds: state.selectedShapeIds,
+        selectedTextId,
+        totalShapes: state.shapes.length,
+        totalTexts: texts.length
+      });
+
       // First, get directly selected shapes
       const directlySelectedShapes = state.shapes.filter((s) =>
         state.selectedShapeIds.includes(s.id)
       );
+
+      // Phase 4: Get selected text (if any)
+      const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : null;
+
+      logger.info('[groupShapes] Found elements:', {
+        shapesCount: directlySelectedShapes.length,
+        hasText: !!selectedText,
+        textId: selectedText?.id
+      });
 
       // Expand selection to include ALL shapes from any existing groups
       const existingGroupIds = new Set(
@@ -5259,15 +5350,27 @@ groupShapes: () => {
           .map(s => s.groupId!)
       );
 
+      // Phase 4: Also check text for existing group
+      if (selectedText?.groupId) {
+        existingGroupIds.add(selectedText.groupId);
+      }
+
       // Get all shapes that should be grouped (selected + all from existing groups)
       const shapesToGroup = state.shapes.filter((s) =>
         state.selectedShapeIds.includes(s.id) ||
         (s.groupId && existingGroupIds.has(s.groupId))
       );
 
-      // Need at least 2 shapes to group
-      if (shapesToGroup.length < 2) {
-        logger.warn('Cannot group: need at least 2 shapes');
+      // Phase 4: Get text objects that should be grouped
+      const textsToGroup = texts.filter((t) =>
+        (selectedTextId === t.id) ||
+        (t.groupId && existingGroupIds.has(t.groupId))
+      );
+
+      // Phase 4: Need at least 2 elements total (shapes + text)
+      const totalElements = shapesToGroup.length + textsToGroup.length;
+      if (totalElements < 2) {
+        logger.warn(`Cannot group: need at least 2 elements (found ${shapesToGroup.length} shapes + ${textsToGroup.length} text)`);
         return state;
       }
 
@@ -5281,7 +5384,12 @@ groupShapes: () => {
           : s
       );
 
-      logger.info(`Grouped ${shapesToGroup.length} shapes with ID: ${groupId}` +
+      // Phase 4: Also assign groupId to text objects
+      textsToGroup.forEach((text) => {
+        updateTextFn(text.id, { groupId, updatedAt: Date.now() });
+      });
+
+      logger.info(`Grouped ${totalElements} elements (${shapesToGroup.length} shapes + ${textsToGroup.length} text) with ID: ${groupId}` +
         (existingGroupIds.size > 0 ? ` (merged ${existingGroupIds.size} existing group(s))` : ''));
 
       return {
@@ -5297,18 +5405,29 @@ groupShapes: () => {
 },
 
 ungroupShapes: () => {
+  // Phase 4: Also handle text objects from useTextStore
+  const { selectText: selectTextFn, updateText: updateTextFn, selectedTextId, texts } = useTextStore.getState();
+
   set(
     (state) => {
       const shapesToUngroup = state.shapes.filter((s) =>
         state.selectedShapeIds.includes(s.id) && s.groupId
       );
 
-      if (shapesToUngroup.length === 0) {
-        logger.warn('Cannot ungroup: no grouped shapes selected');
+      // Phase 4: Get selected text with groupId
+      const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId && t.groupId) : null;
+
+      // Phase 4: Check if we have any grouped elements to ungroup
+      if (shapesToUngroup.length === 0 && !selectedText) {
+        logger.warn('Cannot ungroup: no grouped elements selected');
         return state;
       }
 
+      // Collect all group IDs to ungroup
       const groupIds = new Set(shapesToUngroup.map((s) => s.groupId));
+      if (selectedText?.groupId) {
+        groupIds.add(selectedText.groupId);
+      }
 
       // Remove groupId from all selected shapes
       const updatedShapes = state.shapes.map((s) =>
@@ -5316,6 +5435,13 @@ ungroupShapes: () => {
           ? { ...s, groupId: undefined, modified: new Date() }
           : s
       );
+
+      // Phase 4: Also remove groupId from all text objects in these groups
+      texts.forEach((text) => {
+        if (text.groupId && groupIds.has(text.groupId)) {
+          updateTextFn(text.id, { groupId: undefined, updatedAt: Date.now() });
+        }
+      });
 
       logger.info(`Ungrouped ${groupIds.size} group(s)`);
 

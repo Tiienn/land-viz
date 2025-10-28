@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import SceneManager, { type SceneManagerRef } from './components/Scene/SceneManager';
 import LayerPanel from './components/LayerPanel';
 import PropertiesPanel from './components/PropertiesPanel';
-import AppHeader from './components/Layout/AppHeader';
+import { EnhancedHeader } from './components/Layout/EnhancedHeader'; // Phase 3: Gradient logo header
 import SceneErrorBoundary from './components/ErrorBoundary/SceneErrorBoundary';
 import UIErrorBoundary from './components/ErrorBoundary/UIErrorBoundary';
 import DataErrorBoundary from './components/ErrorBoundary/DataErrorBoundary';
@@ -42,6 +42,10 @@ import { useTextStore } from './store/useTextStore';
 import { generateTextId, createDefaultTextObject } from './utils/textUtils';
 import type { TextObject } from './types/text';
 import { initializeFontLoader } from './utils/fontLoader'; // Phase 11: Font loading
+import { ToastContainer, useToast } from './components/UI/Toast'; // Phase 2: Toast notifications
+import { ToolButton } from './components/UI/ToolButton'; // Phase 2: Enhanced tool buttons
+import { LoadingOverlay } from './components/UI/LoadingSpinner'; // Phase 2: Loading states
+import { HelpModal } from './components/UI/HelpModal'; // Phase 2: Help modals
 
 /**
  * Root React component for the Land Visualizer application.
@@ -95,6 +99,16 @@ function App(): React.JSX.Element {
   const [convertExpanded, setConvertExpanded] = useState(false);
   const [tidyUpExpanded, setTidyUpExpanded] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+
+  // Phase 2: Toast notification system
+  const { toasts, showToast, dismissToast } = useToast();
+
+  // Phase 2: Loading states
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string>('');
+
+  // Phase 2: Help modals
+  const [smartAlignHelpOpen, setSmartAlignHelpOpen] = useState(false);
 
   // Connect to the 3D scene store
   const {
@@ -167,8 +181,8 @@ function App(): React.JSX.Element {
     // Keyboard shortcut functions
     nudgeShape,
     selectAllShapes,
-    groupShapes,
-    ungroupShapes,
+    groupShapes, // Phase 4: Now supports text + shapes
+    ungroupShapes, // Phase 4: Now supports text + shapes
     alignShapesLeft,
     alignShapesRight,
     alignShapesTop,
@@ -622,17 +636,16 @@ function App(): React.JSX.Element {
         }
       },
     },
-    // Grouping shortcuts
+    // Grouping shortcuts (Phase 4: Now supports text + shapes)
     {
       id: 'group',
       key: 'g',
       ctrl: true,
-      description: 'Group selected shapes',
+      description: 'Group selected elements',
       category: 'editing',
       action: () => {
-        if (selectedShapeIds && selectedShapeIds.length >= 2) {
-          groupShapes();
-        }
+        // Phase 4: groupShapes now supports both shapes and text
+        groupShapes();
       },
     },
     {
@@ -640,10 +653,10 @@ function App(): React.JSX.Element {
       key: 'g',
       ctrl: true,
       shift: true,
-      description: 'Ungroup shapes',
+      description: 'Ungroup elements',
       category: 'editing',
       action: () => {
-        // ungroupShapes now works with selectedShapeIds automatically
+        // Phase 4: ungroupShapes now supports both shapes and text
         ungroupShapes();
       },
     },
@@ -963,6 +976,10 @@ function App(): React.JSX.Element {
 
   // Export handlers
   const handleQuickExport = async (format: 'excel' | 'dxf' | 'geojson' | 'pdf') => {
+    setIsExporting(true);
+    setExportingFormat(format.toUpperCase());
+    showToast('info', `Exporting to ${format.toUpperCase()}...`);
+
     try {
       let result;
       switch (format) {
@@ -981,23 +998,31 @@ function App(): React.JSX.Element {
         default:
           throw new Error(`Unknown export format: ${format}`);
       }
-      
+
       if (result.success) {
         downloadExport(result);
         setExportDropdownOpen(false);
+        showToast('success', `${format.toUpperCase()} file exported successfully!`);
       } else {
-        alert(`${format.toUpperCase()} export failed. Please try again.`);
+        showToast('error', `${format.toUpperCase()} export failed. Please try again.`);
       }
     } catch (error) {
       logger.error(`${format} export error:`, error);
-      alert(`${format.toUpperCase()} export failed. Please try again.`);
+      showToast('error', `${format.toUpperCase()} export failed. Please try again.`);
+    } finally {
+      setIsExporting(false);
+      setExportingFormat('');
     }
   };
 
   const handleExportWithSettings = (settings: ExportSettings) => {
     const { format, ...exportOptions } = settings;
-    
+
     const exportWithCustomSettings = async () => {
+      setIsExporting(true);
+      setExportingFormat(format.toUpperCase());
+      showToast('info', `Exporting to ${format.toUpperCase()}...`);
+
       try {
         let result;
         switch (format) {
@@ -1016,15 +1041,19 @@ function App(): React.JSX.Element {
           default:
             throw new Error(`Unknown export format: ${format}`);
         }
-        
+
         if (result.success) {
           downloadExport(result);
+          showToast('success', `${format.toUpperCase()} file exported successfully!`);
         } else {
-          alert(`${format.toUpperCase()} export failed. Please try again.`);
+          showToast('error', `${format.toUpperCase()} export failed. Please try again.`);
         }
       } catch (error) {
         logger.error(`${format} export error:`, error);
-        alert(`${format.toUpperCase()} export failed. Please try again.`);
+        showToast('error', `${format.toUpperCase()} export failed. Please try again.`);
+      } finally {
+        setIsExporting(false);
+        setExportingFormat('');
       }
     };
 
@@ -1176,8 +1205,8 @@ function App(): React.JSX.Element {
       left: 0
     }}>
       
-      <UIErrorBoundary componentName="AppHeader" showMinimalError={true}>
-        <AppHeader 
+      <UIErrorBoundary componentName="EnhancedHeader" showMinimalError={true}>
+        <EnhancedHeader
           isProfessionalMode={isProfessionalMode}
           setIsProfessionalMode={setIsProfessionalMode}
           getTotalArea={getTotalArea}
@@ -1224,52 +1253,20 @@ function App(): React.JSX.Element {
                 textAlign: 'center'
               }}>Drawing</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                <button 
+                <ToolButton
+                  toolId="select"
+                  isActive={activeTool === 'select'}
                   onClick={() => {
                     setActiveTool('select');
                     setStoreActiveTool('select');
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '65px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'select' 
-                      ? '#dbeafe' 
-                      : '#ffffff',
-                    color: activeTool === 'select' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'select' 
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'select') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'select') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path>
-                    <path d="m13 13 6 6"></path>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Select</span>
-                </button>
-                <button
+                  label="Select"
+                  shortcut="S"
+                  icon={<Icon name="select" size={20} />}
+                />
+                <ToolButton
+                  toolId="rectangle"
+                  isActive={activeTool === 'rectangle'}
                   onClick={() => {
                     setActiveTool('rectangle');
                     setStoreActiveTool('rectangle');
@@ -1277,90 +1274,24 @@ function App(): React.JSX.Element {
                     setPropertiesExpanded(true);
                     setRightPanelExpanded(true);
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '65px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'rectangle' 
-                      ? '#dbeafe' 
-                      : '#ffffff',
-                    color: activeTool === 'rectangle' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'rectangle' 
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'rectangle') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'rectangle') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Rectangle</span>
-                </button>
-                <button 
+                  label="Rectangle"
+                  shortcut="R"
+                  icon={<Icon name="rectangle" size={20} />}
+                />
+                <ToolButton
+                  toolId="polyline"
+                  isActive={activeTool === 'polyline'}
                   onClick={() => {
                     setActiveTool('polyline');
                     setStoreActiveTool('polyline');
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '65px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'polyline' 
-                      ? '#dbeafe' 
-                      : '#ffffff',
-                    color: activeTool === 'polyline' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'polyline' 
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'polyline') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'polyline') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="4,17 10,11 14,15 20,9"></polyline>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Polyline</span>
-                </button>
-                <button
+                  label="Polyline"
+                  shortcut="P"
+                  icon={<Icon name="polyline" size={20} />}
+                />
+                <ToolButton
+                  toolId="circle"
+                  isActive={activeTool === 'circle'}
                   onClick={() => {
                     setActiveTool('circle');
                     setStoreActiveTool('circle');
@@ -1368,108 +1299,21 @@ function App(): React.JSX.Element {
                     setPropertiesExpanded(true);
                     setRightPanelExpanded(true);
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '65px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'circle' 
-                      ? '#dbeafe' 
-                      : '#ffffff',
-                    color: activeTool === 'circle' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'circle' 
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)' 
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'circle') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'circle') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="9"></circle>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Circle</span>
-                </button>
-                <button
+                  label="Circle"
+                  shortcut="C"
+                  icon={<Icon name="circle" size={20} />}
+                />
+                <ToolButton
+                  toolId="line"
+                  isActive={activeTool === 'line'}
                   onClick={() => {
                     setActiveTool('line');
                     setStoreActiveTool('line');
                   }}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'line'
-                      ? '#dbeafe'
-                      : '#ffffff',
-                    color: activeTool === 'line' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'line'
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)'
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'line') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'line') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                  title="Precision Line Tool (L)"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="6" y1="18" x2="18" y2="6"></line>
-                    <circle cx="6" cy="18" r="1" fill="currentColor"></circle>
-                    <circle cx="18" cy="6" r="1" fill="currentColor"></circle>
-                    {/* Multi-segment mode indicator */}
-                    {activeTool === 'line' && lineToolState.isMultiSegment && (
-                      <circle cx="20" cy="4" r="2" fill="#10b981" stroke="#ffffff" strokeWidth="1"></circle>
-                    )}
-                  </svg>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '4px' }}>
-                    <span>Line</span>
-                    {activeTool === 'line' && lineToolState.isMultiSegment && (
-                      <span style={{
-                        fontSize: '9px',
-                        color: '#10b981',
-                        fontWeight: '600',
-                        marginTop: '-2px'
-                      }}>
-                        MULTI
-                      </span>
-                    )}
-                  </div>
-                </button>
+                  label="Line"
+                  shortcut="L"
+                  icon={<Icon name="line" size={20} />}
+                />
               </div>
             </div>
 
@@ -1483,103 +1327,28 @@ function App(): React.JSX.Element {
                 textAlign: 'center'
               }}>Precision</div>
               <div style={{ display: 'flex', gap: '2px' }}>
-                <button
+                <ToolButton
+                  toolId="measure"
+                  isActive={activeTool === 'measure'}
                   onClick={() => {
                     setActiveTool('measure');
                     activateMeasurementTool();
                   }}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'measure'
-                      ? '#dbeafe'
-                      : '#ffffff',
-                    color: activeTool === 'measure' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'measure'
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)'
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'measure') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'measure') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                  title="Measure distances between points with precision"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 14H3l1.5-2h15z"></path>
-                    <path d="M21 19H3l1.5-2h15z"></path>
-                    <path d="M21 9H3l1.5-2h15z"></path>
-                    <circle cx="6" cy="6" r="2"></circle>
-                    <circle cx="18" cy="18" r="2"></circle>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Measure</span>
-                </button>
-                <button
+                  label="Measure"
+                  shortcut="M"
+                  icon={<Icon name="measure" size={20} />}
+                />
+                <ToolButton
+                  toolId="text"
+                  isActive={activeTool === 'text'}
                   onClick={() => {
                     setActiveTool('text');
                     setStoreActiveTool('text');
                   }}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: activeTool === 'text'
-                      ? '#dbeafe'
-                      : '#ffffff',
-                    color: activeTool === 'text' ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    boxShadow: activeTool === 'text'
-                      ? '0 0 0 2px rgba(59, 130, 246, 0.2)'
-                      : 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTool !== 'text') {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTool !== 'text') {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                  title="Add text annotations (T)"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 7V4h16v3"></path>
-                    <path d="M9 20h6"></path>
-                    <path d="M12 4v16"></path>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Text</span>
-                </button>
+                  label="Text"
+                  shortcut="T"
+                  icon={<Icon name="text" size={20} />}
+                />
               </div>
             </div>
 
@@ -2230,8 +1999,8 @@ function App(): React.JSX.Element {
                 
                 <button
                   onClick={() => {
-                    // Show alignment status - our new system is always active
-                    alert('✨ Smart Align is active!\n\nCanva-style alignment guides will appear automatically when you drag shapes near each other:\n\n• Purple dashed lines for edge & center alignment\n• Purple badges showing spacing distances\n• No configuration needed - just drag and align!');
+                    // Show alignment help modal
+                    setSmartAlignHelpOpen(true);
                   }}
                   style={{
                     display: 'flex',
@@ -2503,7 +2272,8 @@ function App(): React.JSX.Element {
                         onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        📐 DXF (.dxf)
+                        <Icon name="file" size={16} style={{ marginRight: '6px' }} />
+                        DXF (.dxf)
                       </button>
                       <button
                         onClick={() => handleQuickExport('pdf')}
@@ -2522,7 +2292,8 @@ function App(): React.JSX.Element {
                         onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        📄 PDF (.pdf)
+                        <Icon name="file" size={16} style={{ marginRight: '6px' }} />
+                        PDF (.pdf)
                       </button>
                     </div>
                   )}
@@ -3496,7 +3267,7 @@ function App(): React.JSX.Element {
                   minWidth: '140px'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '14px' }}>📐</span>
+                    <Icon name="ruler" size={14} />
                     <span style={{ fontWeight: '600' }}>Dimensions</span>
                   </div>
                   
@@ -3876,6 +3647,34 @@ function App(): React.JSX.Element {
       <ImageImporterModal
         isOpen={imageImportOpen}
         onClose={() => setImageImportOpen(false)}
+      />
+
+      {/* Phase 2: Toast Notification Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Phase 2: Loading Overlay for Exports */}
+      {isExporting && (
+        <LoadingOverlay
+          message={`Exporting to ${exportingFormat}...`}
+          fullScreen
+        />
+      )}
+
+      {/* Phase 2: Smart Align Help Modal */}
+      <HelpModal
+        isOpen={smartAlignHelpOpen}
+        onClose={() => setSmartAlignHelpOpen(false)}
+        title="Smart Align Guide"
+        icon="align"
+        content={`Smart Align is always active!
+
+Canva-style alignment guides will appear automatically when you drag shapes near each other:
+
+• Purple dashed lines for edge & center alignment
+• Purple badges showing spacing distances
+• No configuration needed - just drag and align!
+
+The system helps you create perfectly aligned designs with minimal effort.`}
       />
     </div>
   );

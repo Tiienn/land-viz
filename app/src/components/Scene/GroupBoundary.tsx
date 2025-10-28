@@ -12,13 +12,16 @@
  */
 
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
-import { Line, Box } from '@react-three/drei';
+import { Box } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import type { Element, DragState, Point2D } from '../../types';
-import { isShapeElement, isTextElement } from '../../types';
+import { isShapeElement } from '../../types';
 import { calculateBoundingBox } from '../../utils/geometryTransforms';
 import { useAppStore } from '../../store/useAppStore';
 import * as THREE from 'three';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 
 // Ground plane for raycasting (same as ResizableShapeControls)
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -31,26 +34,158 @@ interface GroupBoundaryProps {
 }
 
 /**
- * Calculate text bounding box (same formula as TextResizeControls)
+ * Type guard to check if element is a TextObject (from useTextStore)
+ * TextObject has: type ('floating' | 'label'), position, content
+ * ShapeElement has: points, shapeType
  */
-function calculateTextBounds(element: import('../../types').TextElement): { minX: number; minY: number; maxX: number; maxY: number } {
-  const estimatedWidth = element.fontSize * element.content.length * 0.6;
-  const estimatedHeight = element.fontSize * element.lineHeight;
+function isTextObject(element: any): boolean {
+  return element.type === 'floating' || element.type === 'label';
+}
 
-  const left = element.position.x - estimatedWidth / 2;
-  const top = element.position.y - estimatedHeight / 2;
+/**
+ * Calculate bounds for text elements
+ * Text has: position, fontSize, content, letterSpacing, lineHeight, backgroundColor
+ *
+ * CRITICAL: Must match TextObject.tsx rendering exactly!
+ * - TextObject uses drei's Html component with distanceFactor
+ * - distanceFactor controls CSS pixel → world unit scaling
+ * - Formula: visual_size_in_world = CSS_size / distanceFactor
+ *
+ * From TextObject.tsx:
+ * - 2D mode: distanceFactor = 2.5 (line 76)
+ * - 3D mode: distanceFactor = 20 (line 130)
+ */
+function calculateTextBounds(element: any): { minX: number; minY: number; maxX: number; maxY: number } {
+  const pos = element.position;
+  const fontSize = element.fontSize || 16;
+  const letterSpacing = (element.letterSpacing || 0) / 100; // Convert to em (adds to char width)
+  const lineHeight = element.lineHeight || 1.5;
+  const content = element.content || '';
 
-  return {
-    minX: left,
-    minY: top,
-    maxX: left + estimatedWidth,
-    maxY: top + estimatedHeight,
+  // Split content into lines for multi-line support
+  const lines = content.split('\n');
+  const lineCount = Math.max(lines.length, 1);
+  const longestLineLength = Math.max(...lines.map(line => line.length), 1);
+
+  // MATCH TextObject.tsx distanceFactor!
+  // In 2D mode (which we're always in for the group boundary view), distanceFactor = 2.5
+  // This means: world_size = CSS_pixels / distanceFactor
+  const DISTANCE_FACTOR = 2.5; // From TextObject.tsx line 76 (2D mode)
+
+  // Calculate height in world units
+  // The browser renders text with full lineHeight spacing, so we use the full value
+  // without reduction. The visual text box height matches fontSize * lineHeight * lineCount.
+  const lineHeightWorld = (fontSize * lineHeight) / DISTANCE_FACTOR;
+  const textHeight = lineHeightWorld * lineCount;
+
+  // Calculate width in world units
+  // Average character width is ~0.6em (60% of fontSize)
+  const avgCharWidthCss = fontSize * (0.6 + letterSpacing); // CSS pixels
+  const avgCharWidthWorld = avgCharWidthCss / DISTANCE_FACTOR; // World units
+  const textWidth = longestLineLength * avgCharWidthWorld;
+
+  // Add padding if background is present
+  const paddingXCss = element.backgroundColor ? 24 : 0; // 12px each side (CSS pixels)
+  const paddingYCss = element.backgroundColor ? 16 : 0; // 8px each side (CSS pixels)
+  const paddingXWorld = paddingXCss / DISTANCE_FACTOR;
+  const paddingYWorld = paddingYCss / DISTANCE_FACTOR;
+
+  // Add generous buffer for visual accuracy (text rendering can be unpredictable)
+  // Note: Extra vertical buffer needed because browser renders line-height with
+  // additional space for ascenders/descenders and CSS box model
+  const widthBufferFactor = 1.3;
+  const heightBufferFactor = 1.8; // Increased to 1.8 for generous coverage
+  const totalWidth = (textWidth + paddingXWorld) * widthBufferFactor;
+  const totalHeight = (textHeight + paddingYWorld) * heightBufferFactor;
+
+  // Calculate bounds in world space (centered on position)
+  const halfWidth = totalWidth / 2;
+  const halfHeight = totalHeight / 2;
+
+  const bounds = {
+    minX: pos.x - halfWidth,
+    minY: pos.y - halfHeight,
+    maxX: pos.x + halfWidth,
+    maxY: pos.y + halfHeight
   };
+
+  return bounds;
 }
 
 const BOUNDARY_COLOR = '#9333EA'; // Purple matching highlighted shape
 const PADDING = 0.08; // 8px padding in world units (0.08m)
 const HANDLE_SIZE = 1.0; // Size of resize handles (increased for better visibility)
+
+/**
+ * ThickDashedLine Component
+ * Uses multiple segments to create a visible dashed line
+ * SIMPLER APPROACH: Draw individual line segments with MeshBasicMaterial
+ */
+const ThickDashedLine: React.FC<{ points: number[][]; color: string; lineWidth: number }> = ({ points, color }) => {
+  // Create line segments for dashed effect
+  const segments = useMemo(() => {
+    const dashLength = 0.4; // 40cm dash
+    const gapLength = 0.3; // 30cm gap
+    const totalDashCycle = dashLength + gapLength;
+
+    const result: { start: THREE.Vector3; end: THREE.Vector3 }[] = [];
+
+    // For each pair of points
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = new THREE.Vector3(points[i][0], points[i][1], points[i][2]);
+      const end = new THREE.Vector3(points[i + 1][0], points[i + 1][1], points[i + 1][2]);
+
+      const direction = new THREE.Vector3().subVectors(end, start);
+      const length = direction.length();
+      direction.normalize();
+
+      // Create dashes along this segment
+      let currentDist = 0;
+      while (currentDist < length) {
+        const dashStart = currentDist;
+        const dashEnd = Math.min(currentDist + dashLength, length);
+
+        const segStart = new THREE.Vector3()
+          .copy(start)
+          .add(direction.clone().multiplyScalar(dashStart));
+        const segEnd = new THREE.Vector3()
+          .copy(start)
+          .add(direction.clone().multiplyScalar(dashEnd));
+
+        result.push({ start: segStart, end: segEnd });
+
+        currentDist += totalDashCycle;
+      }
+    }
+
+    return result;
+  }, [points]);
+
+  // Render each dash as a tube
+  return (
+    <group>
+      {segments.map((seg, index) => {
+        const direction = new THREE.Vector3().subVectors(seg.end, seg.start);
+        const length = direction.length();
+        const midpoint = new THREE.Vector3().addVectors(seg.start, seg.end).multiplyScalar(0.5);
+
+        // Create a cylinder oriented along the segment
+        const axis = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(
+          axis,
+          direction.clone().normalize()
+        );
+
+        return (
+          <mesh key={index} position={midpoint} quaternion={quaternion}>
+            <cylinderGeometry args={[0.04, 0.04, length, 8]} />
+            <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.9} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+};
 
 export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
   groupId,
@@ -93,7 +228,7 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
 
   // Detect common rotation angle for Canva-style rotated boundaries
   const groupRotation = useMemo(() => {
-    if (elements.length === 0) return null;
+    if (!elements || elements.length === 0) return null;
 
     // Elements passed are already Shape objects, no filtering needed
     // Check if all shapes have rotation metadata
@@ -115,7 +250,7 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
   // Calculate bounding box and rotation center for all elements
   // For rotated groups: calculate in LOCAL (unrotated) space for tight wrap
   const boundsData = useMemo(() => {
-    if (elements.length === 0) return null;
+    if (!elements || elements.length === 0) return null;
 
     // Elements are already Shape objects, no filtering needed
     const shouldUnrotate = groupRotation !== null && groupRotation !== 0;
@@ -127,8 +262,42 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
     let actualRotationCenter: { x: number; y: number } | null = null;
 
     if (shouldUnrotate) {
-      // STEP 1: Transform all points to world space (apply individual shape rotations)
-      const transformedPointsPerShape: Point2D[][] = elements.map((element: any) => {
+      // STEP 1: Transform all points to world space (apply individual element rotations)
+      // Phase 4: Support both shapes (with points) and text (with position)
+      const transformedPointsPerElement: Point2D[][] = elements.map((element: any) => {
+        // Phase 4: Handle text elements
+        if (isTextObject(element)) {
+          // For text, calculate bounding box corners
+          const textBounds = calculateTextBounds(element);
+          const corners = [
+            { x: textBounds.minX, y: textBounds.minY },
+            { x: textBounds.maxX, y: textBounds.minY },
+            { x: textBounds.maxX, y: textBounds.maxY },
+            { x: textBounds.minX, y: textBounds.maxY },
+          ];
+
+          // Apply text rotation if any
+          if (element.rotation && element.rotation !== 0) {
+            const angleRad = (element.rotation * Math.PI) / 180;
+            const cos = Math.cos(angleRad);
+            const sin = Math.sin(angleRad);
+            const centerX = element.position.x;
+            const centerY = element.position.y;
+
+            return corners.map(corner => {
+              const dx = corner.x - centerX;
+              const dy = corner.y - centerY;
+              return {
+                x: centerX + (dx * cos - dy * sin),
+                y: centerY + (dx * sin + dy * cos)
+              };
+            });
+          }
+
+          return corners;
+        }
+
+        // Handle shape elements
         if (!element.rotation || element.rotation.angle === 0) {
           return element.points; // No rotation needed
         }
@@ -154,7 +323,7 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
       let sumX = 0;
       let sumY = 0;
       let count = 0;
-      transformedPointsPerShape.forEach(points => {
+      transformedPointsPerElement.forEach(points => {
         points.forEach(point => {
           sumX += point.x;
           sumY += point.y;
@@ -172,7 +341,7 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
       const cos = Math.cos(angleRadians);
       const sin = Math.sin(angleRadians);
 
-      transformedPointsPerShape.forEach(points => {
+      transformedPointsPerElement.forEach(points => {
         points.forEach(point => {
           const dx = point.x - groupCenterX;
           const dy = point.y - groupCenterY;
@@ -188,9 +357,18 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
       // STEP 4: Boundary will be rotated back in boundaryPoints calculation
     } else {
       // No rotation or mixed rotations: use normal axis-aligned bounds
-      // Elements are Shape objects with points property
+      // Phase 4: Handle both shapes (with points) and text (with position)
       elements.forEach((element: any) => {
-        if (element.points) {
+        // Phase 4: Handle text elements
+        if (isTextObject(element)) {
+          const textBounds = calculateTextBounds(element);
+          minX = Math.min(minX, textBounds.minX);
+          minY = Math.min(minY, textBounds.minY);
+          maxX = Math.max(maxX, textBounds.maxX);
+          maxY = Math.max(maxY, textBounds.maxY);
+        }
+        // Handle shape elements
+        else if (element.points) {
           element.points.forEach((point: Point2D) => {
             minX = Math.min(minX, point.x);
             minY = Math.min(minY, point.y);
@@ -213,7 +391,9 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
 
   // Calculate boundary points with padding (Canva-style: rotates with shapes)
   const boundaryPoints = useMemo(() => {
-    if (!isVisible || !boundsData) return null;
+    if (!isVisible || !boundsData) {
+      return null;
+    }
 
     const { bounds, rotationCenter } = boundsData;
 
@@ -266,7 +446,9 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
     }
 
     // Convert to Three.js coordinates
-    return boundaryCorners.map(corner => [corner.x, 0.01, corner.y]);
+    const threeJsPoints = boundaryCorners.map(corner => [corner.x, 0.01, corner.y]);
+
+    return threeJsPoints;
   }, [boundsData, groupRotation, dragState]);
 
   // Extract bounds for backward compatibility
@@ -570,18 +752,28 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
     document.addEventListener('pointerup', handlePointerUp as any);
   }, [bounds, resizeHandles, elements, gl.domElement, camera, raycaster, handlePointerMove, handlePointerUp]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - use refs to avoid recreating effect on every render
+  const handlePointerMoveRef = useRef(handlePointerMove);
+  const handlePointerUpRef = useRef(handlePointerUp);
+
+  // Update refs when handlers change
+  useEffect(() => {
+    handlePointerMoveRef.current = handlePointerMove;
+    handlePointerUpRef.current = handlePointerUp;
+  }, [handlePointerMove, handlePointerUp]);
+
+  // Cleanup only on unmount
   useEffect(() => {
     return () => {
       if (resizeDragState.current?.isDragging) {
         resizeDragState.current = null;
         setCursorOverride(null);
-        // Remove document listeners if still attached
-        document.removeEventListener('pointermove', handlePointerMove as any);
-        document.removeEventListener('pointerup', handlePointerUp as any);
+        // Remove document listeners using refs (always has latest handler)
+        document.removeEventListener('pointermove', handlePointerMoveRef.current as any);
+        document.removeEventListener('pointerup', handlePointerUpRef.current as any);
       }
     };
-  }, [handlePointerMove, handlePointerUp]);
+  }, []); // Empty deps - only run on mount/unmount
 
   // Don't render if not visible or no points
   if (!isVisible || !boundaryPoints) {
@@ -590,17 +782,12 @@ export const GroupBoundary: React.FC<GroupBoundaryProps> = ({
 
   return (
     <group>
-      {/* Dashed border */}
-      <Line
+      {/* Dashed border - using Line2 for thick dashed lines in WebGL */}
+      <ThickDashedLine
         key={groupId}
         points={boundaryPoints}
         color={BOUNDARY_COLOR}
         lineWidth={3}
-        dashed={true}
-        dashScale={5}
-        dashSize={2}
-        dashOffset={0}
-        gapSize={2}
       />
 
       {/* Resize handles */}

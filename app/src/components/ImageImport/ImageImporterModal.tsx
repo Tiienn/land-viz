@@ -840,8 +840,9 @@ export const ImageImporterModal: React.FC<ImageImporterModalProps> = ({
                 marginBottom: '20px',
               }}
             >
-              <strong style={{ display: 'block', marginBottom: '8px' }}>
-                ⚠️ No Dimensions Detected
+              <strong style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <Icon name="warning" size={16} color="#F59E0B" />
+                No Dimensions Detected
               </strong>
               <p style={{ margin: 0 }}>
                 The OCR couldn't find dimension labels in the image. Please manually
@@ -1088,8 +1089,9 @@ export const ImageImporterModal: React.FC<ImageImporterModalProps> = ({
               }}
             >
               <div>
-                <strong style={{ display: 'block', marginBottom: '8px' }}>
-                  ℹ️ Manual Entry Required
+                <strong style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Icon name="info" size={16} color="#3B82F6" />
+                  Manual Entry Required
                 </strong>
                 <p style={{ margin: 0 }}>
                   {hybridResult.boundary.status === 'success'

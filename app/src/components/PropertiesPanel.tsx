@@ -178,7 +178,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
           }}
           title="Collapse properties panel"
         >
-          ▶
+          <Icon name="chevron-right" size={14} />
         </button>
       </div>
 

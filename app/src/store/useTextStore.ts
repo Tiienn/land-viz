@@ -246,6 +246,21 @@ export const useTextStore = create<TextStore>((set, get) => ({
       //   name: `Text: ${trimmedContent.substring(0, 20)}${trimmedContent.length > 20 ? '...' : ''}`,
       // });
 
+      // UPDATE LAYER NAME: Show text content in layer panel
+      if (existingText && existingText.layerId) {
+        const appStore = useAppStore.getState();
+        const layer = appStore.layers.find(l => l.id === existingText.layerId);
+        if (layer) {
+          // Update layer name to show text content
+          const newLayerName = `"${trimmedContent.substring(0, 30)}${trimmedContent.length > 30 ? '...' : ''}"`;
+          appStore.layers = appStore.layers.map(l =>
+            l.id === layer.id
+              ? { ...l, name: newLayerName, modified: new Date() }
+              : l
+          );
+        }
+      }
+
       // Save to history after the atomic update
       useAppStore.getState().saveToHistory();
 

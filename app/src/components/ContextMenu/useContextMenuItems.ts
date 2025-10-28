@@ -20,7 +20,9 @@ export const useContextMenuItems = (
     closeContextMenu,
     flipSelectedShapes,
     groupShapes,
-    ungroupShapes
+    ungroupShapes,
+    groupSelectedElements, // Phase 4: Unified grouping (shapes + text)
+    ungroupSelectedElements // Phase 4: Unified ungrouping (shapes + text)
   } = useAppStore();
 
   // Phase 7: Text store actions
@@ -143,7 +145,8 @@ export const useContextMenuItems = (
           icon: 'ungroup',
           shortcut: 'Ctrl+Shift+G',
           action: () => {
-            ungroupShapes();
+            // Phase 4: Use unified function to support both shapes and text
+            ungroupSelectedElements();
             closeContextMenu();
           },
         });
@@ -382,7 +385,8 @@ export const useContextMenuItems = (
           shortcut: 'Ctrl+G',
           disabled: false, // Always enabled for multi-selection context menu
           action: () => {
-            groupShapes();
+            // Phase 4: Use unified function to support both shapes and text
+            groupSelectedElements();
             closeContextMenu();
           },
         },
@@ -397,7 +401,8 @@ export const useContextMenuItems = (
           shortcut: 'Ctrl+Shift+G',
           disabled: false,
           action: () => {
-            ungroupShapes();
+            // Phase 4: Use unified function to support both shapes and text
+            ungroupSelectedElements();
             closeContextMenu();
           },
         });

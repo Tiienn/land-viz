@@ -56,25 +56,25 @@ const ExportSettingsDialog: React.FC<ExportSettingsDialogProps> = ({
     excel: {
       name: 'Excel Spreadsheet',
       extension: '.xlsx',
-      icon: '📊',
+      icon: 'file',
       description: 'Comprehensive data export with measurements and calculations'
     },
     dxf: {
       name: 'AutoCAD Drawing',
       extension: '.dxf',
-      icon: '📐',
+      icon: 'file',
       description: 'CAD format compatible with AutoCAD and other design software'
     },
     geojson: {
       name: 'GeoJSON Geographic Data',
       extension: '.geojson',
-      icon: '🌍',
+      icon: 'globe',
       description: 'Geographic data format for GIS applications and mapping'
     },
     pdf: {
       name: 'PDF Survey Report',
       extension: '.pdf',
-      icon: '📄',
+      icon: 'file',
       description: 'Professional survey report with visualizations and data'
     }
   };

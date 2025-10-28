@@ -82,6 +82,7 @@ export interface TextObject {
 
   // Metadata
   layerId: string;
+  groupId?: string; // NEW: Group membership (for mixed groups with shapes)
   locked: boolean;
   visible: boolean;
   createdAt: number;

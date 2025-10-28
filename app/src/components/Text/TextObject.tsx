@@ -98,9 +98,12 @@ export const TextObject: React.FC<TextObjectProps> = ({ text, isSelected, onClic
             onDoubleClick?.(e.clientX, e.clientY);
           }}
           onPointerDown={(e) => {
-            // Also set flag on pointer down as a backup
-            // This ensures the flag is set even before onClick fires
-            e.stopPropagation();
+            // Only stop propagation if text is NOT selected
+            // This allows TextTransformControls to handle drag when selected
+            if (!isSelected) {
+              e.stopPropagation();
+            }
+            // Set flag for text click detection
             if ((window as any).__textClickedRef) {
               (window as any).__textClickedRef.current = true;
             }
@@ -153,9 +156,12 @@ export const TextObject: React.FC<TextObjectProps> = ({ text, isSelected, onClic
           onDoubleClick?.(e.clientX, e.clientY);
         }}
         onPointerDown={(e) => {
-          // Also set flag on pointer down as a backup
-          // This ensures the flag is set even before onClick fires
-          e.stopPropagation();
+          // Only stop propagation if text is NOT selected
+          // This allows TextTransformControls to handle drag when selected
+          if (!isSelected) {
+            e.stopPropagation();
+          }
+          // Set flag for text click detection
           if ((window as any).__textClickedRef) {
             (window as any).__textClickedRef.current = true;
           }

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
-import { Box, Sphere } from '@react-three/drei';
+import { Box, Sphere, Html } from '@react-three/drei';
 import { useAppStore } from '@/store/useAppStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
@@ -947,88 +947,101 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             else if (index === 3) cornerCursor = 'sw-resize';
             
             return (
-              <Sphere
+              <Html
                 key={`resize-corner-${index}`}
                 position={[point.x, elevation + 0.3, point.y]}
-                args={[0.6]} // Professional size for corner handles
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setResizeHandle('corner', index);
+                center
+                sprite
+                occlude={false}
+                style={{
+                  pointerEvents: 'auto',
+                  userSelect: 'none',
+                  zIndex: 999,
                 }}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-
-                  setResizeHandle('corner', index);
-
-                  // Save initial state to history before starting resize
-                  saveToHistory();
-
-                  // Set up drag state
-                  dragState.current.isDragging = true;
-                  dragState.current.handleType = 'corner';
-                  dragState.current.handleIndex = index;
-
-                  // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
-                  // Also detect single vs multi-selection to determine coordinate space handling
-                  const selectedIds = selectedShapeIds || [];
-                  const isSingleSelection = selectedIds.length <= 1;
-
-                  if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
-                    // Convert 4-point format back to 2-point format for resize calculations
-                    const points = resizingShape.points;
-
-                    // Calculate bounding box to get 2-point format
-                    const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
-                    const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
-                    const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
-                    const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
-                    dragState.current.originalPoints = [
-                      { x: minX, y: minY },
-                      { x: maxX, y: maxY }
-                    ];
-                  } else {
-                    dragState.current.originalPoints = [...resizingShape.points];
-                  }
-
-                  dragState.current.pointerId = event.nativeEvent.pointerId;
-                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
-                  dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
-
-                  // Set cursor for the entire drag operation
-                  setCursorOverride(cornerCursor);
-
-                  // Capture pointer to ensure we get all events
-                  try {
-                    event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
-                  } catch (error) {
-                    // Silently handle pointer capture errors
-                  }
-
-                  // Add global listeners with capture
-                  document.addEventListener('pointermove', handlePointerMove, true);
-                  document.addEventListener('pointerup', handlePointerUp, true);
-                  document.addEventListener('pointercancel', handlePointerUp, true);
-                }}
-                onPointerEnter={() => {
-                  setHoveredHandle({type: 'corner', index});
-                  if (!dragState.current.isDragging) {
-                    setCursorOverride(cornerCursor);
-                  }
-                }}
-                onPointerLeave={() => {
-                  setHoveredHandle(null);
-                  if (!dragState.current.isDragging) {
-                    setCursorOverride(null);
-                  }
-                }}
-                cursor={cornerCursor}
               >
-                <meshBasicMaterial
-                  color={isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF'}
-                  transparent={false}
-                  opacity={1.0}
+                <div
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setResizeHandle('corner', index);
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+
+                    setResizeHandle('corner', index);
+
+                    // Save initial state to history before starting resize
+                    saveToHistory();
+
+                    // Set up drag state
+                    dragState.current.isDragging = true;
+                    dragState.current.handleType = 'corner';
+                    dragState.current.handleIndex = index;
+
+                    // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
+                    // Also detect single vs multi-selection to determine coordinate space handling
+                    const selectedIds = selectedShapeIds || [];
+                    const isSingleSelection = selectedIds.length <= 1;
+
+                    if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
+                      // Convert 4-point format back to 2-point format for resize calculations
+                      const points = resizingShape.points;
+
+                      // Calculate bounding box to get 2-point format
+                      const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
+                      const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
+                      const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
+                      const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
+                      dragState.current.originalPoints = [
+                        { x: minX, y: minY },
+                        { x: maxX, y: maxY }
+                      ];
+                    } else {
+                      dragState.current.originalPoints = [...resizingShape.points];
+                    }
+
+                    dragState.current.pointerId = event.nativeEvent.pointerId;
+                    dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+                    dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
+
+                    // Set cursor for the entire drag operation
+                    setCursorOverride(cornerCursor);
+
+                    // Capture pointer to ensure we get all events
+                    try {
+                      event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+                    } catch (error) {
+                      // Silently handle pointer capture errors
+                    }
+
+                    // Add global listeners with capture
+                    document.addEventListener('pointermove', handlePointerMove, true);
+                    document.addEventListener('pointerup', handlePointerUp, true);
+                    document.addEventListener('pointercancel', handlePointerUp, true);
+                  }}
+                  onPointerEnter={() => {
+                    setHoveredHandle({type: 'corner', index});
+                    if (!dragState.current.isDragging) {
+                      setCursorOverride(cornerCursor);
+                    }
+                  }}
+                  onPointerLeave={() => {
+                    setHoveredHandle(null);
+                    if (!dragState.current.isDragging) {
+                      setCursorOverride(null);
+                    }
+                  }}
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
+                    border: '2px solid #3B82F6',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                    cursor: cornerCursor,
+                    transition: 'background-color 0.15s ease',
+                  }}
                 />
-              </Sphere>
+              </Html>
             );
           })}
           
@@ -1074,61 +1087,70 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const rotationRadians = parallelAngle * Math.PI / 180;
 
             return (
-              <Box
+              <Html
                 key={`resize-edge-${index}`}
                 position={[point.x, elevation + 0.15, point.y]}
-                args={handleArgs}
-                rotation={[0, 0, rotationRadians]}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setResizeHandle('edge', index);
+                center
+                sprite
+                occlude={false}
+                rotation-z={rotationRadians}
+                style={{
+                  pointerEvents: 'auto',
+                  userSelect: 'none',
+                  zIndex: 998,
                 }}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
+              >
+                <div
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setResizeHandle('edge', index);
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
 
-                  setResizeHandle('edge', index);
+                    setResizeHandle('edge', index);
 
-                  // Save initial state to history before starting resize
-                  saveToHistory();
+                    // Save initial state to history before starting resize
+                    saveToHistory();
 
-                  // Set up drag state
-                  document.title = 'EDGE DRAG START ' + index;
-                  dragState.current.isDragging = true;
-                  dragState.current.handleType = 'edge';
-                  dragState.current.handleIndex = index;
+                    // Set up drag state
+                    document.title = 'EDGE DRAG START ' + index;
+                    dragState.current.isDragging = true;
+                    dragState.current.handleType = 'edge';
+                    dragState.current.handleIndex = index;
 
-                  // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
-                  // Also detect single vs multi-selection to determine coordinate space handling
-                  const selectedIds = selectedShapeIds || [];
-                  const isSingleSelection = selectedIds.length <= 1;
+                    // CRITICAL FIX: Store original points in proper format (2-point for rectangles)
+                    // Also detect single vs multi-selection to determine coordinate space handling
+                    const selectedIds = selectedShapeIds || [];
+                    const isSingleSelection = selectedIds.length <= 1;
 
-                  if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
-                    const points = resizingShape.points;
+                    if (resizingShape.type === 'rectangle' && resizingShape.points.length >= 4) {
+                      const points = resizingShape.points;
 
-                    // Calculate bounding box to get 2-point format
-                    const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
-                    const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
-                    const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
-                    const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
-                    dragState.current.originalPoints = [
-                      { x: minX, y: minY },
-                      { x: maxX, y: maxY }
-                    ];
-                  } else {
-                    dragState.current.originalPoints = [...resizingShape.points];
-                  }
+                      // Calculate bounding box to get 2-point format
+                      const minX = Math.min(points[0].x, points[1].x, points[2].x, points[3].x);
+                      const maxX = Math.max(points[0].x, points[1].x, points[2].x, points[3].x);
+                      const minY = Math.min(points[0].y, points[1].y, points[2].y, points[3].y);
+                      const maxY = Math.max(points[0].y, points[1].y, points[2].y, points[3].y);
+                      dragState.current.originalPoints = [
+                        { x: minX, y: minY },
+                        { x: maxX, y: maxY }
+                      ];
+                    } else {
+                      dragState.current.originalPoints = [...resizingShape.points];
+                    }
 
-                  dragState.current.pointerId = event.nativeEvent.pointerId;
-                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
-                  dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
+                    dragState.current.pointerId = event.nativeEvent.pointerId;
+                    dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+                    dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
 
-                  // Set cursor for the entire drag operation
-                  setCursorOverride(edgeCursor);
+                    // Set cursor for the entire drag operation
+                    setCursorOverride(edgeCursor);
 
-                  // Capture pointer to ensure we get all events
-                  event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
-                  
-                  // Add global listeners with capture
+                    // Capture pointer to ensure we get all events
+                    event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+
+                    // Add global listeners with capture
                   document.addEventListener('pointermove', handlePointerMove, true);
                   document.addEventListener('pointerup', handlePointerUp, true);
                   document.addEventListener('pointercancel', handlePointerUp, true);
@@ -1145,19 +1167,23 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     setCursorOverride(null);
                   }
                 }}
-                cursor={edgeCursor}
-              >
-                <meshBasicMaterial
-                  color={isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF'}
-                  transparent={false}
-                  opacity={1.0}
-                />
-              </Box>
+                style={{
+                  width: isEdgeVertical ? '6px' : '22px',
+                  height: isEdgeVertical ? '22px' : '6px',
+                  borderRadius: '3px',
+                  backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
+                  border: '1px solid #3B82F6',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  cursor: edgeCursor,
+                  transition: 'background-color 0.15s ease',
+                }}
+              />
+              </Html>
             );
           })}
         </>
       )}
-      
+
       {/* For circles, show 8 resize handles like Windows */}
       {resizingShape.type === 'circle' && (
         <>
@@ -1173,65 +1199,78 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             else if (index === 3) cornerCursor = 'sw-resize';
             
             return (
-              <Sphere
+              <Html
                 key={`resize-circle-corner-${index}`}
                 position={[point.x, elevation + 0.2, point.y]}
-                args={[0.4]}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setResizeHandle('corner', index);
+                center
+                sprite
+                occlude={false}
+                style={{
+                  pointerEvents: 'auto',
+                  userSelect: 'none',
+                  zIndex: 999,
                 }}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-
-                  setResizeHandle('corner', index);
-
-                  // Save initial state to history before starting resize
-                  saveToHistory();
-
-                  // Set up drag state
-                  document.title = 'CORNER DRAG START ' + index;
-                  dragState.current.isDragging = true;
-                  dragState.current.handleType = 'corner';
-                  dragState.current.handleIndex = index;
-
-                  // For circles, keep original points as-is
-                  dragState.current.originalPoints = [...resizingShape.points];
-
-                  dragState.current.pointerId = event.nativeEvent.pointerId;
-                  dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
-
-                  // Set cursor for the entire drag operation
-                  setCursorOverride(cornerCursor);
-                  
-                  // Capture pointer to ensure we get all events
-                  event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
-                  
-                  // Add global listeners with capture
-                  document.addEventListener('pointermove', handlePointerMove, true);
-                  document.addEventListener('pointerup', handlePointerUp, true);
-                  document.addEventListener('pointercancel', handlePointerUp, true);
-                }}
-                onPointerEnter={() => {
-                  setHoveredHandle({type: 'corner', index});
-                  if (!dragState.current.isDragging) {
-                    setCursorOverride(cornerCursor);
-                  }
-                }}
-                onPointerLeave={() => {
-                  setHoveredHandle(null);
-                  if (!dragState.current.isDragging) {
-                    setCursorOverride(null);
-                  }
-                }}
-                cursor={cornerCursor}
               >
-                <meshBasicMaterial
-                  color={isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF'}
-                  transparent={false}
-                  opacity={1.0}
+                <div
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setResizeHandle('corner', index);
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+
+                    setResizeHandle('corner', index);
+
+                    // Save initial state to history before starting resize
+                    saveToHistory();
+
+                    // Set up drag state
+                    document.title = 'CORNER DRAG START ' + index;
+                    dragState.current.isDragging = true;
+                    dragState.current.handleType = 'corner';
+                    dragState.current.handleIndex = index;
+
+                    // For circles, keep original points as-is
+                    dragState.current.originalPoints = [...resizingShape.points];
+
+                    dragState.current.pointerId = event.nativeEvent.pointerId;
+                    dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+
+                    // Set cursor for the entire drag operation
+                    setCursorOverride(cornerCursor);
+
+                    // Capture pointer to ensure we get all events
+                    event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+
+                    // Add global listeners with capture
+                    document.addEventListener('pointermove', handlePointerMove, true);
+                    document.addEventListener('pointerup', handlePointerUp, true);
+                    document.addEventListener('pointercancel', handlePointerUp, true);
+                  }}
+                  onPointerEnter={() => {
+                    setHoveredHandle({type: 'corner', index});
+                    if (!dragState.current.isDragging) {
+                      setCursorOverride(cornerCursor);
+                    }
+                  }}
+                  onPointerLeave={() => {
+                    setHoveredHandle(null);
+                    if (!dragState.current.isDragging) {
+                      setCursorOverride(null);
+                    }
+                  }}
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
+                    border: '2px solid #3B82F6',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                    cursor: cornerCursor,
+                    transition: 'background-color 0.15s ease',
+                  }}
                 />
-              </Sphere>
+              </Html>
             );
           })}
           
@@ -1244,17 +1283,23 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             let edgeCursor = 'ns-resize'; // Top/Bottom handles (0, 2) - vertical stretch
             if (index === 1 || index === 3) edgeCursor = 'ew-resize'; // Right/Left handles (1, 3) - horizontal stretch
 
-            // Make edge handles directional - wider in the direction they stretch
-            let handleArgs: [number, number, number] = [1.2, 0.3, 0.4]; // Horizontal handles for top/bottom (wider horizontally)
-            if (index === 1 || index === 3) { // Right and left handles
-              handleArgs = [0.4, 0.3, 1.2]; // Vertical handles (wider vertically)
-            }
+            // CSS dimensions for edge handles
+            const isVerticalHandle = index === 1 || index === 3; // Right and left handles
 
             return (
-              <Box
+              <Html
                 key={`resize-circle-edge-${index}`}
                 position={[point.x, elevation + 0.15, point.y]}
-                args={handleArgs}
+                center
+                sprite
+                occlude={false}
+                style={{
+                  pointerEvents: 'auto',
+                  userSelect: 'none',
+                  zIndex: 998,
+                }}
+              >
+                <div
                 onClick={(event) => {
                   event.stopPropagation();
                   setResizeHandle('edge', index);
@@ -1321,80 +1366,97 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     setCursorOverride(null);
                   }
                 }}
-                cursor={edgeCursor}
-              >
-                <meshBasicMaterial
-                  color={isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF'}
-                  transparent={false}
-                  opacity={1.0}
-                />
-              </Box>
+                style={{
+                  width: isVerticalHandle ? '6px' : '22px',
+                  height: isVerticalHandle ? '22px' : '6px',
+                  borderRadius: '3px',
+                  backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
+                  border: '1px solid #3B82F6',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  cursor: edgeCursor,
+                  transition: 'background-color 0.15s ease',
+                }}
+              />
+              </Html>
             );
           })}
         </>
       )}
-      
+
       {/* For polylines, show corner handles only */}
       {resizingShape.type === 'polyline' && resizeHandles.corners.map((point, index) => {
         const isSelected = drawing.resizeHandleType === 'corner' && drawing.resizeHandleIndex === index;
         const isHovered = hoveredHandle?.type === 'corner' && hoveredHandle?.index === index;
         
         return (
-          <Sphere
+          <Html
             key={`resize-polyline-${index}`}
             position={[point.x, elevation + 0.2, point.y]}
-            args={[0.5]}
-            onClick={(event) => {
-              event.stopPropagation();
-              setResizeHandle('corner', index);
+            center
+            sprite
+            occlude={false}
+            style={{
+              pointerEvents: 'auto',
+              userSelect: 'none',
+              zIndex: 999,
             }}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-
-              setResizeHandle('corner', index);
-
-              // Save initial state to history before starting resize
-              saveToHistory();
-
-              // Set up drag state
-              dragState.current.isDragging = true;
-              dragState.current.handleType = 'corner';
-              dragState.current.handleIndex = index;
-              dragState.current.originalPoints = [...resizingShape.points];
-              dragState.current.pointerId = event.nativeEvent.pointerId;
-              dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
-
-              // Set cursor for the entire drag operation
-              setCursorOverride('move');
-              
-              // Capture pointer to ensure we get all events
-              event.currentTarget.setPointerCapture(event.pointerId);
-              
-              // Add global listeners with capture
-              document.addEventListener('pointermove', handlePointerMove, true);
-              document.addEventListener('pointerup', handlePointerUp, true);
-              document.addEventListener('pointercancel', handlePointerUp, true);
-            }}
-            onPointerEnter={() => {
-              setHoveredHandle({type: 'corner', index});
-              if (!dragState.current.isDragging) {
-                setCursorOverride('move');
-              }
-            }}
-            onPointerLeave={() => {
-              setHoveredHandle(null);
-              if (!dragState.current.isDragging) {
-                setCursorOverride(null);
-              }
-            }}
-            cursor="move"
           >
-            <meshBasicMaterial
-              color={isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF'}
-              transparent={false}
-              opacity={1.0}
+            <div
+              onClick={(event) => {
+                event.stopPropagation();
+                setResizeHandle('corner', index);
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+
+                setResizeHandle('corner', index);
+
+                // Save initial state to history before starting resize
+                saveToHistory();
+
+                // Set up drag state
+                dragState.current.isDragging = true;
+                dragState.current.handleType = 'corner';
+                dragState.current.handleIndex = index;
+                dragState.current.originalPoints = [...resizingShape.points];
+                dragState.current.pointerId = event.nativeEvent.pointerId;
+                dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+
+                // Set cursor for the entire drag operation
+                setCursorOverride('move');
+
+                // Capture pointer to ensure we get all events
+                event.currentTarget.setPointerCapture(event.pointerId);
+
+                // Add global listeners with capture
+                document.addEventListener('pointermove', handlePointerMove, true);
+                document.addEventListener('pointerup', handlePointerUp, true);
+                document.addEventListener('pointercancel', handlePointerUp, true);
+              }}
+              onPointerEnter={() => {
+                setHoveredHandle({type: 'corner', index});
+                if (!dragState.current.isDragging) {
+                  setCursorOverride('move');
+                }
+              }}
+              onPointerLeave={() => {
+                setHoveredHandle(null);
+                if (!dragState.current.isDragging) {
+                  setCursorOverride(null);
+                }
+              }}
+              style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
+                border: '2px solid #3B82F6',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                cursor: 'move',
+                transition: 'background-color 0.15s ease',
+              }}
             />
-          </Sphere>
+          </Html>
         );
       })}
     </group>

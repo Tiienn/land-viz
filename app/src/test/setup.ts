@@ -73,6 +73,76 @@ Object.defineProperty(document, 'createElement', {
   }),
 });
 
+// Factory function for creating Vector3 mocks with all methods
+const createVector3Mock = (x = 0, y = 0, z = 0): any => {
+  const vec = {
+    x, y, z,
+    set: vi.fn(function(this: any, newX: number, newY: number, newZ: number) {
+      this.x = newX;
+      this.y = newY;
+      this.z = newZ;
+      return this;
+    }),
+    copy: vi.fn(function(this: any, v: any) {
+      this.x = v.x;
+      this.y = v.y;
+      this.z = v.z;
+      return this;
+    }),
+    clone: vi.fn(function(this: any) {
+      // Return a new Vector3 mock with the same values
+      return createVector3Mock(this.x, this.y, this.z);
+    }),
+    distanceTo: vi.fn(() => 50),
+    normalize: vi.fn(function(this: any) {
+      const length = Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+      if (length > 0) {
+        this.x /= length;
+        this.y /= length;
+        this.z /= length;
+      }
+      return this;
+    }),
+    multiplyScalar: vi.fn(function(this: any, scalar: number) {
+      this.x *= scalar;
+      this.y *= scalar;
+      this.z *= scalar;
+      return this;
+    }),
+    add: vi.fn(function(this: any, v: any) {
+      this.x += v.x;
+      this.y += v.y;
+      this.z += v.z;
+      return this;
+    }),
+    sub: vi.fn(function(this: any, v: any) {
+      this.x -= v.x;
+      this.y -= v.y;
+      this.z -= v.z;
+      return this;
+    }),
+    subVectors: vi.fn(function(this: any, a: any, b: any) {
+      this.x = a.x - b.x;
+      this.y = a.y - b.y;
+      this.z = a.z - b.z;
+      return this;
+    }),
+    addVectors: vi.fn(function(this: any, a: any, b: any) {
+      this.x = a.x + b.x;
+      this.y = a.y + b.y;
+      this.z = a.z + b.z;
+      return this;
+    }),
+    length: vi.fn(function(this: any) {
+      return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+    }),
+    lengthSq: vi.fn(function(this: any) {
+      return this.x * this.x + this.y * this.y + this.z * this.z;
+    }),
+  };
+  return vec;
+};
+
 // Mock Three.js Vector3 and other essential classes
 vi.mock('three', async () => {
   const originalThree = await vi.importActual('three');
@@ -97,14 +167,37 @@ vi.mock('three', async () => {
       add: vi.fn(),
       remove: vi.fn(),
     })),
-    Vector3: vi.fn().mockImplementation((x = 0, y = 0, z = 0) => ({
-      x, y, z,
-      set: vi.fn(),
-      copy: vi.fn(),
-      clone: vi.fn(() => ({ x, y, z })),
-      distanceTo: vi.fn(() => 50),
-      normalize: vi.fn(),
-      multiplyScalar: vi.fn(),
+    Vector3: vi.fn().mockImplementation((x = 0, y = 0, z = 0) => createVector3Mock(x, y, z)),
+    Vector2: vi.fn().mockImplementation((x = 0, y = 0) => ({
+      x, y,
+      set: vi.fn(function(this: any, newX: number, newY: number) {
+        this.x = newX;
+        this.y = newY;
+        return this;
+      }),
+    })),
+    Plane: vi.fn().mockImplementation((normal: any, constant = 0) => ({
+      normal: normal || { x: 0, y: 1, z: 0 },
+      constant,
+    })),
+    Quaternion: vi.fn().mockImplementation((x = 0, y = 0, z = 0, w = 1) => ({
+      x, y, z, w,
+      setFromUnitVectors: vi.fn(function(this: any) {
+        return this;
+      }),
+    })),
+    Raycaster: vi.fn().mockImplementation(() => ({
+      ray: {
+        intersectPlane: vi.fn((plane: any, target: any) => {
+          if (target) {
+            target.x = 0;
+            target.y = 0;
+            target.z = 0;
+          }
+          return target;
+        }),
+      },
+      setFromCamera: vi.fn(),
     })),
   };
 });
@@ -119,6 +212,7 @@ vi.mock('@react-three/fiber', () => ({
       position: { x: 0, y: 30, z: 30, set: vi.fn(), distanceTo: vi.fn(() => 50) },
       lookAt: vi.fn(),
       updateProjectionMatrix: vi.fn(),
+      zoom: 1,
     },
     gl: {
       domElement: mockCanvas,
@@ -128,6 +222,19 @@ vi.mock('@react-three/fiber', () => ({
     scene: {
       add: vi.fn(),
       remove: vi.fn(),
+    },
+    raycaster: {
+      ray: {
+        intersectPlane: vi.fn((plane: any, target: any) => {
+          if (target) {
+            target.x = 0;
+            target.y = 0;
+            target.z = 0;
+          }
+          return target;
+        }),
+      },
+      setFromCamera: vi.fn(),
     },
     size: { width: 800, height: 600 },
     viewport: { width: 800, height: 600 },

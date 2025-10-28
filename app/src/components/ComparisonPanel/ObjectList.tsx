@@ -129,7 +129,7 @@ function CategoryHeader({
           ...styles.categoryIcon,
           transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
         }}>
-          ▶
+          <Icon name="chevron-right" size={14} />
         </span>
         <span style={styles.categoryName}>{displayName}</span>
       </div>

@@ -5,6 +5,7 @@ import type { Shape, Element } from '@/types';
 import { isShapeElement, isTextElement } from '@/types';
 import Icon from './Icon';
 import LayerThumbnail from './LayerPanel/LayerThumbnail';
+import { NoLayersEmptyState, SearchNoResultsEmptyState } from './UI/EmptyState'; // Phase 2: Empty states
 
 interface LayerPanelProps {
   isOpen: boolean;
@@ -68,9 +69,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
   const [statisticsExpanded, setStatisticsExpanded] = useState(true);
 
   // Phase 2: Multi-selection click handler
+  // Phase 3: Extended to support text layer selection
   const handleLayerClick = (layerId: string, event: React.MouseEvent) => {
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;
     const isShift = event.shiftKey;
+
+    // Phase 3: Check if this is a text layer
+    const layerTexts = texts.filter(text => text.layerId === layerId);
+    const textInLayer = layerTexts[0];
 
     if (isShift && lastClickedLayerId) {
       // Range selection: Select all layers between last clicked and current
@@ -79,10 +85,25 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
       // Toggle selection: Add/remove this layer from selection
       selectLayer(layerId, true);
       setLastClickedLayerId(layerId);
+
+      // Phase 3: If text layer, also select the text object
+      if (textInLayer) {
+        selectText(textInLayer.id);
+      }
     } else {
       // Single selection: Clear all and select this one
       selectLayer(layerId, false);
       setLastClickedLayerId(layerId);
+
+      // Phase 3: If text layer, select the text object (deselect shapes)
+      if (textInLayer) {
+        selectText(textInLayer.id);
+        // Deselect any selected shapes
+        useAppStore.getState().setSelectedShapeIds([]);
+      } else {
+        // If shape layer, deselect text
+        selectText(null);
+      }
     }
   };
 
@@ -161,9 +182,10 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
   // Filter layers by search term AND hide empty layers
   const filteredLayers = layers.filter(layer => {
     const matchesSearch = layer.name.toLowerCase().includes(searchTerm.toLowerCase());
-    // Check both elements AND shapes (shapes are legacy but still in use)
+    // Check elements, shapes, AND text objects (Phase 4: include text)
     const hasElements = getLayerElements(layer.id).length > 0 ||
                         shapes.filter(s => s.layerId === layer.id).length > 0 ||
+                        texts.filter(t => t.layerId === layer.id).length > 0 || // Phase 4: Show text layers
                         layer.type === 'folder';
     return matchesSearch && hasElements;
   });
@@ -178,11 +200,29 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
 
   // Helper function to get shape info for a layer
   const getLayerShapeInfo = (layerId: string) => {
+    // Check if this is a text layer
+    const layerTexts = texts.filter(text => text.layerId === layerId);
+    const text = layerTexts[0]; // Get first text in layer
+
+    if (text) {
+      // This is a text layer - return text-specific info
+      const textContent = text.content.trim() || '(Empty text)';
+      const textPreview = textContent.substring(0, 30) + (textContent.length > 30 ? '...' : '');
+      return {
+        type: 'Text',
+        dimensions: '', // No dimensions for text
+        area: '', // No area for text
+        isText: true,
+        textContent: textPreview
+      };
+    }
+
+    // Otherwise, check for shapes
     const layerShapes = shapes.filter(shape => shape.layerId === layerId);
     const shape = layerShapes[0]; // Get first shape in layer
     const layer = layers.find(l => l.id === layerId);
-    
-    if (!shape || !layer) return { type: 'Empty', dimensions: 'm × m', area: '0 m²' };
+
+    if (!shape || !layer) return { type: 'Empty', dimensions: 'm × m', area: '0 m²', isText: false };
     
     // Calculate dimensions directly from shape points
     const calculateDimensions = (shape: Shape) => {
@@ -247,19 +287,30 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
     };
     
     const measurements = calculateDimensions(shape);
-    
-    return { 
-      type: `${shape.type.charAt(0).toUpperCase() + shape.type.slice(1)} Tool`, 
-      dimensions: measurements.dimensions, 
-      area: measurements.area 
+
+    return {
+      type: `${shape.type.charAt(0).toUpperCase() + shape.type.slice(1)} Tool`,
+      dimensions: measurements.dimensions,
+      area: measurements.area,
+      isText: false
     };
   };
 
 
+  // Phase 3: Extended to support text visibility toggle
   const handleToggleLayerVisibility = (layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
     if (layer) {
-      updateLayer(layerId, { visible: !layer.visible });
+      const newVisibility = !layer.visible;
+
+      // Update layer visibility
+      updateLayer(layerId, { visible: newVisibility });
+
+      // Phase 3: If this is a text layer, also toggle text visibility
+      const layerTexts = texts.filter(text => text.layerId === layerId);
+      layerTexts.forEach(text => {
+        updateText(text.id, { visible: newVisibility });
+      });
     }
   };
 
@@ -302,6 +353,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
       const confirmed = window.confirm(message);
       if (!confirmed) return;
     }
+
+    // Phase 3: Delete all text objects in this layer first
+    const layerTexts = texts.filter(text => text.layerId === layerId);
+    layerTexts.forEach(text => {
+      deleteText(text.id);
+    });
+
+    // Then delete the layer (which will also delete shapes)
     deleteLayer(layerId);
   };
 
@@ -604,7 +663,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               }}
               title="Create new folder"
             >
-              📁 New Folder
+              <Icon name="folder" size={16} style={{ marginRight: '6px' }} />
+              New Folder
             </button>
             <button
               onClick={() => setCheckboxMode(!checkboxMode)}
@@ -681,7 +741,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
             title="Delete all selected layers"
           >
-            🗑️ Delete
+            <Icon name="trash" size={16} style={{ marginRight: '6px' }} />
+            Delete
           </button>
 
           {/* Toggle Visibility */}
@@ -718,7 +779,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             }}
             title="Toggle visibility for all selected layers"
           >
-            👁️ Toggle Visibility
+            <Icon name="eye" size={16} style={{ marginRight: '6px' }} />
+            Toggle Visibility
           </button>
 
           {/* Toggle Lock */}
@@ -755,7 +817,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             }}
             title="Toggle lock for all selected layers"
           >
-            🔒 Toggle Lock
+            <Icon name="lock" size={16} style={{ marginRight: '6px' }} />
+            Toggle Lock
           </button>
 
           {/* Opacity Slider */}
@@ -857,7 +920,25 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 alignItems: 'center',
                 gap: '8px'
               }}>
-                <span>{isFolder ? `📁 Folder (${children.length} items)` : shapeInfo.type}</span>
+                <span>
+                  {isFolder ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Icon name="folder" size={14} color="#6B7280" />
+                      <span>Folder ({children.length} items)</span>
+                    </span>
+                  ) : shapeInfo.isText ? (
+                    // Text layer - show text icon and content preview
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Icon name="text" size={14} color="#6B7280" />
+                      <span style={{ color: '#374151', fontWeight: '500' }}>
+                        {shapeInfo.textContent}
+                      </span>
+                    </span>
+                  ) : (
+                    // Shape layer - show type
+                    shapeInfo.type
+                  )}
+                </span>
                 {/* Phase 3: Drop into folder indicator */}
                 {isFolder && dragOverLayer === layer.id && dropZone === 'inside' && (
                   <span style={{
@@ -903,7 +984,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                     onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
                     title={isCollapsed ? 'Expand folder' : 'Collapse folder'}
                   >
-                    {isCollapsed ? '▶' : '▼'}
+                    <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={14} />
                   </button>
                 ) : checkboxMode && (
                   <div style={{ width: '18px', flexShrink: 0 }} />
@@ -946,8 +1027,23 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                   ⋮⋮
                 </div>
 
-                {/* Layer Thumbnail - Phase 1: Visual preview (not for folders) */}
-                {!isFolder && <LayerThumbnail layer={layer} size={40} />}
+                {/* Layer Thumbnail - Phase 1: Visual preview (not for folders or text layers) */}
+                {!isFolder && !shapeInfo.isText && <LayerThumbnail layer={layer} size={40} />}
+                {/* Phase 4: Text layer icon */}
+                {!isFolder && shapeInfo.isText && (
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    flexShrink: 0,
+                    color: '#6B7280'
+                  }}>
+                    <Icon name="text" size={20} color="#6B7280" />
+                  </div>
+                )}
                 {/* Phase 3: Folder icon */}
                 {isFolder && (
                   <div style={{
@@ -956,10 +1052,9 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '24px',
                     flexShrink: 0
                   }}>
-                    📁
+                    <Icon name="folder" size={24} color="#6B7280" />
                   </div>
                 )}
 
@@ -1156,6 +1251,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                         updateElement(element.id, { locked: newLockedState });
                       });
                       updateLayer(layer.id, { locked: newLockedState });
+
+                      // Phase 3: Also toggle lock for text objects in this layer
+                      const layerTexts = texts.filter(text => text.layerId === layer.id);
+                      layerTexts.forEach(text => {
+                        updateText(text.id, { locked: newLockedState });
+                      });
                     }}
                     style={{
                       background: 'transparent',
@@ -1518,19 +1619,11 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
       })()}
 
         {rootLayers.length === 0 && (
-          <div style={{
-            padding: '32px 20px',
-            textAlign: 'center',
-            color: '#6b7280',
-            fontSize: '14px'
-          }}>
-            <div style={{ marginBottom: '8px', fontSize: '16px', fontWeight: '500' }}>
-              {searchTerm ? 'No layers found' : 'No layers yet'}
-            </div>
-            <div style={{ fontSize: '12px', lineHeight: '1.5' }}>
-              {searchTerm ? 'Try a different search term' : 'Create a shape or add text to get started'}
-            </div>
-          </div>
+          searchTerm ? (
+            <SearchNoResultsEmptyState searchQuery={searchTerm} />
+          ) : (
+            <NoLayersEmptyState />
+          )
         )}
       </div>
 
@@ -1569,11 +1662,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               color: '#374151'
             }}>
               <span style={{
-                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
                 transition: 'transform 0.2s',
                 transform: statisticsExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
               }}>
-                ▶
+                <Icon name="chevron-right" size={14} />
               </span>
               Statistics
             </div>
@@ -1667,7 +1761,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 alignItems: 'center',
                 gap: '8px'
               }}>
-                <span style={{ fontSize: '24px' }}>⚠️</span>
+                <Icon name="warning" size={24} color="#f59e0b" />
                 Delete Folder
               </div>
 
@@ -1716,8 +1810,9 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                       onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
                       onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
                     >
-                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>
-                        📁 Delete folder only
+                      <div style={{ fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Icon name="folder" size={16} />
+                        Delete folder only
                       </div>
                       <div style={{ fontSize: '12px', opacity: 0.9 }}>
                         Move {childCount} item{childCount !== 1 ? 's' : ''} to parent folder
@@ -1746,8 +1841,9 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                       onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
                       onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
                     >
-                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>
-                        🗑️ Delete folder and all contents
+                      <div style={{ fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Icon name="trash" size={16} />
+                        Delete folder and all contents
                       </div>
                       <div style={{ fontSize: '12px', opacity: 0.9 }}>
                         Permanently delete {childCount} item{childCount !== 1 ? 's' : ''} inside
@@ -1777,7 +1873,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                     onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
                     onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
                   >
-                    🗑️ Delete Folder
+                    <Icon name="trash" size={16} style={{ marginRight: '6px' }} />
+                    Delete Folder
                   </button>
                 )}
 

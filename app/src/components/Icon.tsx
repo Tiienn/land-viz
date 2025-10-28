@@ -450,7 +450,185 @@ const iconPaths: Record<string, React.ReactNode> = {
       <line x1="9" y1="8" x2="15" y2="8" />
       <line x1="17" y1="16" x2="23" y2="16" />
     </>
-  )
+  ),
+
+  // File System Icons
+  folder: (
+    <>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </>
+  ),
+
+  'folder-open': (
+    <>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v11z" />
+      <polyline points="2 19 10 11 22 19" />
+    </>
+  ),
+
+  file: (
+    <>
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <polyline points="13 2 13 9 20 9" />
+    </>
+  ),
+
+  // Status Icons
+  'eye-off': (
+    <>
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </>
+  ),
+
+  warning: (
+    <>
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
+
+  check: (
+    <>
+      <polyline points="20 6 9 17 4 12" />
+    </>
+  ),
+
+  'check-circle': (
+    <>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </>
+  ),
+
+  // Arrow Icons
+  'chevron-up': (
+    <polyline points="18 15 12 9 6 15" />
+  ),
+
+  'arrow-down': (
+    <>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <polyline points="19 12 12 19 5 12" />
+    </>
+  ),
+
+  'arrow-up': (
+    <>
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
+    </>
+  ),
+
+  // Tool Icons
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </>
+  ),
+
+  upload: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </>
+  ),
+
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" />
+    </>
+  ),
+
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </>
+  ),
+
+  // Celebration Icons
+  sparkles: (
+    <>
+      <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.36-6.36-.71.71M6.35 17.65l-.7.7M18.36 18.36l-.71-.71M6.35 6.35l-.7-.7" />
+      <circle cx="12" cy="12" r="2" />
+    </>
+  ),
+
+  trophy: (
+    <>
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+    </>
+  ),
+
+  camera: (
+    <>
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </>
+  ),
+
+  ruler: (
+    <>
+      <path d="M21.3 8.7l-5.6-5.6a1 1 0 0 0-1.4 0l-12 12a1 1 0 0 0 0 1.4l5.6 5.6a1 1 0 0 0 1.4 0l12-12a1 1 0 0 0 0-1.4z" />
+      <path d="M7.5 10.5l2 2M10.5 7.5l2 2M13.5 4.5l2 2M16.5 1.5l2 2" />
+    </>
+  ),
+
+  grid: (
+    <>
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+    </>
+  ),
+
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </>
+  ),
+
+  // Phase 2: Interactive Enhancement Icons (new icons only)
+  'alert-circle': (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </>
+  ),
+
+  x: (
+    <>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </>
+  ),
+
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </>
+  ),
+
+  'mouse-pointer': (
+    <>
+      <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+      <path d="m13 13 6 6" />
+    </>
+  ),
 };
 
 const Icon: React.FC<IconProps> = ({ 

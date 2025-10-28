@@ -55,15 +55,8 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = React.memo(({
 
   // Auto-focus ONLY on mount (not on content changes)
   useEffect(() => {
-    console.log('[InlineTextEditor] Mount - initialContent:', JSON.stringify(initialContent));
-    console.log('[InlineTextEditor] Has newlines:', initialContent.includes('\n'));
-    console.log('[InlineTextEditor] Has BR tags:', initialContent.includes('<br>'));
-
     const focusTextarea = () => {
       if (textareaRef.current) {
-        console.log('[InlineTextEditor] Textarea value:', JSON.stringify(textareaRef.current.value));
-        console.log('[InlineTextEditor] Textarea defaultValue:', JSON.stringify(textareaRef.current.defaultValue));
-
         // Force focus
         textareaRef.current.focus();
 
@@ -89,7 +82,15 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = React.memo(({
 
   // Handle content changes with debounced store updates to prevent cursor jumping
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
+    let newContent = e.target.value;
+
+    // Input validation: Prevent excessively long text to avoid memory issues
+    const MAX_TEXT_LENGTH = 10000; // 10,000 characters
+    if (newContent.length > MAX_TEXT_LENGTH) {
+      console.warn(`[InlineTextEditor] Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters. Truncating.`);
+      newContent = newContent.substring(0, MAX_TEXT_LENGTH);
+      e.target.value = newContent; // Update textarea to show truncated value
+    }
 
     // Mark as actively typing to block prop updates
     isTypingRef.current = true;
