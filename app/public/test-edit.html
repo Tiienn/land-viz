@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Edit Functionality Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+    .test-result { margin: 10px 0; padding: 10px; background: white; border-radius: 5px; border-left: 4px solid #22c55e; }
+    .test-error { border-left-color: #ef4444; }
+    .test-info { border-left-color: #3b82f6; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Edit Functionality Test</h1>
+  <p>This tests the core edit functionality outside of the React components.</p>
+  
+  <div id="test-results">
+    <div class="test-result test-info">
+      <h3>Manual Testing Instructions:</h3>
+      <ol>
+        <li><strong>Open the main app:</strong> <a href="http://localhost:5174" target="_blank">http://localhost:5174</a></li>
+        <li><strong>Click the Edit button</strong> in the Tools section to enter edit mode</li>
+        <li><strong>You should see 4 blue corner spheres</strong> appear on the default rectangle</li>
+        <li><strong>Click on a corner</strong> to select it (should turn red)</li>
+        <li><strong>Drag the selected corner</strong> with left-click and hold - it should move smoothly</li>
+        <li><strong>Click "Add Corner"</strong> while a corner is selected - should add a new corner</li>
+        <li><strong>Click "Delete Corner"</strong> while a corner is selected - should remove the corner</li>
+      </ol>
+    </div>
+    
+    <div class="test-result">
+      <h3>✅ Expected Behaviors:</h3>
+      <ul>
+        <li><strong>Smooth Dragging:</strong> Corner spheres move in real-time as you drag</li>
+        <li><strong>Rectangle Conversion:</strong> Rectangle automatically becomes polygon when edited</li>
+        <li><strong>Add Corner:</strong> New corner appears at midpoint between selected and next corner</li>
+        <li><strong>Delete Corner:</strong> Selected corner is removed (minimum 3 corners enforced)</li>
+        <li><strong>Visual Feedback:</strong> Selected corner turns red, unselected corners are blue</li>
+      </ul>
+    </div>
+    
+    <div class="test-result">
+      <h3>🚨 Issues to Watch For:</h3>
+      <ul>
+        <li><strong>Dragging not smooth:</strong> Corner doesn't follow mouse movement</li>
+        <li><strong>Add Corner not working:</strong> No new corner appears after clicking</li>
+        <li><strong>Console errors:</strong> Check browser console for JavaScript errors</li>
+        <li><strong>Shape not updating:</strong> Changes don't persist or render correctly</li>
+      </ul>
+    </div>
+    
+    <div class="test-result test-info">
+      <h3>🔧 Console Test Commands:</h3>
+      <p>Open browser console and run these commands to test the store directly:</p>
+      <pre><code>// Get store state
+const state = window.store?.getState();
+console.log('Store state:', state);
+
+// Test edit mode
+state?.enterEditMode('default-land-area');
+console.log('Edit mode:', state?.drawing.isEditMode);
+
+// Test corner selection  
+state?.selectCorner(0);
+console.log('Selected corner:', state?.drawing.selectedCornerIndex);</code></pre>
+    </div>
+  </div>
+  
+  <script>
+    // Simple functionality check
+    document.addEventListener('DOMContentLoaded', () => {
+      const results = document.getElementById('test-results');
+      
+      // Add a completion message
+      const completed = document.createElement('div');
+      completed.className = 'test-result';
+      completed.innerHTML = '<h3>✅ Setup Complete</h3><p>Test page loaded successfully. Follow the manual testing instructions above.</p>';
+      results.appendChild(completed);
+    });
+  </script>
+</body>
+</html>
