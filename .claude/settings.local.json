@@ -112,7 +112,16 @@
       "Bash(command -v:*)",
       "Bash(cmd //c \"taskkill /F /IM node.exe\")",
       "Bash(git log:*)",
-      "Bash(npm audit:*)"
+      "Bash(npm audit:*)",
+      "Bash(git pull:*)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:support.claude.com)",
+      "Bash(tree:*)",
+      "Bash(for dir in .claude/skills/*/)",
+      "Bash(ls -lh \"$dir\"SKILL.md)",
+      "Skill(ui-ux-designer)",
+      "Skill(performance-optimizer)",
+      "Skill(3d-scene-specialist)"
     ],
     "deny": [],
     "ask": []

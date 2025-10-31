@@ -5,10 +5,12 @@
  * - Smooth rotation animation
  * - Multiple sizes (small, medium, large)
  * - Optional loading text
+ * - Week 3: Enhanced shimmer effects
  * - Accessible with aria-label
  */
 
 import React from 'react';
+import { tokens } from '../../styles/tokens';
 
 export type SpinnerSize = 'small' | 'medium' | 'large';
 
@@ -37,7 +39,7 @@ const getSizePixels = (size: SpinnerSize): number => {
 export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   size = 'medium',
   message,
-  color = '#3B82F6',
+  color = tokens.colors.brand.teal, // Week 3: Use brand color
 }) => {
   const pixels = getSizePixels(size);
 
@@ -153,7 +155,7 @@ interface SkeletonProps {
 export const Skeleton: React.FC<SkeletonProps> = ({
   width = '100%',
   height = '20px',
-  borderRadius = '4px',
+  borderRadius = tokens.radius.sm, // Week 3: Use design tokens
   style,
 }) => {
   return (
@@ -162,9 +164,10 @@ export const Skeleton: React.FC<SkeletonProps> = ({
         width,
         height,
         borderRadius,
-        background: 'linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%)',
+        // Week 3: Enhanced shimmer with brand colors
+        background: `linear-gradient(90deg, ${tokens.colors.neutral[100]} 0%, ${tokens.colors.neutral[200]} 50%, ${tokens.colors.neutral[100]} 100%)`,
         backgroundSize: '200% 100%',
-        animation: 'shimmer 1.5s infinite',
+        animation: `shimmer 2s infinite linear`, // Week 3: Smoother shimmer
         ...style,
       }}
       aria-hidden="true"

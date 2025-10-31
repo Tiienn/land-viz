@@ -8,9 +8,10 @@
  * - Smooth slide-in/fade-out animations
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Icon from '../Icon';
 import { tokens } from '../../styles/tokens';
+import { animateSuccess, animateError } from '../../utils/animations';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -28,9 +29,19 @@ interface ToastItemProps {
 
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   const [isExiting, setIsExiting] = useState(false);
+  const toastRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const duration = toast.duration || 3000;
+
+    // Week 3: Apply success pulse or error shake animation on mount
+    if (toastRef.current) {
+      if (toast.type === 'success') {
+        animateSuccess(toastRef.current);
+      } else if (toast.type === 'error') {
+        animateError(toastRef.current);
+      }
+    }
 
     // Start exit animation before removal
     const exitTimer = setTimeout(() => {
@@ -110,7 +121,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   };
 
   return (
-    <div style={getToastStyles()} role="alert" aria-live="polite">
+    <div ref={toastRef} style={getToastStyles()} role="alert" aria-live="polite">
       {getIcon()}
       <span style={{ flex: 1 }}>{toast.message}</span>
       <button

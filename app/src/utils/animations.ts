@@ -187,6 +187,41 @@ export const animationKeyframes = `
     transform: translateX(0);
   }
 }
+
+/* Week 3: Shimmer loading effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Week 3: Celebration effect */
+@keyframes celebrate {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Week 3: Smooth panel transitions */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
 `;
 
 /**
@@ -213,4 +248,49 @@ export const createClickAnimationHandler = (onClick: () => void) => (
 ) => {
   animateToolSelection(e.currentTarget);
   onClick();
+};
+
+/**
+ * Week 3 Enhancement: Loading shimmer animation
+ * Usage: Apply to loading placeholders and skeleton screens
+ */
+export const animateShimmer = (element: HTMLElement) => {
+  element.style.animation = `shimmer 2s infinite linear`;
+  element.style.backgroundSize = '200% 100%';
+  element.style.backgroundImage = 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 100%)';
+};
+
+/**
+ * Week 3 Enhancement: Celebration confetti effect
+ * Usage: Call on major achievements (successful export, etc.)
+ */
+export const celebrateSuccess = (element: HTMLElement) => {
+  // Add success pulse + celebration animation
+  element.style.animation = `successPulse ${ANIMATION_TIMING.CELEBRATION} ${EASING.EASE_OUT}, celebrate 0.8s ${EASING.EASE_OUT}`;
+
+  setTimeout(() => {
+    element.style.animation = '';
+  }, 800);
+};
+
+/**
+ * Week 3 Enhancement: Smooth panel slide transitions
+ * Usage: Apply to collapsible panels
+ */
+export const animatePanelOpen = (element: HTMLElement) => {
+  element.style.animation = `slideIn ${ANIMATION_TIMING.NOTICEABLE} ${EASING.EASE_OUT}`;
+  element.style.opacity = '1';
+
+  setTimeout(() => {
+    element.style.animation = '';
+  }, 300);
+};
+
+export const animatePanelClose = (element: HTMLElement) => {
+  element.style.animation = `fadeOut ${ANIMATION_TIMING.SMOOTH} ${EASING.EASE}`;
+
+  setTimeout(() => {
+    element.style.animation = '';
+    element.style.opacity = '0';
+  }, 200);
 };

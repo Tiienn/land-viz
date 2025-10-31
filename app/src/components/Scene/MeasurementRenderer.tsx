@@ -15,7 +15,7 @@ const MeasurementLine: React.FC<{
   elevation: number;
   isSelected: boolean;
   isPreview?: boolean;
-}> = ({ measurement, elevation, isSelected, isPreview = false }) => {
+}> = React.memo(({ measurement, elevation, isSelected, isPreview = false }) => {
 
   const linePoints = useMemo(() => {
     const startPos = new Vector3(
@@ -63,7 +63,9 @@ const MeasurementLine: React.FC<{
 
     </group>
   );
-};
+});
+
+MeasurementLine.displayName = 'MeasurementLine';
 
 // Component to render measurement preview during measurement
 const MeasurementPreview: React.FC<{
@@ -71,7 +73,7 @@ const MeasurementPreview: React.FC<{
   endPoint: Point2D;
   elevation: number;
   unit: 'metric' | 'imperial';
-}> = ({ startPoint, endPoint, elevation, unit }) => {
+}> = React.memo(({ startPoint, endPoint, elevation, unit }) => {
 
   const previewMeasurement = useMemo(() => {
     const distance = MeasurementUtils.calculateDistance(startPoint, endPoint);
@@ -102,9 +104,11 @@ const MeasurementPreview: React.FC<{
       isPreview={true}
     />
   );
-};
+});
 
-export const MeasurementRenderer: React.FC<MeasurementRendererProps> = ({
+MeasurementPreview.displayName = 'MeasurementPreview';
+
+export const MeasurementRenderer: React.FC<MeasurementRendererProps> = React.memo(({
   elevation = 0.03
 }) => {
   // Get measurement state from store
@@ -146,6 +150,8 @@ export const MeasurementRenderer: React.FC<MeasurementRendererProps> = ({
       )}
     </group>
   );
-};
+});
+
+MeasurementRenderer.displayName = 'MeasurementRenderer';
 
 export default MeasurementRenderer;

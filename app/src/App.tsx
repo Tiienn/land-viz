@@ -1,22 +1,24 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import SceneManager, { type SceneManagerRef } from './components/Scene/SceneManager';
-import LayerPanel from './components/LayerPanel';
-import PropertiesPanel from './components/PropertiesPanel';
 import { EnhancedHeader } from './components/Layout/EnhancedHeader'; // Phase 3: Gradient logo header
 import SceneErrorBoundary from './components/ErrorBoundary/SceneErrorBoundary';
 import UIErrorBoundary from './components/ErrorBoundary/UIErrorBoundary';
 import DataErrorBoundary from './components/ErrorBoundary/DataErrorBoundary';
 import { useAppStore } from './store/useAppStore';
 import ExportSettingsDialog, { type ExportSettings } from './components/ExportSettingsDialog';
-import { CalculatorDemo } from './components/CalculatorDemo';
 import { InsertAreaModal } from './components/InsertArea';
 import { AddAreaModal } from './components/AddArea';
 import { PresetsModal } from './components/AddArea/PresetsModal';
 import { MeasurementOverlay } from './components/MeasurementOverlay';
 import { DistanceInput } from './components/DistanceInput/DistanceInput';
-import ComparisonPanel from './components/ComparisonPanel';
-import { ConvertPanel } from './components/ConvertPanel';
-import { ToolsPanel } from './components/ToolsPanel';
+
+// Performance optimization: Lazy load heavy panel components
+const LayerPanel = lazy(() => import('./components/LayerPanel'));
+const PropertiesPanel = lazy(() => import('./components/PropertiesPanel'));
+const CalculatorDemo = lazy(() => import('./components/CalculatorDemo').then(m => ({ default: m.CalculatorDemo })));
+const ComparisonPanel = lazy(() => import('./components/ComparisonPanel'));
+const ConvertPanel = lazy(() => import('./components/ConvertPanel').then(m => ({ default: m.ConvertPanel })));
+const ToolsPanel = lazy(() => import('./components/ToolsPanel').then(m => ({ default: m.ToolsPanel })));
 import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer';
 import { ObjectPositioner } from './utils/objectPositioning';
 import AlignmentControls from './components/UI/AlignmentControls';
@@ -33,9 +35,12 @@ import { ContextMenu } from './components/ContextMenu/ContextMenu';
 import DimensionInputToolbar from './components/DimensionInput/DimensionInputToolbar';
 import LiveDistanceLabel from './components/DimensionInput/LiveDistanceLabel';
 import PrecisionSettingsPanel from './components/DimensionInput/PrecisionSettingsPanel';
-import { TemplateGalleryModal, SaveTemplateDialog } from './components/TemplateGallery';
+import { SaveTemplateDialog } from './components/TemplateGallery';
 import { useTemplateStore } from './store/useTemplateStore';
-import { ImageImporterModal } from './components/ImageImport';
+
+// Performance optimization: Lazy load template gallery and image importer
+const TemplateGalleryModal = lazy(() => import('./components/TemplateGallery').then(m => ({ default: m.TemplateGalleryModal })));
+const ImageImporterModal = lazy(() => import('./components/ImageImport').then(m => ({ default: m.ImageImporterModal })));
 import { TextModal } from './components/Text/TextModal';
 import { InlineTextOverlay } from './components/Text/InlineTextOverlay';
 import { useTextStore } from './store/useTextStore';
@@ -213,7 +218,7 @@ function App(): React.JSX.Element {
   const leftPanelOffset = useMemo(() => {
     const isAnyLeftPanelExpanded = comparisonExpanded || convertExpanded || toolsPanelExpanded || calculatorExpanded || layersExpanded || tidyUpExpanded;
     if (isAnyLeftPanelExpanded) {
-      return 380 + 16; // Panel width (380px) + gap (16px)
+      return 300 + 16; // Panel width (300px) + gap (16px)
     }
     return 0;
   }, [comparisonExpanded, convertExpanded, toolsPanelExpanded, calculatorExpanded, layersExpanded, tidyUpExpanded]);
@@ -1219,37 +1224,19 @@ function App(): React.JSX.Element {
         borderBottom: '1px solid #e2e8f0', 
         boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
       }}>
-        <div style={{ 
-          padding: '12px 24px', 
-          borderBottom: '1px solid #f1f5f9', 
-          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' 
+        <div style={{
+          padding: '8px 12px',
+          overflowX: 'hidden',
+          overflowY: 'hidden'
         }}>
-          <span style={{ fontSize: '12px', fontWeight: '500', color: '#000000' }}>
-            {isProfessionalMode ? 'Professional CAD Tools & Functions' : 'Tools & Functions'}
-          </span>
-          {isProfessionalMode && (
-            <span style={{ 
-              fontSize: '10px', 
-              color: '#059669', 
-              marginLeft: '8px',
-              background: '#dcfce7',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              fontWeight: '600'
-            }}>
-              ⚡ PRO MODE
-            </span>
-          )}
-        </div>
-        <div style={{ padding: '12px 16px' }}>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flexWrap: 'nowrap', minWidth: 'fit-content' }}>
             {/* Drawing */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: '600',
                 color: '#64748b',
-                marginBottom: '8px',
+                marginBottom: '6px',
                 textAlign: 'center'
               }}>Drawing</div>
               <div style={{ display: 'flex', gap: '2px' }}>
@@ -1320,10 +1307,10 @@ function App(): React.JSX.Element {
             {/* Precision */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: '600',
                 color: '#64748b',
-                marginBottom: '8px',
+                marginBottom: '6px',
                 textAlign: 'center'
               }}>Precision</div>
               <div style={{ display: 'flex', gap: '2px' }}>
@@ -1355,10 +1342,10 @@ function App(): React.JSX.Element {
             {/* Geometry */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: '600',
                 color: '#64748b',
-                marginBottom: '8px',
+                marginBottom: '6px',
                 textAlign: 'center'
               }}>Geometry</div>
               <div style={{ display: 'flex', gap: '2px' }}>
@@ -1370,13 +1357,13 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     color: '#000000',
                     background: 'white',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     transition: 'all 0.2s ease'
                   }}
@@ -1403,13 +1390,13 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     color: '#000000',
                     background: 'white',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     transition: 'all 0.2s ease'
                   }}
@@ -1439,13 +1426,13 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     color: '#000000',
                     background: 'white',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     transition: 'all 0.2s ease'
                   }}
@@ -1471,25 +1458,18 @@ function App(): React.JSX.Element {
             {/* Vertical Separator */}
             <div style={{
               width: '1px',
-              height: '70px',
+              height: '66px',
               background: '#e5e7eb',
-              margin: '0 4px'
-            }}></div>
-
-            <div style={{
-              width: '1px',
-              alignSelf: 'stretch',
-              background: 'linear-gradient(to bottom, transparent, #e2e8f0, transparent)',
-              margin: '0 12px'
+              margin: '0 2px'
             }}></div>
 
             {/* Display */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: '600',
                 color: '#64748b',
-                marginBottom: '8px',
+                marginBottom: '6px',
                 textAlign: 'center'
               }}>Display</div>
               <div style={{ display: 'flex', gap: '2px' }}>
@@ -1501,14 +1481,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '65px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
                     background: drawing.showDimensions ? '#a5b4fc' : '#ffffff',
                     color: drawing.showDimensions ? '#312e81' : '#000000',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500'
                   }}
                 >
@@ -1551,8 +1531,8 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '65px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     border: '1px solid #e5e7eb',
                     cursor: (
                       (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
@@ -1573,7 +1553,7 @@ function App(): React.JSX.Element {
                              ? '#9ca3af'
                              : '#000000',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: (
                       (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
@@ -1622,14 +1602,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '65px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
                     background: '#ffffff',
                     color: '#dc2626',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
@@ -1668,8 +1648,8 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: selectedShapeId ? 'pointer' : 'not-allowed',
                     background: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) 
@@ -1679,7 +1659,7 @@ function App(): React.JSX.Element {
                       ? '#1d4ed8' 
                       : selectedShapeId ? '#000000' : '#9ca3af',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: selectedShapeId ? 1 : 0.5
                   }}
@@ -1731,14 +1711,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '60px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     border: '1px solid #e5e7eb',
                     cursor: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? 'pointer' : 'not-allowed',
                     background: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? '#ffffff' : '#f9fafb',
                     color: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? '#ef4444' : '#9ca3af',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? 1 : 0.5
                   }}
@@ -1780,14 +1760,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: canUndo() ? 'pointer' : 'not-allowed',
                     background: canUndo() ? '#ffffff' : '#f9fafb',
                     color: canUndo() ? '#000000' : '#9ca3af',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: canUndo() ? 1 : 0.5
                   }}
@@ -1820,14 +1800,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: canRedo() ? 'pointer' : 'not-allowed',
                     background: canRedo() ? '#ffffff' : '#f9fafb',
                     color: canRedo() ? '#000000' : '#9ca3af',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: canRedo() ? 1 : 0.5
                   }}
@@ -1851,210 +1831,16 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: '4px' }}>Redo</span>
                 </button>
-                
-                {/* Snap Toggle Buttons */}
-                <button
-                  onClick={() => {
-                    // Toggle snap to grid - update both systems synchronously
-                    const currentState = useAppStore.getState();
-                    const currentSnapToGrid = currentState.drawing.snapToGrid;
-                    const newSnapToGrid = !currentSnapToGrid;
-
-                    useAppStore.setState(state => ({
-                      ...state,
-                      drawing: {
-                        ...state.drawing,
-                        snapToGrid: newSnapToGrid, // Update legacy system
-                        snapping: {
-                          ...state.drawing.snapping,
-                          config: {
-                            ...state.drawing.snapping.config,
-                            enabled: newSnapToGrid || state.drawing.snapping.config.activeTypes?.has?.('endpoint') || state.drawing.snapping.config.activeTypes?.has?.('midpoint') || state.drawing.snapping.config.activeTypes?.has?.('center'),
-                            activeTypes: newSnapToGrid
-                              ? new Set([...state.drawing.snapping.config.activeTypes, 'grid'])
-                              : new Set([...state.drawing.snapping.config.activeTypes].filter(t => t !== 'grid'))
-                          }
-                        }
-                      }
-                    }));
-                  }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 8px', 
-                    borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: drawing.snapToGrid ? '#dbeafe' : '#ffffff',
-                    color: drawing.snapToGrid ? '#1d4ed8' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!drawing.snapToGrid) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!drawing.snapToGrid) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                  title="Toggle Grid Snapping"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="7" height="7"></rect>
-                    <rect x="14" y="3" width="7" height="7"></rect>
-                    <rect x="14" y="14" width="7" height="7"></rect>
-                    <rect x="3" y="14" width="7" height="7"></rect>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Grid</span>
-                </button>
-                
-                <button 
-                  onClick={() => {
-                    // Toggle shape snapping (endpoints + midpoints + centers)
-                    const currentState = useAppStore.getState();
-                    const hasShapeSnaps = ['endpoint', 'midpoint', 'center'].some(type => 
-                      currentState.drawing.snapping.config.activeTypes?.has?.(type)
-                    );
-                    const newTypes = new Set(currentState.drawing.snapping.config.activeTypes);
-                    
-                    if (hasShapeSnaps) {
-                      // Remove shape snaps
-                      ['endpoint', 'midpoint', 'center'].forEach(type => newTypes.delete(type));
-                    } else {
-                      // Add shape snaps
-                      ['endpoint', 'midpoint', 'center'].forEach(type => newTypes.add(type));
-                    }
-                    
-                    useAppStore.setState(state => ({
-                      ...state,
-                      drawing: {
-                        ...state.drawing,
-                        snapping: {
-                          ...state.drawing.snapping,
-                          config: {
-                            ...state.drawing.snapping.config,
-                            activeTypes: newTypes
-                          }
-                        }
-                      }
-                    }));
-                  }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 8px', 
-                    borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: ['endpoint', 'midpoint', 'center'].some(type => 
-                      drawing.snapping?.config?.activeTypes?.has?.(type)
-                    ) ? '#dcfce7' : '#ffffff',
-                    color: ['endpoint', 'midpoint', 'center'].some(type => 
-                      drawing.snapping?.config?.activeTypes?.has?.(type)
-                    ) ? '#166534' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (['endpoint', 'midpoint', 'center'].some(type => 
-                      drawing.snapping?.config?.activeTypes?.has?.(type)
-                    )) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (['endpoint', 'midpoint', 'center'].some(type => 
-                      drawing.snapping?.config?.activeTypes?.has?.(type)
-                    )) {
-                      e.currentTarget.style.background = '#dcfce7';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                    }
-                  }}
-                  title="Toggle Shape Snapping (corners, midpoints, centers)"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="8"></circle>
-                    <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
-                    <circle cx="12" cy="4" r="2" fill="currentColor"></circle>
-                    <circle cx="12" cy="20" r="2" fill="currentColor"></circle>
-                    <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
-                    <circle cx="20" cy="12" r="2" fill="currentColor"></circle>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Snap</span>
-                </button>
-                
-                <button
-                  onClick={() => {
-                    // Show alignment help modal
-                    setSmartAlignHelpOpen(true);
-                  }}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '6px 8px',
-                    borderRadius: '4px',
-                    minWidth: '60px',
-                    height: '60px',
-                    border: '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                    background: '#f0f9ff',
-                    color: '#1e40af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#dbeafe';
-                    e.currentTarget.style.borderColor = '#3b82f6';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#f0f9ff';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                  }}
-                  title="Smart Align - Canva-style alignment system (Always Active)"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="6" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
-                    <rect x="14" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
-                    <line x1="8" y1="3" x2="8" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
-                    <line x1="16" y1="3" x2="16" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
-                    <circle cx="12" cy="14" r="2" fill="#8B5CF6" opacity="0.8"></circle>
-                  </svg>
-                  <span style={{ marginTop: '4px' }}>Smart Align</span>
-                </button>
               </div>
             </div>
 
-            {/* Vertical Separator */}
-            <div style={{ 
-              width: '1px', 
-              height: '70px', 
-              background: '#e5e7eb', 
-              margin: '0 4px' 
-            }}></div>
-
             {/* Corner Controls */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ 
-                fontSize: '11px', 
-                fontWeight: '600', 
-                color: '#64748b', 
-                marginBottom: '8px',
+              <div style={{
+                fontSize: '10px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '6px',
                 textAlign: 'center'
               }}>Corner Controls</div>
               <div style={{ display: 'flex', gap: '2px' }}>
@@ -2110,14 +1896,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
                     background: '#ffffff',
                     color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#000000' : '#9ca3af',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
                   }}
@@ -2144,14 +1930,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center', 
                     padding: '6px 10px', 
                     borderRadius: '4px', 
-                    minWidth: '60px', 
-                    height: '60px', 
+                    minWidth: '52px', 
+                    height: '56px', 
                     border: '1px solid #e5e7eb',
                     cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
                     background: '#ffffff',
                     color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#ef4444' : '#9ca3af',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500',
                     opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
                   }}
@@ -2167,21 +1953,21 @@ function App(): React.JSX.Element {
             </div>
 
             {/* Vertical Separator */}
-            <div style={{ 
-              width: '1px', 
-              height: '70px', 
-              background: '#e5e7eb', 
-              margin: '0 4px' 
+            <div style={{
+              width: '1px',
+              height: '66px',
+              background: '#e5e7eb',
+              margin: '0 2px'
             }}></div>
 
 
             {/* Export */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ 
-                fontSize: '11px', 
-                fontWeight: '600', 
-                color: '#64748b', 
-                marginBottom: '8px',
+              <div style={{
+                fontSize: '10px',
+                fontWeight: '600',
+                color: '#64748b',
+                marginBottom: '6px',
                 textAlign: 'center'
               }}>Export</div>
               <div style={{ display: 'flex', gap: '2px' }}>
@@ -2194,14 +1980,14 @@ function App(): React.JSX.Element {
                       alignItems: 'center', 
                       padding: '6px 10px', 
                       borderRadius: '4px', 
-                      minWidth: '65px', 
-                      height: '60px', 
+                      minWidth: '52px', 
+                      height: '56px', 
                       border: '1px solid #e5e7eb',
                       cursor: 'pointer',
                       background: exportDropdownOpen ? '#dbeafe' : '#ffffff',
                       color: exportDropdownOpen ? '#1d4ed8' : '#000000',
                       transition: 'all 0.2s ease',
-                      fontSize: '11px',
+                      fontSize: '10px',
                       fontWeight: '500'
                     }}
                   >
@@ -2304,7 +2090,7 @@ function App(): React.JSX.Element {
             {/* Vertical Separator */}
             <div style={{
               width: '1px',
-              height: '70px',
+              height: '66px',
               background: '#e5e7eb',
               margin: '0 4px'
             }}></div>
@@ -2328,14 +2114,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '60px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
                     background: '#ffffff',
                     color: '#000000',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
@@ -2358,7 +2144,7 @@ function App(): React.JSX.Element {
             {/* Vertical Separator */}
             <div style={{
               width: '1px',
-              height: '70px',
+              height: '66px',
               background: '#e5e7eb',
               margin: '0 4px'
             }}></div>
@@ -2382,14 +2168,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '60px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
                     background: '#ffffff',
                     color: '#000000',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
@@ -2415,14 +2201,14 @@ function App(): React.JSX.Element {
                     alignItems: 'center',
                     padding: '6px 10px',
                     borderRadius: '4px',
-                    minWidth: '60px',
-                    height: '60px',
+                    minWidth: '52px',
+                    height: '56px',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
                     background: '#ffffff',
                     color: '#000000',
                     transition: 'all 0.2s ease',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontWeight: '500'
                   }}
                   onMouseEnter={(e) => {
@@ -2936,7 +2722,7 @@ function App(): React.JSX.Element {
             left: '50px',
             top: 0,
             bottom: 0,
-            width: '420px',
+            width: '300px',
             background: 'white',
             borderRight: '1px solid #e2e8f0',
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -2944,13 +2730,15 @@ function App(): React.JSX.Element {
             zIndex: 20
           }}>
             <UIErrorBoundary componentName="CalculatorDemo" showMinimalError={true}>
-              <CalculatorDemo
-                inline={true}
-                onClose={() => {
-                  setCalculatorExpanded(false);
-                  setLeftPanelExpanded(false);
-                }}
-              />
+              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+                <CalculatorDemo
+                  inline={true}
+                  onClose={() => {
+                    setCalculatorExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                />
+              </Suspense>
             </UIErrorBoundary>
           </div>
         )}
@@ -2962,7 +2750,7 @@ function App(): React.JSX.Element {
             left: '50px',
             top: 0,
             bottom: 0,
-            width: '420px',
+            width: '300px',
             background: 'white',
             borderRight: '1px solid #e2e8f0',
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -2970,14 +2758,16 @@ function App(): React.JSX.Element {
             zIndex: 20
           }}>
             <UIErrorBoundary componentName="LayerPanel" showMinimalError={true}>
-              <LayerPanel
-                isOpen={true}
-                inline={true}
-                onClose={() => {
-                  setLayersExpanded(false);
-                  setLeftPanelExpanded(false);
-                }}
-              />
+              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+                <LayerPanel
+                  isOpen={true}
+                  inline={true}
+                  onClose={() => {
+                    setLayersExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                />
+              </Suspense>
             </UIErrorBoundary>
           </div>
         )}
@@ -2989,7 +2779,7 @@ function App(): React.JSX.Element {
             left: '50px',
             top: 0,
             bottom: 0,
-            width: '420px',
+            width: '300px',
             background: 'white',
             borderRight: '1px solid #e2e8f0',
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -2997,14 +2787,16 @@ function App(): React.JSX.Element {
             zIndex: 20
           }}>
             <UIErrorBoundary componentName="ToolsPanel" showMinimalError={true}>
-              <ToolsPanel
-                isExpanded={true}
-                onClose={() => {
-                  setToolsPanelExpanded(false);
-                  setLeftPanelExpanded(false);
-                }}
-                inline={true}
-              />
+              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+                <ToolsPanel
+                  isExpanded={true}
+                  onClose={() => {
+                    setToolsPanelExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                  inline={true}
+                />
+              </Suspense>
             </UIErrorBoundary>
           </div>
         )}
@@ -3016,7 +2808,7 @@ function App(): React.JSX.Element {
             left: '50px',
             top: 0,
             bottom: 0,
-            width: '420px',
+            width: '300px',
             background: 'white',
             borderRight: '1px solid #e2e8f0',
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -3024,14 +2816,16 @@ function App(): React.JSX.Element {
             zIndex: 20
           }}>
             <UIErrorBoundary componentName="ComparisonPanel" showMinimalError={true}>
-              <ComparisonPanel
-                expanded={true}
-                onToggle={() => {
-                  setComparisonExpanded(false);
-                  setLeftPanelExpanded(false);
-                }}
-                inline={true}
-              />
+              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+                <ComparisonPanel
+                  expanded={true}
+                  onToggle={() => {
+                    setComparisonExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                  inline={true}
+                />
+              </Suspense>
             </UIErrorBoundary>
           </div>
         )}
@@ -3043,7 +2837,7 @@ function App(): React.JSX.Element {
             left: '50px',
             top: 0,
             bottom: 0,
-            width: '420px',
+            width: '300px',
             background: 'white',
             borderRight: '1px solid #e2e8f0',
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -3051,14 +2845,16 @@ function App(): React.JSX.Element {
             zIndex: 20
           }}>
             <UIErrorBoundary componentName="ConvertPanel" showMinimalError={true}>
-              <ConvertPanel
-                expanded={true}
-                onToggle={() => {
-                  setConvertExpanded(false);
-                  setLeftPanelExpanded(false);
-                }}
-                inline={true}
-              />
+              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+                <ConvertPanel
+                  expanded={true}
+                  onToggle={() => {
+                    setConvertExpanded(false);
+                    setLeftPanelExpanded(false);
+                  }}
+                  inline={true}
+                />
+              </Suspense>
             </UIErrorBoundary>
           </div>
         )}
@@ -3070,7 +2866,7 @@ function App(): React.JSX.Element {
             left: '50px',
             top: 0,
             bottom: 0,
-            width: '420px',
+            width: '300px',
             background: 'white',
             borderRight: '1px solid #e2e8f0',
             boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
@@ -3336,12 +3132,12 @@ function App(): React.JSX.Element {
             paddingRight: '0',
             flex: 1
           }}>
-            <button style={{ 
-              padding: '8px', 
-              borderRadius: '8px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
+            <button style={{
+              padding: '8px',
+              borderRadius: '8px',
+              background: drawing.snapToGrid ? '#dbeafe' : 'transparent',
+              border: 'none',
+              cursor: 'pointer',
               fontSize: '11px',
               display: 'flex',
               flexDirection: 'column',
@@ -3351,29 +3147,66 @@ function App(): React.JSX.Element {
               textAlign: 'center',
               justifyContent: 'center',
               transition: 'all 0.2s ease',
-              color: '#374151',
+              color: drawing.snapToGrid ? '#1d4ed8' : '#374151',
               fontWeight: '500'
-            }} 
-            title="Land Metrics"
+            }}
+            title="Toggle Grid Snapping"
+            onClick={() => {
+              // Toggle snap to grid - update both systems synchronously
+              const currentState = useAppStore.getState();
+              const currentSnapToGrid = currentState.drawing.snapToGrid;
+              const newSnapToGrid = !currentSnapToGrid;
+
+              useAppStore.setState(state => ({
+                ...state,
+                drawing: {
+                  ...state.drawing,
+                  snapToGrid: newSnapToGrid, // Update legacy system
+                  snapping: {
+                    ...state.drawing.snapping,
+                    config: {
+                      ...state.drawing.snapping.config,
+                      enabled: newSnapToGrid || state.drawing.snapping.config.activeTypes?.has?.('endpoint') || state.drawing.snapping.config.activeTypes?.has?.('midpoint') || state.drawing.snapping.config.activeTypes?.has?.('center'),
+                      activeTypes: newSnapToGrid
+                        ? new Set([...state.drawing.snapping.config.activeTypes, 'grid'])
+                        : new Set([...state.drawing.snapping.config.activeTypes].filter(t => t !== 'grid'))
+                    }
+                  }
+                }
+              }));
+            }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
+              if (!drawing.snapToGrid) {
+                e.currentTarget.style.background = '#f3f4f6';
+              }
               e.currentTarget.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
+              if (!drawing.snapToGrid) {
+                e.currentTarget.style.background = 'transparent';
+              } else {
+                e.currentTarget.style.background = '#dbeafe';
+              }
               e.currentTarget.style.transform = 'translateY(0px)';
             }}
             >
-              <Icon name="landMetrics" size={20} color="#000000" />
-              <span style={{ fontWeight: '500', color: '#374151' }}>Land Metrics</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              <span style={{ fontWeight: '500' }}>Grid</span>
             </button>
-            
-            <button style={{ 
-              padding: '8px', 
-              borderRadius: '8px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
+
+            <button style={{
+              padding: '8px',
+              borderRadius: '8px',
+              background: ['endpoint', 'midpoint', 'center'].some(type =>
+                drawing.snapping?.config?.activeTypes?.has?.(type)
+              ) ? '#dcfce7' : 'transparent',
+              border: 'none',
+              cursor: 'pointer',
               fontSize: '11px',
               display: 'flex',
               flexDirection: 'column',
@@ -3383,29 +3216,78 @@ function App(): React.JSX.Element {
               textAlign: 'center',
               justifyContent: 'center',
               transition: 'all 0.2s ease',
-              color: '#374151',
+              color: ['endpoint', 'midpoint', 'center'].some(type =>
+                drawing.snapping?.config?.activeTypes?.has?.(type)
+              ) ? '#166534' : '#374151',
               fontWeight: '500'
-            }} 
-            title="Terrain"
+            }}
+            title="Toggle Shape Snapping (corners, midpoints, centers)"
+            onClick={() => {
+              // Toggle shape snapping (endpoints + midpoints + centers)
+              const currentState = useAppStore.getState();
+              const hasShapeSnaps = ['endpoint', 'midpoint', 'center'].some(type =>
+                currentState.drawing.snapping.config.activeTypes?.has?.(type)
+              );
+              const newTypes = new Set(currentState.drawing.snapping.config.activeTypes);
+
+              if (hasShapeSnaps) {
+                // Remove shape snaps
+                ['endpoint', 'midpoint', 'center'].forEach(type => newTypes.delete(type));
+              } else {
+                // Add shape snaps
+                ['endpoint', 'midpoint', 'center'].forEach(type => newTypes.add(type));
+              }
+
+              useAppStore.setState(state => ({
+                ...state,
+                drawing: {
+                  ...state.drawing,
+                  snapping: {
+                    ...state.drawing.snapping,
+                    config: {
+                      ...state.drawing.snapping.config,
+                      activeTypes: newTypes
+                    }
+                  }
+                }
+              }));
+            }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
+              if (!['endpoint', 'midpoint', 'center'].some(type =>
+                drawing.snapping?.config?.activeTypes?.has?.(type)
+              )) {
+                e.currentTarget.style.background = '#f3f4f6';
+              }
               e.currentTarget.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
+              if (!['endpoint', 'midpoint', 'center'].some(type =>
+                drawing.snapping?.config?.activeTypes?.has?.(type)
+              )) {
+                e.currentTarget.style.background = 'transparent';
+              } else {
+                e.currentTarget.style.background = '#dcfce7';
+              }
               e.currentTarget.style.transform = 'translateY(0px)';
             }}
             >
-              <Icon name="terrain" size={20} color="#000000" />
-              <span style={{ fontWeight: '500', color: '#374151' }}>Terrain</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="8"></circle>
+                <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                <circle cx="12" cy="4" r="2" fill="currentColor"></circle>
+                <circle cx="12" cy="20" r="2" fill="currentColor"></circle>
+                <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
+                <circle cx="20" cy="12" r="2" fill="currentColor"></circle>
+              </svg>
+              <span style={{ fontWeight: '500' }}>Snap</span>
             </button>
-            
-            <button style={{ 
-              padding: '8px', 
-              borderRadius: '8px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
+
+            <button style={{
+              padding: '8px',
+              borderRadius: '8px',
+              background: '#f0f9ff',
+              border: 'none',
+              cursor: 'pointer',
               fontSize: '11px',
               display: 'flex',
               flexDirection: 'column',
@@ -3415,21 +3297,31 @@ function App(): React.JSX.Element {
               textAlign: 'center',
               justifyContent: 'center',
               transition: 'all 0.2s ease',
-              color: '#374151',
+              color: '#1e40af',
               fontWeight: '500'
-            }} 
-            title="Dimensions"
+            }}
+            title="Smart Align - Canva-style alignment system (Always Active)"
+            onClick={() => {
+              // Show alignment help modal
+              setSmartAlignHelpOpen(true);
+            }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.background = '#dbeafe';
               e.currentTarget.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.background = '#f0f9ff';
               e.currentTarget.style.transform = 'translateY(0px)';
             }}
             >
-              <Icon name="dimensions" size={20} color="#000000" />
-              <span style={{ fontWeight: '500', color: '#374151' }}>Dimensions</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="6" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
+                <rect x="14" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
+                <line x1="8" y1="3" x2="8" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
+                <line x1="16" y1="3" x2="16" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
+                <circle cx="12" cy="14" r="2" fill="#8B5CF6" opacity="0.8"></circle>
+              </svg>
+              <span style={{ fontWeight: '500' }}>Smart Align</span>
             </button>
             
             <button 
@@ -3537,7 +3429,7 @@ function App(): React.JSX.Element {
             right: '50px',
             top: 0,
             bottom: 0,
-            width: '400px',
+            width: '280px',
             background: 'white',
             borderLeft: '1px solid #e2e8f0',
             boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
@@ -3545,13 +3437,15 @@ function App(): React.JSX.Element {
             zIndex: 20
           }}>
             <UIErrorBoundary componentName="PropertiesPanel" showMinimalError={true}>
-              <PropertiesPanel
-                isOpen={true}
-                onClose={() => {
-                  setPropertiesExpanded(false);
-                  setRightPanelExpanded(false);
-                }}
-              />
+              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+                <PropertiesPanel
+                  isOpen={true}
+                  onClose={() => {
+                    setPropertiesExpanded(false);
+                    setRightPanelExpanded(false);
+                  }}
+                />
+              </Suspense>
             </UIErrorBoundary>
           </div>
         )}
@@ -3638,16 +3532,20 @@ function App(): React.JSX.Element {
       <ContextMenu />
 
       {/* Template Gallery Modal */}
-      <TemplateGalleryModal />
+      <Suspense fallback={null}>
+        <TemplateGalleryModal />
+      </Suspense>
 
       {/* Save Template Dialog */}
       <SaveTemplateDialog />
 
       {/* Image Import Modal */}
-      <ImageImporterModal
-        isOpen={imageImportOpen}
-        onClose={() => setImageImportOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <ImageImporterModal
+          isOpen={imageImportOpen}
+          onClose={() => setImageImportOpen(false)}
+        />
+      </Suspense>
 
       {/* Phase 2: Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

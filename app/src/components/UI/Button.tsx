@@ -9,14 +9,16 @@
  *
  * All buttons include:
  * - Smooth hover animations
- * - Focus indicators for accessibility
- * - Loading states
+ * - Focus indicators for accessibility (Week 4)
+ * - Loading states with ARIA support (Week 4)
  * - Icon support
  * - Disabled states
+ * - WCAG 2.1 AA compliant (Week 4)
  */
 
 import React, { useRef } from 'react';
 import { tokens } from '../../styles/tokens';
+import { loadingAria, touchTarget } from '../../utils/accessibility';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 export type ButtonSize = 'small' | 'medium' | 'large';
@@ -196,6 +198,10 @@ export const Button: React.FC<ButtonProps> = ({
         e.currentTarget.style.outlineOffset = '0';
       }}
       style={baseStyles}
+      // Week 4: Enhanced ARIA attributes
+      aria-busy={loading}
+      aria-disabled={disabled || loading}
+      {...(loading ? loadingAria.loading : {})}
       {...props}
     >
       {loading && (
@@ -210,6 +216,7 @@ export const Button: React.FC<ButtonProps> = ({
           }}
           role="status"
           aria-label="Loading"
+          aria-live="polite"
         />
       )}
       {!loading && icon && <span style={{ display: 'flex', alignItems: 'center' }}>{icon}</span>}

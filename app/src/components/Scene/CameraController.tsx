@@ -282,17 +282,40 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
       };
     }, [is2DMode]);
 
-    // Handle zoom changes in 2D mode
+    // Handle zoom changes in 2D mode with debouncing
+    // Prevents feedback loop by only syncing to store after changes stabilize
     useEffect(() => {
       if (is2DMode && controlsRef.current) {
+        let zoomTimeout: NodeJS.Timeout | null = null;
+        let lastSyncedZoom = camera && 'zoom' in camera ? camera.zoom : 1;
+
         const handleZoomChange = () => {
           if (camera && 'zoom' in camera) {
-            setZoom2D(camera.zoom);
+            const currentZoom = camera.zoom;
+
+            // Only sync if zoom changed significantly (avoid float precision issues)
+            const zoomDelta = Math.abs(currentZoom - lastSyncedZoom);
+            if (zoomDelta > 0.001) {
+              // Clear previous timeout
+              if (zoomTimeout) clearTimeout(zoomTimeout);
+
+              // Debounce: wait 100ms after last change before syncing to store
+              zoomTimeout = setTimeout(() => {
+                // Clamp zoom to valid range
+                const clampedZoom = Math.max(0.1, Math.min(10, currentZoom));
+                if (Math.abs(clampedZoom - lastSyncedZoom) > 0.001) {
+                  setZoom2D(clampedZoom);
+                  lastSyncedZoom = clampedZoom;
+                }
+              }, 100);
+            }
           }
         };
 
         controlsRef.current.addEventListener('change', handleZoomChange);
+
         return () => {
+          if (zoomTimeout) clearTimeout(zoomTimeout);
           controlsRef.current?.removeEventListener('change', handleZoomChange);
         };
       }

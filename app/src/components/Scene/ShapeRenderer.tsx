@@ -103,20 +103,17 @@ const MeshWithDynamicGeometry: React.FC<{
     };
   }, []);
 
-  // Add pulsing animation for multi-selected shapes
-  useFrame((state) => {
-    if (material.isMultiSelected && materialRef.current) {
-      const time = state.clock.getElapsedTime();
-      const pulse = 0.7 + 0.3 * Math.sin(time * 3); // Pulse between 0.7 and 1.0
-      materialRef.current.opacity = Math.max(material.opacity * pulse, 0.1);
-    }
-  });
+  // Removed pulsing animation - was causing flickering by updating material every frame
+
+  // Calculate renderOrder based on selection state to prevent z-fighting
+  const renderOrder = material.isPrimarySelected ? 3 : material.isMultiSelected ? 2 : 1;
 
   return (
     <mesh
       ref={meshRef}
       geometry={geometry}
       position={position}
+      renderOrder={renderOrder}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
@@ -125,14 +122,21 @@ const MeshWithDynamicGeometry: React.FC<{
       onContextMenu={onContextMenu}
       cursor={cursor}
     >
-      <meshBasicMaterial
+      <meshStandardMaterial
         ref={materialRef}
-        color={material.fillColor}
+        color={material.baseColor} // Use original shape color
+        emissive={material.emissiveColor} // Add glow for selection
+        emissiveIntensity={material.emissiveIntensity}
         transparent={true}
-        opacity={Math.max(material.opacity, 0.1)} // Ensure minimum visibility
-        depthWrite={false}
-        side={THREE.DoubleSide} // Use explicit constant instead of magic number
-        alphaTest={0.01} // Prevent transparent pixel rendering artifacts
+        opacity={material.opacity}
+        depthWrite={true}
+        depthTest={true}
+        side={THREE.DoubleSide}
+        polygonOffset={true}
+        polygonOffsetFactor={-renderOrder * 10} // Negative to pull towards camera, *10 for stronger effect
+        polygonOffsetUnits={-1}
+        roughness={0.8}
+        metalness={0.2}
       />
     </mesh>
   );
@@ -158,7 +162,7 @@ const applyRotationTransform = (points: Point2D[], rotation?: { angle: number; c
   });
 };
 
-const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDimensions = false }) => {
+const ShapeRenderer: React.FC<ShapeRendererProps> = React.memo(({ elevation = 0.01, hideDimensions = false }) => {
   const { camera, gl, raycaster } = useThree();
   const groundPlane = useRef(new Plane(new Vector3(0, 1, 0), 0));
   
@@ -634,59 +638,62 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
     renderTrigger // Force re-render when explicitly triggered
   ]);
 
-  // Separate material calculations
+  // Separate material calculations using emissive glow instead of color changes
   const shapeMaterials = useMemo(() => {
-    
+
     const materials = visibleShapes.map((shape, index) => {
-      const isPrimarySelected = shape.id === selectedShapeId; // Primary selection (main selection)
-      const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected; // Multi-selected but not primary
-      const isSelected = isPrimarySelected || isMultiSelected; // Any kind of selection
+      const isPrimarySelected = shape.id === selectedShapeId;
+      const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected;
+      const isSelected = isPrimarySelected || isMultiSelected;
       const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
-      const isHighlighted = shape.id === highlightedShapeId; // Canva-style grouping: highlighted shape within group
+      const isHighlighted = shape.id === highlightedShapeId;
       const isDragging = shapeTransforms[index]?.isDragging;
-      const isBeingResized = shapeTransforms[index]?.isBeingResized;
       const layer = layers.find(l => l.id === shape.layerId);
       const layerOpacity = layer?.opacity ?? 1;
 
-      // Enhanced color scheme for multi-selection
-      let fillColor, lineColor, opacity, lineOpacity, lineWidth;
+      // Keep original shape color, use emissive glow for selection states
+      const baseColor = shape.color || '#3B82F6';
+      let emissiveColor, emissiveIntensity, lineColor, opacity, lineOpacity, lineWidth;
 
       if (isDragging) {
-        fillColor = "#16A34A";
+        emissiveColor = "#16A34A"; // Green glow
+        emissiveIntensity = 0.5;
         lineColor = "#16A34A";
-        opacity = 0.8 * layerOpacity;
+        opacity = 0.6 * layerOpacity;
         lineOpacity = 1 * layerOpacity;
         lineWidth = 5;
       } else if (isHighlighted) {
-        // Canva-style grouping: Highlighted shape gets strongest visual (purple with glow)
-        fillColor = "#9333EA"; // Purple to match group boundary
+        emissiveColor = "#9333EA"; // Purple glow
+        emissiveIntensity = 0.6;
         lineColor = "#9333EA";
-        opacity = 0.8 * layerOpacity;
+        opacity = 0.6 * layerOpacity;
         lineOpacity = 1 * layerOpacity;
-        lineWidth = 5; // Thicker than normal selection
+        lineWidth = 5;
       } else if (isPrimarySelected) {
-        // Primary selection - bright blue with stronger effect
-        fillColor = "#1D4ED8";
+        emissiveColor = "#1D4ED8"; // Blue glow
+        emissiveIntensity = 0.4;
         lineColor = "#1D4ED8";
-        opacity = 0.7 * layerOpacity;
+        opacity = 0.6 * layerOpacity;
         lineOpacity = 1 * layerOpacity;
         lineWidth = 4;
       } else if (isMultiSelected) {
-        // Multi-selection - purple/violet with pulsing effect
-        fillColor = "#7C3AED";
+        emissiveColor = "#7C3AED"; // Violet glow
+        emissiveIntensity = 0.3;
         lineColor = "#7C3AED";
         opacity = 0.6 * layerOpacity;
         lineOpacity = 0.95 * layerOpacity;
         lineWidth = 3;
       } else if (isHovered) {
-        fillColor = "#3B82F6";
+        emissiveColor = "#3B82F6"; // Light blue glow
+        emissiveIntensity = 0.2;
         lineColor = "#3B82F6";
-        opacity = 0.6 * layerOpacity;
+        opacity = 0.5 * layerOpacity;
         lineOpacity = 0.9 * layerOpacity;
         lineWidth = 3;
       } else {
-        fillColor = shape.color;
-        lineColor = shape.color;
+        emissiveColor = "#000000"; // No glow
+        emissiveIntensity = 0;
+        lineColor = baseColor;
         opacity = 0.4 * layerOpacity;
         lineOpacity = shape.visible ? 0.8 * layerOpacity : 0.3 * layerOpacity;
         lineWidth = 2;
@@ -694,8 +701,9 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
 
       return {
         id: shape.id,
-        color: new Color(shape.color || '#3B82F6'),
-        fillColor,
+        baseColor, // Original shape color
+        emissiveColor, // Glow color for selection
+        emissiveIntensity, // Glow strength
         lineColor,
         opacity,
         lineOpacity,
@@ -704,7 +712,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         isMultiSelected
       };
     });
-    
+
     return materials;
   }, [
     visibleShapes.map(s => `${s.id}_${s.color}_${s.visible}`).join('|'),
@@ -718,10 +726,11 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
   ]);
 
   // Pre-calculate layer elevations for performance
+  // Use larger layer separation (0.05 per layer) to prevent z-fighting
   const layerElevations = useMemo(() => {
     const elevations = new Map<string, number>();
     layers.forEach((layer, index) => {
-      const elevationOffset = (layers.length - 1 - index) * 0.001;
+      const elevationOffset = (layers.length - 1 - index) * 0.05; // Increased from 0.001
       elevations.set(layer.id, elevation + elevationOffset);
     });
     return elevations;
@@ -999,7 +1008,25 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         });
       }
 
-      let points3D = convertPointsWithElevation(transformedPoints, shape.layerId);
+      // MULTI-SELECTION FIX: Check if shape is primary OR in multi-selection array
+      const isPrimarySelected = shape.id === selectedShapeId;
+      const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected;
+      const isSelected = isPrimarySelected || isMultiSelected;
+      const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
+      const isHighlighted = shape.id === highlightedShapeId; // Canva-style grouping: highlighted shape
+      const shapeElevation = layerElevations.get(shape.layerId) || elevation;
+
+      // CRITICAL: Use LARGE elevation offsets to prevent z-fighting at oblique angles
+      // Depth buffer precision requires 0.10+ unit separation for reliable rendering
+      // Previous values (0.01-0.05) were within floating-point precision limits
+      const elevationOffset = isHighlighted ? 0.30 : (isSelected || isHovered) ? 0.20 : 0.10;
+
+      // Create points at the elevated position to match the mesh elevation
+      let points3D = transformedPoints.map(point => new Vector3(
+        point.x,
+        shapeElevation + elevationOffset,  // Use elevated position for outlines too
+        point.y
+      ));
 
       // Close the shape for certain types
       const shouldCloseShape =
@@ -1007,22 +1034,15 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
         shape.type === 'polygon' ||
         shape.type === 'circle' ||
         (shape.type === 'polyline' && transformedPoints.length > 2);
-        
+
       if (shouldCloseShape && points3D.length > 2) {
         const firstPoint = points3D[0];
         const lastPoint = points3D[points3D.length - 1];
-        
+
         if (firstPoint.distanceTo(lastPoint) > 0.001) {
-          points3D = [...points3D, points3D[0]]; 
+          points3D = [...points3D, points3D[0]];
         }
       }
-
-      // MULTI-SELECTION FIX: Check if shape is primary OR in multi-selection array
-      const isPrimarySelected = shape.id === selectedShapeId;
-      const isMultiSelected = selectedShapeIds && selectedShapeIds.includes(shape.id) && !isPrimarySelected;
-      const isSelected = isPrimarySelected || isMultiSelected;
-      const isHovered = shape.id === hoveredShapeId && activeTool === 'select';
-      const shapeElevation = layerElevations.get(shape.layerId) || elevation;
 
 
       return (
@@ -1033,7 +1053,7 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
               key={`fill_${shape.id}_${shape.modified?.getTime?.() || 0}_${JSON.stringify(shape.points)}`}
               shapeId={shape.id}
               geometry={geometry}
-              position={[0, shapeElevation + 0.001, 0]}
+              position={[0, shapeElevation + elevationOffset, 0]}
               onClick={activeTool === 'select' ? (event: any) => {
                 logger.log('🚀 MESH CLICKED DIRECTLY!', shape.id, 'activeTool:', activeTool);
                 return handleShapeClick(shape.id)(event);
@@ -1051,8 +1071,12 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
                     : 'default'
               }
               material={{
-                fillColor: material.fillColor,
-                opacity: Math.max(material.opacity, 0.1)
+                baseColor: material.baseColor,
+                emissiveColor: material.emissiveColor,
+                emissiveIntensity: material.emissiveIntensity,
+                opacity: material.opacity,
+                isMultiSelected: material.isMultiSelected,
+                isPrimarySelected: material.isPrimarySelected
               }}
             />
           )}
@@ -1149,6 +1173,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({ elevation = 0.01, hideDim
       <RotationControls elevation={elevation} />
     </group>
   );
-};
+});
+
+ShapeRenderer.displayName = 'ShapeRenderer';
 
 export default ShapeRenderer;

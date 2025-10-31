@@ -26,7 +26,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   setIsProfessionalMode,
   getTotalArea,
 }) => {
-  const totalArea = getTotalArea();
+  const totalArea = Number(getTotalArea() || 0);
 
   return (
     <header
@@ -48,12 +48,11 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
       >
         {/* Left: Logo and Branding */}
         <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[4] }}>
-          {/* Gradient Circle Logo */}
+          {/* Logo */}
           <div
             style={{
               width: '48px',
               height: '48px',
-              background: tokens.colors.brand.gradient.tealPurple,
               borderRadius: tokens.radius.lg,
               display: 'flex',
               alignItems: 'center',
@@ -61,6 +60,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
               boxShadow: tokens.shadows.brand,
               transition: `all ${tokens.animation.timing.smooth} ${tokens.animation.easing.default}`,
               cursor: 'pointer',
+              overflow: 'hidden',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'scale(1.05)';
@@ -72,7 +72,15 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
             }}
             title="Land Visualizer"
           >
-            <span style={{ fontSize: '24px' }}>🎨</span>
+            <img
+              src="/Land-Visualizer192.png"
+              alt="Land Visualizer Logo"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
           </div>
 
           {/* Branding Text */}
