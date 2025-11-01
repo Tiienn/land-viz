@@ -5,6 +5,7 @@ import { TextPropertiesPanel } from './Text/TextPropertiesPanel';
 import { TextFormattingControls } from './Text/TextFormattingControls';
 import { TextModal } from './Text/TextModal';
 import Icon from './Icon';
+import { tokens } from '@/styles/tokens';
 import type { TextObject } from '@/types/text';
 
 interface PropertiesPanelProps {
@@ -140,19 +141,19 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '16px 20px',
-        borderBottom: '1px solid #e5e7eb',
-        backgroundColor: '#fafafa',
+        padding: `${tokens.spacing[4]} ${tokens.spacing[5]}`,
+        borderBottom: `1px solid ${tokens.colors.neutral[200]}`,
+        backgroundColor: tokens.colors.neutral[50],
         flexShrink: 0
       }}>
         <h3 style={{
           margin: 0,
-          fontSize: '16px',
-          fontWeight: 700,
-          color: '#1f2937',
+          fontSize: tokens.typography.body.size,
+          fontWeight: tokens.typography.h1.weight,
+          color: tokens.colors.neutral[700],
           display: 'flex',
           alignItems: 'center',
-          gap: '8px'
+          gap: tokens.spacing[2]
         }}>
           Properties
         </h3>
@@ -161,17 +162,17 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
           style={{
             background: 'none',
             border: 'none',
-            fontSize: '24px',
+            fontSize: tokens.typography.h1.size,
             cursor: 'pointer',
-            color: '#6b7280',
-            padding: '4px 8px',
-            borderRadius: '6px',
-            transition: 'all 200ms ease',
+            color: tokens.colors.neutral[500],
+            padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+            borderRadius: tokens.radius.sm,
+            transition: `all ${tokens.animation.timing.smooth} ease`,
             lineHeight: 1,
             fontWeight: 300
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.backgroundColor = tokens.colors.neutral[100];
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent';
@@ -198,58 +199,58 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
           <>
             {/* Current Tool Section - only shown when no text is selected */}
             <div style={{
-              background: '#f0f9ff',
-              border: '1px solid #0ea5e9',
-              borderRadius: '8px',
-              padding: '16px',
-              marginBottom: '20px'
+              background: `${tokens.colors.semantic.info}10`, // 10% opacity
+              border: `1px solid ${tokens.colors.semantic.info}`,
+              borderRadius: tokens.radius.md,
+              padding: tokens.spacing[4],
+              marginBottom: tokens.spacing[5]
             }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            marginBottom: '12px'
+            gap: tokens.spacing[2],
+            marginBottom: tokens.spacing[3]
           }}>
-            <Icon name={toolInfo.icon} size={24} color="#0c4a6e" strokeWidth={2} />
+            <Icon name={toolInfo.icon} size={24} color={tokens.colors.semantic.info} strokeWidth={2} />
             <h3 style={{
               margin: 0,
-              fontSize: '18px',
-              fontWeight: '600',
-              color: '#0c4a6e'
+              fontSize: tokens.typography.h3.size,
+              fontWeight: tokens.typography.h3.weight,
+              color: tokens.colors.semantic.info
             }}>
               {toolInfo.title}
             </h3>
             {isDrawing && (
               <span style={{
-                background: '#22c55e',
+                background: tokens.colors.semantic.success,
                 color: 'white',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontWeight: '600'
+                padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                borderRadius: tokens.radius.sm,
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight
               }}>
                 DRAWING
               </span>
             )}
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
+          <div style={{ marginBottom: tokens.spacing[4] }}>
             <h4 style={{
-              margin: '0 0 8px 0',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#374151'
+              margin: `0 0 ${tokens.spacing[2]} 0`,
+              fontSize: tokens.typography.body.size,
+              fontWeight: tokens.typography.h3.weight,
+              color: tokens.colors.neutral[700]
             }}>
               How to Use:
             </h4>
             <ol style={{
               margin: 0,
-              paddingLeft: '16px',
-              color: '#6b7280',
-              fontSize: '13px'
+              paddingLeft: tokens.spacing[4],
+              color: tokens.colors.neutral[500],
+              fontSize: tokens.typography.bodySmall.size
             }}>
               {toolInfo.instructions.map((instruction, index) => (
-                <li key={index} style={{ marginBottom: '4px' }}>
+                <li key={index} style={{ marginBottom: tokens.spacing[1] }}>
                   {instruction}
                 </li>
               ))}
@@ -258,21 +259,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
 
           <div>
             <h4 style={{
-              margin: '0 0 8px 0',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#374151'
+              margin: `0 0 ${tokens.spacing[2]} 0`,
+              fontSize: tokens.typography.body.size,
+              fontWeight: tokens.typography.h3.weight,
+              color: tokens.colors.neutral[700]
             }}>
               Tips:
             </h4>
             <ul style={{
               margin: 0,
-              paddingLeft: '16px',
-              color: '#6b7280',
-              fontSize: '13px'
+              paddingLeft: tokens.spacing[4],
+              color: tokens.colors.neutral[500],
+              fontSize: tokens.typography.bodySmall.size
             }}>
               {toolInfo.tips.map((tip, index) => (
-                <li key={index} style={{ marginBottom: '4px' }}>
+                <li key={index} style={{ marginBottom: tokens.spacing[1] }}>
                   {tip}
                 </li>
               ))}
@@ -282,29 +283,29 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
 
         {/* Grid Settings */}
         <div style={{
-          background: '#f9fafb',
-          border: '1px solid #e5e5e5',
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '20px'
+          background: tokens.colors.neutral[50],
+          border: `1px solid ${tokens.colors.neutral[200]}`,
+          borderRadius: tokens.radius.md,
+          padding: tokens.spacing[4],
+          marginBottom: tokens.spacing[5]
         }}>
           <h3 style={{
-            margin: '0 0 12px 0',
-            fontSize: '16px',
-            fontWeight: '600',
-            color: '#111827'
+            margin: `0 0 ${tokens.spacing[3]} 0`,
+            fontSize: tokens.typography.body.size,
+            fontWeight: tokens.typography.h3.weight,
+            color: tokens.colors.neutral[900]
           }}>
             Grid Settings
           </h3>
 
-          <div style={{ marginBottom: '12px' }}>
+          <div style={{ marginBottom: tokens.spacing[3] }}>
             <label style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: tokens.spacing[2],
               cursor: 'pointer',
-              fontSize: '14px',
-              color: '#374151'
+              fontSize: tokens.typography.body.size,
+              color: tokens.colors.neutral[700]
             }}>
               <input
                 type="checkbox"
@@ -319,9 +320,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
               Enable Grid Snap
             </label>
             <p style={{
-              margin: '4px 0 0 24px',
-              fontSize: '12px',
-              color: '#6b7280'
+              margin: `${tokens.spacing[1]} 0 0 ${tokens.spacing[6]}`,
+              fontSize: tokens.typography.bodySmall.size,
+              color: tokens.colors.neutral[500]
             }}>
               Snap cursor to grid points for precise measurements
             </p>
@@ -330,10 +331,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
           <div>
             <label style={{
               display: 'block',
-              fontSize: '14px',
-              fontWeight: '500',
-              color: '#374151',
-              marginBottom: '4px'
+              fontSize: tokens.typography.body.size,
+              fontWeight: tokens.typography.label.weight,
+              color: tokens.colors.neutral[700],
+              marginBottom: tokens.spacing[1]
             }}>
               Grid Size: {gridSize}m
             </label>
@@ -352,9 +353,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
-              fontSize: '11px',
-              color: '#6b7280',
-              marginTop: '2px'
+              fontSize: tokens.typography.caption.size,
+              color: tokens.colors.neutral[500],
+              marginTop: tokens.spacing[1]
             }}>
               <span>0.5m</span>
               <span>10m</span>
@@ -365,25 +366,25 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
         {/* Current Drawing Info */}
         {isDrawing && currentShape?.points && (
           <div style={{
-            background: '#fef3c7',
-            border: '1px solid #f59e0b',
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '20px'
+            background: `${tokens.colors.semantic.warning}20`, // 20% opacity
+            border: `1px solid ${tokens.colors.semantic.warning}`,
+            borderRadius: tokens.radius.md,
+            padding: tokens.spacing[4],
+            marginBottom: tokens.spacing[5]
           }}>
             <h3 style={{
-              margin: '0 0 12px 0',
-              fontSize: '16px',
-              fontWeight: '600',
-              color: '#92400e'
+              margin: `0 0 ${tokens.spacing[3]} 0`,
+              fontSize: tokens.typography.body.size,
+              fontWeight: tokens.typography.h3.weight,
+              color: tokens.colors.semantic.warning
             }}>
               Current Drawing
             </h3>
-            <div style={{ fontSize: '14px', color: '#78350f' }}>
-              <p style={{ margin: '0 0 4px 0' }}>
+            <div style={{ fontSize: tokens.typography.body.size, color: tokens.colors.semantic.warning }}>
+              <p style={{ margin: `0 0 ${tokens.spacing[1]} 0` }}>
                 <strong>Points:</strong> {currentShape.points.length}
               </p>
-              <p style={{ margin: '0 0 4px 0' }}>
+              <p style={{ margin: `0 0 ${tokens.spacing[1]} 0` }}>
                 <strong>Type:</strong> {currentShape.type}
               </p>
               {currentShape.points.length >= 2 && (
@@ -397,32 +398,32 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ isOpen, onClose }) =>
 
         {/* Coordinate Display */}
         <div style={{
-          background: '#f0fdf4',
-          border: '1px solid #22c55e',
-          borderRadius: '8px',
-          padding: '16px'
+          background: `${tokens.colors.semantic.success}10`, // 10% opacity
+          border: `1px solid ${tokens.colors.semantic.success}`,
+          borderRadius: tokens.radius.md,
+          padding: tokens.spacing[4]
         }}>
           <h3 style={{
-            margin: '0 0 12px 0',
-            fontSize: '16px',
-            fontWeight: '600',
-            color: '#15803d'
+            margin: `0 0 ${tokens.spacing[3]} 0`,
+            fontSize: tokens.typography.body.size,
+            fontWeight: tokens.typography.h3.weight,
+            color: tokens.colors.semantic.success
           }}>
             Mouse Coordinates
           </h3>
-          <div style={{ fontSize: '14px', color: '#166534' }}>
-            <p style={{ margin: '0 0 4px 0' }}>
+          <div style={{ fontSize: tokens.typography.body.size, color: tokens.colors.semantic.success }}>
+            <p style={{ margin: `0 0 ${tokens.spacing[1]} 0` }}>
               Real-time coordinates are displayed in the 3D scene
             </p>
-            <p style={{ margin: '0 0 8px 0' }}>
+            <p style={{ margin: `0 0 ${tokens.spacing[2]} 0` }}>
               <strong>Format:</strong> X: [meters], Z: [meters]
             </p>
             <div style={{
-              background: 'rgba(34, 197, 94, 0.1)',
-              padding: '8px',
-              borderRadius: '4px',
-              fontSize: '12px',
-              fontFamily: 'monospace'
+              background: `${tokens.colors.semantic.success}20`, // 20% opacity
+              padding: tokens.spacing[2],
+              borderRadius: tokens.radius.sm,
+              fontSize: tokens.typography.bodySmall.size,
+              fontFamily: tokens.typography.fontFamily.mono
             }}>
               Grid snap: {snapToGrid ? `ON (${gridSize}m)` : 'OFF'}
               <br />

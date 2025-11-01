@@ -1,4 +1,13 @@
-import React from 'react';
+/**
+ * Ribbon Component - Professional CAD-Style Toolbar
+ *
+ * REFACTORED: January 2025
+ * - Converted from Tailwind classes to inline styles
+ * - Uses design tokens for consistency
+ * - Follows project inline-style architecture
+ */
+
+import React, { useState } from 'react';
 import {
   Plus,
   Square,
@@ -15,6 +24,7 @@ import {
   Download,
 } from 'lucide-react';
 
+import { tokens } from '../../styles/tokens';
 import { logger } from '../../utils/logger';
 import type { DrawingTool } from '@/types';
 
@@ -31,7 +41,7 @@ interface ToolGroup {
   label: string;
   tools: Array<{
     id: DrawingTool | string;
-    icon: React.ComponentType<{ className?: string }>;
+    icon: React.ComponentType<{ style?: React.CSSProperties; size?: number }>;
     label: string;
     shortcut?: string;
   }>;
@@ -44,6 +54,9 @@ export const Ribbon: React.FC<RibbonProps> = ({
   onRedo,
   onExport,
 }) => {
+  const [hoveredTool, setHoveredTool] = useState<string | null>(null);
+  const [hoveredTooltip, setHoveredTooltip] = useState<string | null>(null);
+
   const toolGroups: ToolGroup[] = [
     {
       id: 'area-config',
@@ -121,65 +134,219 @@ export const Ribbon: React.FC<RibbonProps> = ({
     }
   };
 
+  // Styles using design tokens
+  const styles = {
+    container: {
+      background: tokens.colors.background.primary,
+      borderBottom: `1px solid ${tokens.colors.neutral[200]}`,
+      boxShadow: tokens.shadows.sm,
+      fontFamily: tokens.typography.fontFamily.primary,
+    } as React.CSSProperties,
+
+    header: {
+      padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
+      borderBottom: `1px solid ${tokens.colors.neutral[100]}`,
+      background: tokens.colors.neutral[50],
+    } as React.CSSProperties,
+
+    headerRow: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    } as React.CSSProperties,
+
+    headerTitle: {
+      fontSize: tokens.typography.caption.size,
+      fontWeight: tokens.typography.label.weight,
+      color: tokens.colors.neutral[600],
+    } as React.CSSProperties,
+
+    headerStats: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: tokens.spacing[4],
+    } as React.CSSProperties,
+
+    statsGroup: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: tokens.spacing[2],
+      fontSize: tokens.typography.caption.size,
+      color: tokens.colors.neutral[500],
+    } as React.CSSProperties,
+
+    statsValue: {
+      fontWeight: tokens.typography.button.weight,
+      color: tokens.colors.neutral[700],
+    } as React.CSSProperties,
+
+    statsLabel: {
+      color: tokens.colors.neutral[500],
+    } as React.CSSProperties,
+
+    toolsContainer: {
+      padding: `${tokens.spacing[3]} ${tokens.spacing[4]}`,
+    } as React.CSSProperties,
+
+    toolsRow: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: tokens.spacing[8],
+    } as React.CSSProperties,
+
+    toolGroup: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+    } as React.CSSProperties,
+
+    groupLabel: {
+      fontSize: tokens.typography.caption.size,
+      fontWeight: tokens.typography.label.weight,
+      color: tokens.colors.neutral[600],
+      marginBottom: tokens.spacing[2],
+      paddingLeft: tokens.spacing[1],
+    } as React.CSSProperties,
+
+    groupTools: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: tokens.spacing[1],
+    } as React.CSSProperties,
+
+    toolButton: (isActive: boolean, isHovered: boolean): React.CSSProperties => ({
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: tokens.spacing[2],
+      borderRadius: tokens.radius.md,
+      minWidth: '60px',
+      height: '64px',
+      transition: `all ${tokens.animation.timing.smooth} ease`,
+      cursor: 'pointer',
+      position: 'relative',
+      background: isActive
+        ? `${tokens.colors.semantic.info}10` // 10% opacity
+        : isHovered
+        ? tokens.colors.neutral[50]
+        : 'transparent',
+      color: isActive
+        ? tokens.colors.semantic.info
+        : isHovered
+        ? tokens.colors.neutral[800]
+        : tokens.colors.neutral[600],
+      border: isActive
+        ? `1px solid ${tokens.colors.semantic.info}`
+        : '1px solid transparent',
+      boxShadow: isActive ? tokens.shadows.sm : 'none',
+      outline: 'none',
+    }),
+
+    toolIcon: {
+      marginBottom: tokens.spacing[1],
+    } as React.CSSProperties,
+
+    toolLabel: {
+      fontSize: tokens.typography.caption.size,
+      fontWeight: tokens.typography.label.weight,
+      lineHeight: 1.2,
+      textAlign: 'center' as const,
+    } as React.CSSProperties,
+
+    tooltip: (isVisible: boolean): React.CSSProperties => ({
+      position: 'absolute',
+      bottom: '100%',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      marginBottom: tokens.spacing[2],
+      padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+      background: tokens.colors.neutral[800],
+      color: 'white',
+      fontSize: tokens.typography.caption.size,
+      borderRadius: tokens.radius.sm,
+      opacity: isVisible ? 1 : 0,
+      transition: `opacity ${tokens.animation.timing.smooth} ease`,
+      whiteSpace: 'nowrap' as const,
+      pointerEvents: 'none' as const,
+      zIndex: tokens.zIndex.tooltip,
+    }),
+
+    tooltipShortcut: {
+      marginLeft: tokens.spacing[2],
+      color: tokens.colors.neutral[300],
+    } as React.CSSProperties,
+  };
+
   return (
-    <div className="bg-white border-b border-neutral-200 shadow-soft">
+    <div style={styles.container}>
       {/* Ribbon Header */}
-      <div className="px-4 py-2 border-b border-neutral-100 bg-neutral-25">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-neutral-600">Tools & Functions</span>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-xs text-neutral-500">
+      <div style={styles.header}>
+        <div style={styles.headerRow}>
+          <span style={styles.headerTitle}>Tools & Functions</span>
+          <div style={styles.headerStats}>
+            <div style={styles.statsGroup}>
               <span>FPS: 60</span>
               <span>Quality: 100%</span>
-              <span className="font-semibold text-neutral-700">5,000</span>
-              <span className="text-neutral-500">SQUARE METERS</span>
+              <span style={styles.statsValue}>5,000</span>
+              <span style={styles.statsLabel}>SQUARE METERS</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Ribbon Tools */}
-      <div className="px-4 py-3">
-        <div className="flex items-start space-x-8">
+      <div style={styles.toolsContainer}>
+        <div style={styles.toolsRow}>
           {toolGroups.map((group) => (
-            <div key={group.id} className="flex flex-col">
+            <div key={group.id} style={styles.toolGroup}>
               {group.label && (
-                <div className="text-xs font-medium text-neutral-600 mb-2 px-1">
+                <div style={styles.groupLabel}>
                   {group.label}
                 </div>
               )}
-              <div className="flex items-center space-x-1">
+              <div style={styles.groupTools}>
                 {group.tools.map((tool) => {
                   const Icon = tool.icon;
                   const isActive = activeTool === tool.id;
-                  
+                  const isHovered = hoveredTool === tool.id;
+                  const isTooltipVisible = hoveredTooltip === tool.id;
+
                   return (
                     <button
                       key={tool.id}
                       type="button"
                       onClick={() => handleToolClick(tool.id)}
-                      className={`
-                        flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] h-16 
-                        transition-all duration-150 group relative
-                        ${isActive 
-                          ? 'bg-primary-100 text-primary-700 shadow-soft border border-primary-200' 
-                          : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800 border border-transparent'
-                        }
-                      `}
+                      onMouseEnter={() => {
+                        setHoveredTool(tool.id);
+                        setHoveredTooltip(tool.id);
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredTool(null);
+                        setHoveredTooltip(null);
+                      }}
+                      onFocus={() => {
+                        setHoveredTooltip(tool.id);
+                      }}
+                      onBlur={() => {
+                        setHoveredTooltip(null);
+                      }}
+                      style={styles.toolButton(isActive, isHovered)}
                       title={tool.label}
+                      aria-label={tool.label}
+                      aria-pressed={isActive}
                     >
-                      <Icon className="h-5 w-5 mb-1" />
-                      <span className="text-xs font-medium leading-tight text-center">
+                      <div style={styles.toolIcon}>
+                        <Icon size={20} />
+                      </div>
+                      <span style={styles.toolLabel}>
                         {tool.label}
                       </span>
-                      
+
                       {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 
-                                    bg-neutral-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 
-                                    transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                      <div style={styles.tooltip(isTooltipVisible)}>
                         {tool.label}
                         {tool.shortcut && (
-                          <span className="ml-2 text-neutral-300">({tool.shortcut})</span>
+                          <span style={styles.tooltipShortcut}>({tool.shortcut})</span>
                         )}
                       </div>
                     </button>

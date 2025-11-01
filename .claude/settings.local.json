@@ -121,7 +121,8 @@
       "Bash(ls -lh \"$dir\"SKILL.md)",
       "Skill(ui-ux-designer)",
       "Skill(performance-optimizer)",
-      "Skill(3d-scene-specialist)"
+      "Skill(3d-scene-specialist)",
+      "Bash(npx eslint:*)"
     ],
     "deny": [],
     "ask": []

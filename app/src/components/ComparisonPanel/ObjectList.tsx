@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCategoryData } from '../../hooks/useCategoryData';
 import type { ReferenceCategory, ReferenceObject } from '../../types/referenceObjects';
+import Icon from '../Icon';
 
 interface ObjectListProps {
   objectsByCategory: Record<ReferenceCategory, ReferenceObject[]>;

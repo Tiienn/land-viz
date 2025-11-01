@@ -84,8 +84,14 @@ function ReferenceObjectMesh({
   };
 
   // Create material with object-specific styling and field markings if applicable
+  // CRITICAL: Use MeshStandardMaterial with proper transparency handling to prevent z-fighting
   const material = useMemo(() => {
     const sportType = getSportType(object.id);
+    const baseColor = new THREE.Color(object.material.color);
+
+    // Emissive glow for hover effect (instead of opacity changes)
+    const emissiveColor = hovered ? baseColor : new THREE.Color('#000000');
+    const emissiveIntensity = hovered ? 0.3 : 0;
 
     // Check if this is a sports field with available markings
     if (object.category === 'sports' && sportType && FieldMarkingsService.hasFieldMarkings(sportType)) {
@@ -96,26 +102,48 @@ function ReferenceObjectMesh({
       );
 
       if (fieldTexture) {
-        return new THREE.MeshLambertMaterial({
+        return new THREE.MeshStandardMaterial({
           color: '#ffffff', // Use white to not tint the texture
           map: fieldTexture,
-          transparent: true,
-          opacity: opacity,
+          emissive: emissiveColor,
+          emissiveIntensity: emissiveIntensity,
+          // CRITICAL: Use opacity 1.0 and transparent: false to enable depth buffer
+          opacity: 1.0,
+          transparent: false,
+          depthWrite: true,
+          depthTest: true,
           wireframe: false,
-          side: THREE.DoubleSide
+          side: THREE.DoubleSide,
+          // Polygon offset for additional z-fighting protection
+          polygonOffset: true,
+          polygonOffsetFactor: -40, // Strong negative offset pulls towards camera
+          polygonOffsetUnits: -1,
+          roughness: 0.8,
+          metalness: 0.2
         });
       }
     }
 
     // Default material without markings
-    return new THREE.MeshLambertMaterial({
-      color: object.material.color,
-      transparent: true,
-      opacity: opacity,
+    return new THREE.MeshStandardMaterial({
+      color: baseColor,
+      emissive: emissiveColor,
+      emissiveIntensity: emissiveIntensity,
+      // CRITICAL: Use opacity 1.0 and transparent: false to enable depth buffer
+      opacity: 1.0,
+      transparent: false,
+      depthWrite: true,
+      depthTest: true,
       wireframe: false,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      // Polygon offset for additional z-fighting protection
+      polygonOffset: true,
+      polygonOffsetFactor: -40, // Strong negative offset pulls towards camera
+      polygonOffsetUnits: -1,
+      roughness: 0.8,
+      metalness: 0.2
     });
-  }, [object.id, object.category, object.dimensions, object.material.color, opacity]);
+  }, [object.id, object.category, object.dimensions, object.material.color, hovered]);
 
   // Load geometry asynchronously
   useEffect(() => {
@@ -145,25 +173,28 @@ function ReferenceObjectMesh({
     };
   }, [material]);
 
-  // Hover effect
-  useFrame(() => {
-    if (meshRef.current && meshRef.current.material) {
-      const mat = meshRef.current.material as THREE.MeshLambertMaterial;
-      const targetOpacity = hovered ? Math.min(opacity * 1.3, 1) : opacity;
-      mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, 0.1);
-    }
-  });
+  // CRITICAL: Use LARGE elevation offsets to prevent z-fighting at oblique angles
+  // Depth buffer precision requires 0.10+ unit separation for reliable rendering
+  // Reference objects should be elevated above shapes (0.10) and grid (0.00)
+  const baseElevation = 0.15; // Higher than shapes to render on top
+  const elevationOffset = hovered ? 0.25 : baseElevation;
+
+  // Removed useFrame hover effect - now using emissive glow in material
+  // This eliminates per-frame material updates which can cause flickering
 
   // Don't render until geometry is loaded
   if (!geometryOrGroup) {
     return null;
   }
 
+  // Calculate renderOrder based on hover state to prevent z-fighting
+  const renderOrder = hovered ? 5 : 4; // Higher than shapes (1-3)
+
   // Check if we have a Group (Eiffel Tower) or regular geometry
   if (geometryOrGroup instanceof THREE.Group) {
     // For Eiffel Tower and other complex geometries
     return (
-      <group position={[position.x, position.y, position.z]}>
+      <group position={[position.x, position.y + elevationOffset, position.z]}>
         {/* Add the entire tower group */}
         <primitive
           object={geometryOrGroup}
@@ -181,12 +212,13 @@ function ReferenceObjectMesh({
 
   // For regular geometries (box, cylinder, etc.)
   return (
-    <group position={[position.x, position.y, position.z]}>
+    <group position={[position.x, position.y + elevationOffset, position.z]}>
       {/* Main object mesh */}
       <mesh
         ref={meshRef}
         geometry={geometryOrGroup as THREE.BufferGeometry}
         material={material}
+        renderOrder={renderOrder}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
         userData={{ objectId: object.id, type: 'reference-object' }}
