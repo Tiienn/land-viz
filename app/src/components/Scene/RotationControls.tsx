@@ -5,6 +5,7 @@ import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { logger } from '@/utils/logger';
+import { tokens } from '@/styles/tokens';
 
 interface RotationControlsProps {
   elevation?: number;
@@ -789,10 +790,11 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
         center
         sprite
         occlude={false}
+        zIndexRange={[1, 0]}
         style={{
           pointerEvents: 'auto',
           userSelect: 'none',
-          zIndex: 1000
+          zIndex: tokens.zIndex.scene
         }}
       >
         <div
@@ -829,10 +831,11 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
           center
           sprite
           occlude={false}
+          zIndexRange={[1, 0]}
           style={{
             pointerEvents: 'none',
             userSelect: 'none',
-            zIndex: 1001
+            zIndex: tokens.zIndex.scene
           }}
         >
           <div style={{

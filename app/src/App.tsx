@@ -32,9 +32,7 @@ import { useKeyboardShortcuts, useKeyboardShortcutListener } from './hooks/useKe
 import { KeyboardShortcutHelp } from './components/KeyboardShortcutHelp';
 import type { KeyboardShortcut } from './types/shortcuts';
 import { ContextMenu } from './components/ContextMenu/ContextMenu';
-import DimensionInputToolbar from './components/DimensionInput/DimensionInputToolbar';
 import LiveDistanceLabel from './components/DimensionInput/LiveDistanceLabel';
-import PrecisionSettingsPanel from './components/DimensionInput/PrecisionSettingsPanel';
 import { SaveTemplateDialog } from './components/TemplateGallery';
 import { useTemplateStore } from './store/useTemplateStore';
 
@@ -51,6 +49,7 @@ import { ToastContainer, useToast } from './components/UI/Toast'; // Phase 2: To
 import { ToolButton } from './components/UI/ToolButton'; // Phase 2: Enhanced tool buttons
 import { LoadingOverlay } from './components/UI/LoadingSpinner'; // Phase 2: Loading states
 import { HelpModal } from './components/UI/HelpModal'; // Phase 2: Help modals
+import { tokens } from './styles/tokens'; // Design tokens for consistent styling
 
 /**
  * Root React component for the Land Visualizer application.
@@ -93,8 +92,6 @@ function App(): React.JSX.Element {
   const [calculatorExpanded, setCalculatorExpanded] = useState(false);
   const [toolsPanelExpanded, setToolsPanelExpanded] = useState(false);
   const [insertAreaModalOpen, setInsertAreaModalOpen] = useState(false);
-  const [textModalOpen, setTextModalOpen] = useState(false);
-  const [textCreatePosition, setTextCreatePosition] = useState<{ x: number; y: number } | null>(null);
   // Phase 5: Label modal state
   const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [labelShapeId, setLabelShapeId] = useState<string | null>(null);
@@ -139,7 +136,6 @@ function App(): React.JSX.Element {
     deleteShapeCorner,
     convertRectangleToPolygon,
     cancelAll,
-    enterRotateMode,
     exitResizeMode,
     enterCursorRotationMode,
     exitCursorRotationMode,
@@ -164,10 +160,8 @@ function App(): React.JSX.Element {
     activateMeasurementTool,
     deactivateMeasurementTool,
     deleteMeasurement,
-    selectMeasurement,
     comparison,
     // Line tool state and actions
-    startLineDrawing,
     updateDistanceInput,
     hideDistanceInput,
     confirmLineDistance,
@@ -193,8 +187,6 @@ function App(): React.JSX.Element {
     alignShapesTop,
     alignShapesBottom,
     flipSelectedShapes,
-    alignShapesCenter,
-    alignShapesMiddle,
     distributeShapesHorizontally,
     distributeShapesVertically,
     bringShapeToFront,
@@ -208,8 +200,6 @@ function App(): React.JSX.Element {
   const lineToolState = useAppStore(state => state.drawing.lineTool);
 
   // Text store actions
-  const addText = useTextStore(state => state.addText);
-  const activeLayerId = useAppStore(state => state.activeLayerId);
   const isInlineEditing = useTextStore(state => state.isInlineEditing);
   const inlineEditingTextId = useTextStore(state => state.inlineEditingTextId);
   const inlineEditScreenPosition = useTextStore(state => state.inlineEditScreenPosition);
@@ -874,11 +864,11 @@ function App(): React.JSX.Element {
     drawing.currentShape,
     selectedShapeId,
     selectedShapeIds,
+    selectedElementIds,
     canUndo,
     canRedo,
     lineToolState.isMultiSegment,
     lineToolState.segments.length,
-    shapes,
     // Store action functions
     setActiveTool,
     setStoreActiveTool,
@@ -891,6 +881,7 @@ function App(): React.JSX.Element {
     undo,
     redo,
     deleteShape,
+    duplicateShape,
     deleteMeasurement,
     toggleViewMode,
     cancelAll,
@@ -1151,7 +1142,7 @@ function App(): React.JSX.Element {
 
   // Phase 5: Open label modal event listener
   React.useEffect(() => {
-    const handleOpenLabelModal = (event: any) => {
+    const handleOpenLabelModal = (event: CustomEvent<{ shapeId: string; position: { x: number; y: number; z: number }; existingLabel?: TextObject }>) => {
       const { shapeId, position, existingLabel } = event.detail;
       setLabelShapeId(shapeId);
       setLabelPosition(position);
@@ -1198,12 +1189,12 @@ function App(): React.JSX.Element {
   };
 
   return (
-    <div style={{ 
-      height: '100vh', 
-      width: '100vw', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      backgroundColor: '#fcfcfd',
+    <div style={{
+      height: '100vh',
+      width: '100vw',
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: tokens.colors.neutral[50],
       overflow: 'hidden',
       position: 'fixed',
       top: 0,
@@ -1219,27 +1210,27 @@ function App(): React.JSX.Element {
       </UIErrorBoundary>
 
       {/* Enhanced Ribbon Toolbar */}
-      <div style={{ 
-        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', 
-        borderBottom: '1px solid #e2e8f0', 
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
+      <div style={{
+        background: `linear-gradient(135deg, ${tokens.colors.background.primary} 0%, ${tokens.colors.neutral[50]} 100%)`,
+        borderBottom: `1px solid ${tokens.colors.neutral[200]}`,
+        boxShadow: tokens.shadows.md
       }}>
         <div style={{
-          padding: '8px 12px',
+          padding: `${tokens.spacing[2]} ${tokens.spacing[3]}`,
           overflowX: 'hidden',
           overflowY: 'hidden'
         }}>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flexWrap: 'nowrap', minWidth: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: tokens.spacing[1], alignItems: 'flex-start', flexWrap: 'nowrap', minWidth: 'fit-content' }}>
             {/* Drawing */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '10px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '6px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Drawing</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] /* TODO: Consider adding tokens.spacing[0] = '2px' */ }}>
                 <ToolButton
                   toolId="select"
                   isActive={activeTool === 'select'}
@@ -1307,13 +1298,13 @@ function App(): React.JSX.Element {
             {/* Precision */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '10px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '6px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Precision</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] /* TODO: Consider adding tokens.spacing[0] = '2px' */ }}>
                 <ToolButton
                   toolId="measure"
                   isActive={activeTool === 'measure'}
@@ -1342,45 +1333,45 @@ function App(): React.JSX.Element {
             {/* Geometry */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '10px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '6px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Geometry</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] /* TODO: Consider adding tokens.spacing[0] = '2px' */ }}>
                 <button
                   onClick={() => setInsertAreaModalOpen(true)}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    color: '#000000',
-                    background: 'white',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    color: tokens.colors.neutral[900],
+                    background: tokens.colors.background.primary,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    fontSize: '10px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s ease'
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
+                    transition: `all ${tokens.animation.timing.smooth} ease`
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
-                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'white';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                   }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Insert Area</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Insert Area</span>
                 </button>
                 <button
                   onClick={openAddAreaModal}
@@ -1388,25 +1379,25 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    color: '#000000',
-                    background: 'white',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    color: tokens.colors.neutral[900],
+                    background: tokens.colors.background.primary,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    fontSize: '10px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s ease'
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
+                    transition: `all ${tokens.animation.timing.smooth} ease`
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
-                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'white';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                   }}
                   title="Create shape from specified area"
                 >
@@ -1416,7 +1407,7 @@ function App(): React.JSX.Element {
                     <polyline points="7.5,19.79 7.5,14.6 3,12"></polyline>
                     <polyline points="21,12 16.5,14.6 16.5,19.79"></polyline>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Add Area</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Add Area</span>
                 </button>
                 <button
                   onClick={openPresetsModal}
@@ -1424,25 +1415,25 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    color: '#000000',
-                    background: 'white',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    color: tokens.colors.neutral[900],
+                    background: tokens.colors.background.primary,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    fontSize: '10px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s ease'
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
+                    transition: `all ${tokens.animation.timing.smooth} ease`
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
-                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'white';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                   }}
                   title="Access area configuration presets"
                 >
@@ -1450,46 +1441,46 @@ function App(): React.JSX.Element {
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                     <rect x="9" y="9" width="6" height="6"></rect>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Presets</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Presets</span>
                 </button>
               </div>
             </div>
 
             {/* Vertical Separator */}
             <div style={{
-              width: '1px',
-              height: '66px',
-              background: '#e5e7eb',
-              margin: '0 2px'
+              width: tokens.sizing.separator,
+              height: tokens.sizing.separatorHeight,
+              background: tokens.colors.neutral[200],
+              margin: '0 2px' /* 2px - consider adding tokens.spacing[0] = '2px' */
             }}></div>
 
             {/* Display */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '10px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '6px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Display</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
-                <button 
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] /* TODO: Consider adding tokens.spacing[0] = '2px' */ }}>
+                <button
                   onClick={toggleShowDimensions}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    background: drawing.showDimensions ? '#a5b4fc' : '#ffffff',
-                    color: drawing.showDimensions ? '#312e81' : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
+                    background: drawing.showDimensions ? tokens.colors.brand.purple : tokens.colors.background.primary,
+                    color: drawing.showDimensions ? tokens.colors.background.primary : tokens.colors.neutral[900],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight
                   }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1497,7 +1488,7 @@ function App(): React.JSX.Element {
                     <path d="M21 19H3l1.5-2h15z"></path>
                     <path d="M21 9H3l1.5-2h15z"></path>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Dimensions</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Dimensions</span>
                 </button>
                 <button
                   onClick={() => {
@@ -1529,11 +1520,11 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: (
                       (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
                       activeTool !== 'select' ||
@@ -1542,19 +1533,19 @@ function App(): React.JSX.Element {
                     )
                       ? 'not-allowed'
                       : 'pointer',
-                    background: drawing.cursorRotationMode ? '#a5b4fc' : '#ffffff',
-                    color: drawing.cursorRotationMode ? '#312e81' :
+                    background: drawing.cursorRotationMode ? tokens.colors.brand.purple : tokens.colors.background.primary,
+                    color: drawing.cursorRotationMode ? tokens.colors.background.primary :
                            (
                              (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
                              activeTool !== 'select' ||
                              drawing.isEditMode ||
                              drawing.isDrawing
                            )
-                             ? '#9ca3af'
-                             : '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                             ? tokens.colors.neutral[400]
+                             : tokens.colors.neutral[900],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: (
                       (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
                       activeTool !== 'select' ||
@@ -1567,14 +1558,14 @@ function App(): React.JSX.Element {
                   onMouseEnter={(e) => {
                     const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0);
                     if (hasSelection && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.cursorRotationMode) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.background = tokens.colors.neutral[100];
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!drawing.cursorRotationMode) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.background = tokens.colors.background.primary;
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                     }
                   }}
                 >
@@ -1582,43 +1573,43 @@ function App(): React.JSX.Element {
                     <path d="M21 12a9 9 0 0 1-9 9c-4.97 0-9-4.03-9-9s4.03-9 9-9"></path>
                     <path d="M12 3l3 3-3 3"></path>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Rotate</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Rotate</span>
                 </button>
-                <div style={{ marginLeft: '8px' }}>
+                <div style={{ marginLeft: tokens.spacing[2] }}>
                   <FlipButton
                     disabled={selectedShapeIds.length === 0 || drawing.isEditMode}
                     onFlip={(direction) => flipSelectedShapes(direction)}
                   />
                 </div>
-                <button 
+                <button
                   onClick={() => {
                     if (window.confirm('Are you sure you want to clear all shapes? This action cannot be undone.')) {
                       clearAll();
                     }
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#dc2626',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
+                    background: tokens.colors.background.primary,
+                    color: tokens.colors.semantic.error,
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#fef2f2';
-                    e.currentTarget.style.borderColor = '#fecaca';
+                    e.currentTarget.style.background = `${tokens.colors.semantic.error}10`;
+                    e.currentTarget.style.borderColor = `${tokens.colors.semantic.error}40`;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#ffffff';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
+                    e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                   }}
                   title="Clear all shapes from the scene"
                 >
@@ -1629,9 +1620,9 @@ function App(): React.JSX.Element {
                     <line x1="10" y1="11" x2="10" y2="17"></line>
                     <line x1="14" y1="11" x2="14" y2="17"></line>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Clear All</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Clear All</span>
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     if (selectedShapeId) {
                       if (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) {
@@ -1642,37 +1633,37 @@ function App(): React.JSX.Element {
                     }
                   }}
                   disabled={!selectedShapeId}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: selectedShapeId ? 'pointer' : 'not-allowed',
-                    background: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) 
-                      ? '#dbeafe' 
-                      : selectedShapeId ? '#ffffff' : '#f9fafb',
-                    color: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId) 
-                      ? '#1d4ed8' 
-                      : selectedShapeId ? '#000000' : '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                    background: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId)
+                      ? `${tokens.colors.semantic.info}20`
+                      : selectedShapeId ? tokens.colors.background.primary : tokens.colors.neutral[50],
+                    color: (drawing.isEditMode && drawing.editingShapeId === selectedShapeId)
+                      ? tokens.colors.semantic.info
+                      : selectedShapeId ? tokens.colors.neutral[900] : tokens.colors.neutral[400],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: selectedShapeId ? 1 : 0.5
                   }}
                   onMouseEnter={(e) => {
                     if (selectedShapeId && !(drawing.isEditMode && drawing.editingShapeId === selectedShapeId)) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.background = tokens.colors.neutral[100];
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (selectedShapeId && !(drawing.isEditMode && drawing.editingShapeId === selectedShapeId)) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.background = tokens.colors.background.primary;
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                     }
                   }}
                   title={
@@ -1687,7 +1678,7 @@ function App(): React.JSX.Element {
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                     <path d="m18.5 2.5-8.5 8.5-2 2v2h2l2-2 8.5-8.5a1.5 1.5 0 0 0 0-2.1v0a1.5 1.5 0 0 0-2.1 0z"></path>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>
+                  <span style={{ marginTop: tokens.spacing[1] }}>
                     {(drawing.isEditMode && drawing.editingShapeId === selectedShapeId) ? 'Exit Edit' : 'Edit'}
                   </span>
                 </button>
@@ -1709,29 +1700,29 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? 'pointer' : 'not-allowed',
-                    background: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? '#ffffff' : '#f9fafb',
-                    color: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? '#ef4444' : '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                    background: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? tokens.colors.background.primary : tokens.colors.neutral[50],
+                    color: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? tokens.colors.semantic.error : tokens.colors.neutral[400],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: (selectedShapeId || drawing.measurement?.selectedMeasurementId) ? 1 : 0.5
                   }}
                   onMouseEnter={(e) => {
                     if (selectedShapeId || drawing.measurement?.selectedMeasurementId) {
-                      e.currentTarget.style.background = '#fef2f2';
-                      e.currentTarget.style.borderColor = '#fecaca';
+                      e.currentTarget.style.background = `${tokens.colors.semantic.error}10`;
+                      e.currentTarget.style.borderColor = `${tokens.colors.semantic.error}40`;
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (selectedShapeId || drawing.measurement?.selectedMeasurementId) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.background = tokens.colors.background.primary;
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                     }
                   }}
                   title={
@@ -1749,38 +1740,38 @@ function App(): React.JSX.Element {
                     <line x1="10" y1="11" x2="10" y2="17"></line>
                     <line x1="14" y1="11" x2="14" y2="17"></line>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Delete</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Delete</span>
                 </button>
                 <button
                   onClick={undo}
                   disabled={!canUndo()}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: canUndo() ? 'pointer' : 'not-allowed',
-                    background: canUndo() ? '#ffffff' : '#f9fafb',
-                    color: canUndo() ? '#000000' : '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                    background: canUndo() ? tokens.colors.background.primary : tokens.colors.neutral[50],
+                    color: canUndo() ? tokens.colors.neutral[900] : tokens.colors.neutral[400],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: canUndo() ? 1 : 0.5
                   }}
                   onMouseEnter={(e) => {
                     if (canUndo()) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.background = tokens.colors.neutral[100];
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (canUndo()) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.background = tokens.colors.background.primary;
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                     }
                   }}
                   title={canUndo() ? 'Undo last action (Ctrl+Z)' : 'Nothing to undo'}
@@ -1789,38 +1780,38 @@ function App(): React.JSX.Element {
                     <path d="M3 7v6h6"></path>
                     <path d="m21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Undo</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Undo</span>
                 </button>
-                <button 
+                <button
                   onClick={redo}
                   disabled={!canRedo()}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: canRedo() ? 'pointer' : 'not-allowed',
-                    background: canRedo() ? '#ffffff' : '#f9fafb',
-                    color: canRedo() ? '#000000' : '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                    background: canRedo() ? tokens.colors.background.primary : tokens.colors.neutral[50],
+                    color: canRedo() ? tokens.colors.neutral[900] : tokens.colors.neutral[400],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: canRedo() ? 1 : 0.5
                   }}
                   onMouseEnter={(e) => {
                     if (canRedo()) {
-                      e.currentTarget.style.background = '#f3f4f6';
-                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.background = tokens.colors.neutral[100];
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[300];
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (canRedo()) {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.background = tokens.colors.background.primary;
+                      e.currentTarget.style.borderColor = tokens.colors.neutral[200];
                     }
                   }}
                   title={canRedo() ? 'Redo last undone action (Ctrl+Y)' : 'Nothing to redo'}
@@ -1829,7 +1820,7 @@ function App(): React.JSX.Element {
                     <path d="m21 7-6 6h6V7z"></path>
                     <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Redo</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Redo</span>
                 </button>
               </div>
             </div>
@@ -1837,13 +1828,13 @@ function App(): React.JSX.Element {
             {/* Corner Controls */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '10px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '6px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Corner Controls</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] }}>
                 <button 
                   onClick={() => {
                     if (drawing.isEditMode && selectedShapeId && drawing.selectedCornerIndex !== null) {
@@ -1890,21 +1881,21 @@ function App(): React.JSX.Element {
                       }
                     }
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
-                    background: '#ffffff',
-                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#000000' : '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                    background: tokens.colors.background.primary,
+                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? tokens.colors.neutral[900] : tokens.colors.neutral[400],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
                   }}
                   title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Add Corner between selected and next corner' : 'Select a corner first') : 'Enter Edit Mode first'}
@@ -1916,7 +1907,7 @@ function App(): React.JSX.Element {
                     <line x1="12" y1="23" x2="12" y2="15"></line>
                     <line x1="1" y1="12" x2="9" y2="12"></line>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Add Corner</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Add Corner</span>
                 </button>
                 <button 
                   onClick={() => {
@@ -1924,21 +1915,21 @@ function App(): React.JSX.Element {
                       deleteShapeCorner(selectedShapeId, drawing.selectedCornerIndex);
                     }
                   }}
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    padding: '6px 10px', 
-                    borderRadius: '4px', 
-                    minWidth: '52px', 
-                    height: '56px', 
-                    border: '1px solid #e5e7eb',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 'pointer' : 'not-allowed',
-                    background: '#ffffff',
-                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? '#ef4444' : '#9ca3af',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500',
+                    background: tokens.colors.background.primary,
+                    color: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? tokens.colors.semantic.error : tokens.colors.neutral[400],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight,
                     opacity: (drawing.isEditMode && drawing.selectedCornerIndex !== null) ? 1 : 0.5
                   }}
                   title={drawing.isEditMode ? (drawing.selectedCornerIndex !== null ? 'Delete Selected Corner' : 'Select a corner to delete') : 'Enter Edit Mode first'}
@@ -1947,30 +1938,30 @@ function App(): React.JSX.Element {
                     <circle cx="12" cy="12" r="3"></circle>
                     <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Delete Corner</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Delete Corner</span>
                 </button>
               </div>
             </div>
 
             {/* Vertical Separator */}
             <div style={{
-              width: '1px',
-              height: '66px',
-              background: '#e5e7eb',
-              margin: '0 2px'
+              width: tokens.sizing.separator,
+              height: tokens.sizing.separatorHeight,
+              background: tokens.colors.neutral[200],
+              margin: '0 2px' /* 2px - consider adding tokens.spacing[0] = '2px' */
             }}></div>
 
 
             {/* Export */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '10px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '6px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Export</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] }}>
                 <div style={{ position: 'relative' }}>
                   <button 
                     onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
@@ -1978,17 +1969,17 @@ function App(): React.JSX.Element {
                       display: 'flex', 
                       flexDirection: 'column', 
                       alignItems: 'center', 
-                      padding: '6px 10px', 
-                      borderRadius: '4px', 
-                      minWidth: '52px', 
-                      height: '56px', 
-                      border: '1px solid #e5e7eb',
+                      padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`, 
+                      borderRadius: tokens.radius.sm, 
+                      minWidth: tokens.sizing.buttonMinWidth, 
+                      height: tokens.sizing.buttonHeight, 
+                      border: `1px solid ${tokens.colors.neutral[200]}`,
                       cursor: 'pointer',
-                      background: exportDropdownOpen ? '#dbeafe' : '#ffffff',
-                      color: exportDropdownOpen ? '#1d4ed8' : '#000000',
-                      transition: 'all 0.2s ease',
-                      fontSize: '10px',
-                      fontWeight: '500'
+                      background: exportDropdownOpen ? `${tokens.colors.semantic.info}20` : tokens.colors.background.primary,
+                      color: exportDropdownOpen ? tokens.colors.semantic.info : tokens.colors.neutral[900],
+                      transition: `all ${tokens.animation.timing.smooth} ease`,
+                      fontSize: tokens.typography.caption.size,
+                      fontWeight: tokens.typography.label.weight
                     }}
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1998,7 +1989,7 @@ function App(): React.JSX.Element {
                       <line x1="16" y1="17" x2="8" y2="17"></line>
                       <polyline points="10,9 9,9 8,9"></polyline>
                     </svg>
-                    <span style={{ marginTop: '4px' }}>Excel Export</span>
+                    <span style={{ marginTop: tokens.spacing[1] }}>Excel Export</span>
                   </button>
 
                   {/* Simplified Export Dropdown */}
@@ -2006,33 +1997,33 @@ function App(): React.JSX.Element {
                     <div 
                       style={{ 
                         position: 'absolute', 
-                        top: '65px', 
+                        top: tokens.spacing[16], 
                         left: '0', 
-                        background: 'white', 
-                        border: '1px solid #e5e7eb', 
-                        borderRadius: '6px', 
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        background: tokens.colors.background.primary, 
+                        border: `1px solid ${tokens.colors.neutral[200]}`, 
+                        borderRadius: tokens.radius.md, 
+                        boxShadow: tokens.shadows.lg,
                         zIndex: 1000,
-                        minWidth: '160px'
+                        minWidth: tokens.sizing.elementLarge
                       }}
                     >
                       <button
                         onClick={() => handleQuickExport('excel')}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
                           border: 'none',
                           background: 'transparent',
                           cursor: 'pointer',
-                          fontSize: '12px',
-                          color: '#374151',
+                          fontSize: tokens.typography.bodySmall.size,
+                          color: tokens.colors.neutral[700],
                           textAlign: 'left',
                           borderRadius: '6px 6px 0 0'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                        onMouseEnter={(e) => e.currentTarget.style.background = tokens.colors.neutral[100]}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        <span style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                        <span style={{display: 'flex', alignItems: 'center', gap: tokens.spacing[2]}}>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                             <polyline points="14,2 14,8 20,8"/>
@@ -2046,39 +2037,39 @@ function App(): React.JSX.Element {
                         onClick={() => handleQuickExport('dxf')}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
                           border: 'none',
-                          borderTop: '1px solid #f3f4f6',
+                          borderTop: `1px solid ${tokens.colors.neutral[100]}`,
                           background: 'transparent',
                           cursor: 'pointer',
-                          fontSize: '12px',
-                          color: '#374151',
+                          fontSize: tokens.typography.bodySmall.size,
+                          color: tokens.colors.neutral[700],
                           textAlign: 'left'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                        onMouseEnter={(e) => e.currentTarget.style.background = tokens.colors.neutral[100]}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        <Icon name="file" size={16} style={{ marginRight: '6px' }} />
+                        <Icon name="file" size={16} style={{ marginRight: tokens.spacing[1] }} />
                         DXF (.dxf)
                       </button>
                       <button
                         onClick={() => handleQuickExport('pdf')}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
                           border: 'none',
-                          borderTop: '1px solid #f3f4f6',
+                          borderTop: `1px solid ${tokens.colors.neutral[100]}`,
                           background: 'transparent',
                           cursor: 'pointer',
-                          fontSize: '12px',
-                          color: '#374151',
+                          fontSize: tokens.typography.bodySmall.size,
+                          color: tokens.colors.neutral[700],
                           textAlign: 'left',
                           borderRadius: '0 0 6px 6px'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                        onMouseEnter={(e) => e.currentTarget.style.background = tokens.colors.neutral[100]}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        <Icon name="file" size={16} style={{ marginRight: '6px' }} />
+                        <Icon name="file" size={16} style={{ marginRight: tokens.spacing[1] }} />
                         PDF (.pdf)
                       </button>
                     </div>
@@ -2089,22 +2080,22 @@ function App(): React.JSX.Element {
 
             {/* Vertical Separator */}
             <div style={{
-              width: '1px',
-              height: '66px',
-              background: '#e5e7eb',
-              margin: '0 4px'
+              width: tokens.sizing.separator,
+              height: tokens.sizing.separatorHeight,
+              background: tokens.colors.neutral[200],
+              margin: `0 ${tokens.spacing[1]}`
             }}></div>
 
             {/* Import */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '8px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[2],
                 textAlign: 'center'
               }}>Import</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] }}>
                 <button
                   onClick={() => setImageImportOpen(true)}
                   title="Import Plan (I)"
@@ -2112,23 +2103,23 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
+                    background: tokens.colors.background.primary,
+                    color: tokens.colors.neutral[900],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
                   }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2136,29 +2127,29 @@ function App(): React.JSX.Element {
                     <polyline points="7 10 12 15 17 10"></polyline>
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Import Plan</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Import Plan</span>
                 </button>
               </div>
             </div>
 
             {/* Vertical Separator */}
             <div style={{
-              width: '1px',
-              height: '66px',
-              background: '#e5e7eb',
-              margin: '0 4px'
+              width: tokens.sizing.separator,
+              height: tokens.sizing.separatorHeight,
+              background: tokens.colors.neutral[200],
+              margin: `0 ${tokens.spacing[1]}`
             }}></div>
 
             {/* Templates */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                color: '#64748b',
-                marginBottom: '8px',
+                fontSize: tokens.typography.caption.size,
+                fontWeight: tokens.typography.label.weight,
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[2],
                 textAlign: 'center'
               }}>Templates</div>
-              <div style={{ display: 'flex', gap: '2px' }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] }}>
                 <button
                   onClick={() => useTemplateStore.getState().openGallery()}
                   title="Browse Templates (Ctrl+Shift+T)"
@@ -2166,30 +2157,30 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
+                    background: tokens.colors.background.primary,
+                    color: tokens.colors.neutral[900],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
                   }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14,2 14,8 20,8"></polyline>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Gallery</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Gallery</span>
                 </button>
 
                 <button
@@ -2199,23 +2190,23 @@ function App(): React.JSX.Element {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    minWidth: '52px',
-                    height: '56px',
-                    border: '1px solid #e5e7eb',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: 'pointer',
-                    background: '#ffffff',
-                    color: '#000000',
-                    transition: 'all 0.2s ease',
-                    fontSize: '10px',
-                    fontWeight: '500'
+                    background: tokens.colors.background.primary,
+                    color: tokens.colors.neutral[900],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.background = tokens.colors.background.primary;
                   }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2223,7 +2214,7 @@ function App(): React.JSX.Element {
                     <polyline points="17 21 17 13 7 13 7 21"></polyline>
                     <polyline points="7 3 7 8 15 8"></polyline>
                   </svg>
-                  <span style={{ marginTop: '4px' }}>Save</span>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Save</span>
                 </button>
               </div>
             </div>
@@ -2236,9 +2227,9 @@ function App(): React.JSX.Element {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {/* Left Sidebar - Fixed width */}
         <div style={{
-          width: '50px',
-          background: 'white',
-          borderRight: '1px solid #e5e5e5',
+          width: tokens.sizing.iconButton,
+          background: tokens.colors.background.primary,
+          borderRight: `1px solid ${tokens.colors.neutral[200]}`,
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -2247,7 +2238,7 @@ function App(): React.JSX.Element {
 
           {/* Main Navigation Section */}
           <div style={{
-            width: '50px',
+            width: tokens.sizing.iconButton,
             display: 'flex',
             flexDirection: 'column',
             flex: 1
@@ -2257,7 +2248,7 @@ function App(): React.JSX.Element {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '8px',
+              gap: tokens.spacing[2],
               paddingLeft: '0',
               paddingRight: '0',
               overflowY: 'auto',
@@ -2268,23 +2259,23 @@ function App(): React.JSX.Element {
             }}
             className="hide-scrollbar">
               <button style={{
-                padding: '8px',
-                borderRadius: '8px',
+                padding: tokens.spacing[2],
+                borderRadius: tokens.radius.md,
                 background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '4px',
+                gap: tokens.spacing[1],
                 width: '100%',
                 textAlign: 'center',
-                transition: 'all 0.2s ease',
-                color: '#374151'
+                transition: `all ${tokens.animation.timing.smooth} ease`,
+                color: tokens.colors.neutral[700]
               }}
               title="Home"
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = tokens.colors.neutral[100];
                 e.currentTarget.style.transform = 'translateY(-1px)';
               }}
               onMouseLeave={(e) => {
@@ -2292,11 +2283,11 @@ function App(): React.JSX.Element {
                 e.currentTarget.style.transform = 'translateY(0px)';
               }}
               >
-                <Icon name="home" size={20} color="#000000" />
+                <Icon name="home" size={20} color={tokens.colors.neutral[900]} />
                 <span style={{
-                  fontSize: '10px',
-                  fontWeight: '500',
-                  color: '#374151',
+                  fontSize: tokens.typography.caption.size,
+                  fontWeight: tokens.typography.label.weight,
+                  color: tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   Home
@@ -2325,24 +2316,24 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{
-                  padding: '8px',
-                  borderRadius: '8px',
-                  background: comparisonExpanded ? '#3b82f6' : 'transparent',
+                  padding: tokens.spacing[2],
+                  borderRadius: tokens.radius.md,
+                  background: comparisonExpanded ? tokens.colors.semantic.info : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: tokens.spacing[1],
                   width: '100%',
                   textAlign: 'center',
-                  transition: 'all 0.2s ease',
-                  color: comparisonExpanded ? '#ffffff' : '#374151'
+                  transition: `all ${tokens.animation.timing.smooth} ease`,
+                  color: comparisonExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700]
                 }}
                 title="Compare your land to familiar reference objects"
                 onMouseEnter={(e) => {
                   if (!comparisonExpanded) {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }
                 }}
@@ -2353,16 +2344,16 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={comparisonExpanded ? '#ffffff' : 'currentColor'} strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={comparisonExpanded ? tokens.colors.background.primary : 'currentColor'} strokeWidth="2">
                   <rect x="2" y="2" width="9" height="9"></rect>
                   <rect x="13" y="2" width="9" height="9"></rect>
                   <rect x="2" y="13" width="9" height="9"></rect>
                   <rect x="13" y="13" width="9" height="9"></rect>
                 </svg>
                 <span style={{
-                  fontSize: '10px',
-                  fontWeight: '500',
-                  color: comparisonExpanded ? '#ffffff' : '#374151',
+                  fontSize: tokens.typography.caption.size,
+                  fontWeight: tokens.typography.label.weight,
+                  color: comparisonExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   Compare
@@ -2371,22 +2362,22 @@ function App(): React.JSX.Element {
 
               <button style={{
                 padding: leftPanelExpanded ? '12px 16px' : '8px',
-                borderRadius: '8px',
+                borderRadius: tokens.radius.md,
                 background: 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '4px',
+                gap: tokens.spacing[1],
                 width: '100%',
                 textAlign: 'center',
-                transition: 'all 0.2s ease',
-                color: '#374151'
+                transition: `all ${tokens.animation.timing.smooth} ease`,
+                color: tokens.colors.neutral[700]
               }} 
               title="Visual Comparison"
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = tokens.colors.neutral[100];
                 e.currentTarget.style.transform = 'translateY(-1px)';
               }}
               onMouseLeave={(e) => {
@@ -2394,11 +2385,11 @@ function App(): React.JSX.Element {
                 e.currentTarget.style.transform = 'translateY(0px)';
               }}
               >
-                <Icon name="visualComparison" size={20} color="#000000" />
+                <Icon name="visualComparison" size={20} color={tokens.colors.neutral[900]} />
                 <span style={{ 
-                  fontSize: '10px', 
-                  fontWeight: '500', 
-                  color: '#374151',
+                  fontSize: tokens.typography.caption.size, 
+                  fontWeight: tokens.typography.label.weight, 
+                  color: tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   Visual
@@ -2426,24 +2417,24 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{
-                  padding: '8px',
-                  borderRadius: '8px',
-                  background: convertExpanded ? '#3b82f6' : 'transparent',
+                  padding: tokens.spacing[2],
+                  borderRadius: tokens.radius.md,
+                  background: convertExpanded ? tokens.colors.semantic.info : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: tokens.spacing[1],
                   width: '100%',
                   textAlign: 'center',
-                  transition: 'all 0.2s ease',
-                  color: convertExpanded ? '#ffffff' : '#374151'
+                  transition: `all ${tokens.animation.timing.smooth} ease`,
+                  color: convertExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700]
                 }}
                 title="Unit Converter"
                 onMouseEnter={(e) => {
                   if (!convertExpanded) {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }
                 }}
@@ -2454,11 +2445,11 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <Icon name="unitConverter" size={20} color={convertExpanded ? "#ffffff" : "#000000"} />
+                <Icon name="unitConverter" size={20} color={convertExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]} />
                 <span style={{
-                  fontSize: '10px',
-                  fontWeight: '500',
-                  color: convertExpanded ? '#ffffff' : '#374151',
+                  fontSize: tokens.typography.caption.size,
+                  fontWeight: tokens.typography.label.weight,
+                  color: convertExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   Convert
@@ -2485,23 +2476,23 @@ function App(): React.JSX.Element {
                 }}
                 style={{
                   padding: leftPanelExpanded ? '12px 16px' : '8px',
-                  borderRadius: '8px',
-                  background: toolsPanelExpanded ? '#3b82f6' : 'transparent',
+                  borderRadius: tokens.radius.md,
+                  background: toolsPanelExpanded ? tokens.colors.semantic.info : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: tokens.spacing[1],
                   width: '100%',
                   textAlign: 'center',
-                  transition: 'all 0.2s ease',
-                  color: toolsPanelExpanded ? '#ffffff' : '#374151'
+                  transition: `all ${tokens.animation.timing.smooth} ease`,
+                  color: toolsPanelExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700]
                 }}
                 title="Quick Tools"
                 onMouseEnter={(e) => {
                   if (!toolsPanelExpanded) {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                   }
                   e.currentTarget.style.transform = 'translateY(-1px)';
                 }}
@@ -2512,11 +2503,11 @@ function App(): React.JSX.Element {
                   e.currentTarget.style.transform = 'translateY(0px)';
                 }}
               >
-                <Icon name="quickTools" size={20} color={toolsPanelExpanded ? "#ffffff" : "#000000"} />
+                <Icon name="quickTools" size={20} color={toolsPanelExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]} />
                 <span style={{
-                  fontSize: '10px',
-                  fontWeight: '500',
-                  color: toolsPanelExpanded ? '#ffffff' : '#374151',
+                  fontSize: tokens.typography.caption.size,
+                  fontWeight: tokens.typography.label.weight,
+                  color: toolsPanelExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   Tools
@@ -2543,24 +2534,24 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{ 
-                  padding: '8px', 
-                  borderRadius: '8px', 
-                  background: calculatorExpanded ? '#3b82f6' : 'transparent', 
+                  padding: tokens.spacing[2], 
+                  borderRadius: tokens.radius.md, 
+                  background: calculatorExpanded ? tokens.colors.semantic.info : 'transparent', 
                   border: 'none', 
                   cursor: 'pointer', 
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: tokens.spacing[1],
                   width: '100%',
                   textAlign: 'center',
-                  transition: 'all 0.2s ease',
-                  color: calculatorExpanded ? '#ffffff' : '#374151'
+                  transition: `all ${tokens.animation.timing.smooth} ease`,
+                  color: calculatorExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700]
                 }} 
                 title="Calculator"
                 onMouseEnter={(e) => {
                   if (!calculatorExpanded) {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }
                 }}
@@ -2571,11 +2562,11 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <Icon name="calculator" size={20} color={calculatorExpanded ? "#ffffff" : "#000000"} />
+                <Icon name="calculator" size={20} color={calculatorExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]} />
                 <span style={{ 
-                  fontSize: '10px', 
-                  fontWeight: '500', 
-                  color: calculatorExpanded ? '#ffffff' : '#374151',
+                  fontSize: tokens.typography.caption.size, 
+                  fontWeight: tokens.typography.label.weight, 
+                  color: calculatorExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   Calculator
@@ -2605,23 +2596,23 @@ function App(): React.JSX.Element {
               }}
               style={{ 
                 padding: leftPanelExpanded ? '12px 16px' : '8px', 
-                borderRadius: '8px', 
-                background: layersExpanded ? '#3b82f6' : 'transparent', 
+                borderRadius: tokens.radius.md, 
+                background: layersExpanded ? tokens.colors.semantic.info : 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '4px',
+                gap: tokens.spacing[1],
                 width: '100%',
                 textAlign: 'center',
-                transition: 'all 0.2s ease',
-                color: layersExpanded ? '#ffffff' : '#374151'
+                transition: `all ${tokens.animation.timing.smooth} ease`,
+                color: layersExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700]
               }} 
               title="Layers"
               onMouseEnter={(e) => {
                 if (!layersExpanded) {
-                  e.currentTarget.style.background = '#f3f4f6';
+                  e.currentTarget.style.background = tokens.colors.neutral[100];
                   e.currentTarget.style.transform = 'translateY(-1px)';
                 }
               }}
@@ -2632,11 +2623,11 @@ function App(): React.JSX.Element {
                 }
               }}
             >
-              <Icon name="layers" size={20} color={layersExpanded ? "#ffffff" : "#000000"} />
+              <Icon name="layers" size={20} color={layersExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]} />
               <span style={{ 
                 fontSize: leftPanelExpanded ? '12px' : '10px', 
-                fontWeight: '500', 
-                color: layersExpanded ? '#ffffff' : '#374151',
+                fontWeight: tokens.typography.label.weight, 
+                color: layersExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                 lineHeight: '1'
               }}>
                 Layers
@@ -2664,24 +2655,24 @@ function App(): React.JSX.Element {
                   }
                 }}
                 style={{
-                  padding: '8px',
-                  borderRadius: '8px',
-                  background: tidyUpExpanded ? '#3b82f6' : 'transparent',
+                  padding: tokens.spacing[2],
+                  borderRadius: tokens.radius.md,
+                  background: tidyUpExpanded ? tokens.colors.semantic.info : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: tokens.spacing[1],
                   width: '100%',
                   textAlign: 'center',
-                  transition: 'all 0.2s ease',
-                  color: tidyUpExpanded ? '#ffffff' : '#374151'
+                  transition: `all ${tokens.animation.timing.smooth} ease`,
+                  color: tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700]
                 }}
                 title="TidyUp - Organize and distribute shapes automatically"
                 onMouseEnter={(e) => {
                   if (!tidyUpExpanded) {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }
                 }}
@@ -2692,18 +2683,18 @@ function App(): React.JSX.Element {
                   }
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tidyUpExpanded ? "#ffffff" : "#000000"} strokeWidth="2">
-                  <rect x="3" y="3" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
-                  <rect x="15" y="3" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
-                  <rect x="3" y="15" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
-                  <rect x="15" y="15" width="6" height="6" rx="1" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
-                  <path d="M9 12h6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
-                  <path d="M12 9v6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? "#ffffff" : "#000000"}/>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]} strokeWidth="2">
+                  <rect x="3" y="3" width="6" height="6" rx="1" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]}/>
+                  <rect x="15" y="3" width="6" height="6" rx="1" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]}/>
+                  <rect x="3" y="15" width="6" height="6" rx="1" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]}/>
+                  <rect x="15" y="15" width="6" height="6" rx="1" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]}/>
+                  <path d="M9 12h6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]}/>
+                  <path d="M12 9v6" strokeDasharray="2 2" strokeWidth="2" stroke={tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]}/>
                 </svg>
                 <span style={{
-                  fontSize: '10px',
-                  fontWeight: '500',
-                  color: tidyUpExpanded ? '#ffffff' : '#374151',
+                  fontSize: tokens.typography.caption.size,
+                  fontWeight: tokens.typography.label.weight,
+                  color: tidyUpExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                   lineHeight: '1'
                 }}>
                   TidyUp
@@ -2719,18 +2710,18 @@ function App(): React.JSX.Element {
         {calculatorExpanded && (
           <div style={{
             position: 'absolute',
-            left: '50px',
+            left: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '300px',
-            background: 'white',
-            borderRight: '1px solid #e2e8f0',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelMedium,
+            background: tokens.colors.background.primary,
+            borderRight: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="CalculatorDemo" showMinimalError={true}>
-              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+              <Suspense fallback={<div style={{ padding: tokens.spacing[5], textAlign: 'center', color: tokens.colors.neutral[500] }}>Loading...</div>}>
                 <CalculatorDemo
                   inline={true}
                   onClose={() => {
@@ -2747,18 +2738,18 @@ function App(): React.JSX.Element {
         {layersExpanded && (
           <div style={{
             position: 'absolute',
-            left: '50px',
+            left: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '300px',
-            background: 'white',
-            borderRight: '1px solid #e2e8f0',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelMedium,
+            background: tokens.colors.background.primary,
+            borderRight: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="LayerPanel" showMinimalError={true}>
-              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+              <Suspense fallback={<div style={{ padding: tokens.spacing[5], textAlign: 'center', color: tokens.colors.neutral[500] }}>Loading...</div>}>
                 <LayerPanel
                   isOpen={true}
                   inline={true}
@@ -2776,18 +2767,18 @@ function App(): React.JSX.Element {
         {toolsPanelExpanded && (
           <div style={{
             position: 'absolute',
-            left: '50px',
+            left: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '300px',
-            background: 'white',
-            borderRight: '1px solid #e2e8f0',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelMedium,
+            background: tokens.colors.background.primary,
+            borderRight: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="ToolsPanel" showMinimalError={true}>
-              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+              <Suspense fallback={<div style={{ padding: tokens.spacing[5], textAlign: 'center', color: tokens.colors.neutral[500] }}>Loading...</div>}>
                 <ToolsPanel
                   isExpanded={true}
                   onClose={() => {
@@ -2805,18 +2796,18 @@ function App(): React.JSX.Element {
         {comparisonExpanded && (
           <div style={{
             position: 'absolute',
-            left: '50px',
+            left: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '300px',
-            background: 'white',
-            borderRight: '1px solid #e2e8f0',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelMedium,
+            background: tokens.colors.background.primary,
+            borderRight: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="ComparisonPanel" showMinimalError={true}>
-              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+              <Suspense fallback={<div style={{ padding: tokens.spacing[5], textAlign: 'center', color: tokens.colors.neutral[500] }}>Loading...</div>}>
                 <ComparisonPanel
                   expanded={true}
                   onToggle={() => {
@@ -2834,18 +2825,18 @@ function App(): React.JSX.Element {
         {convertExpanded && (
           <div style={{
             position: 'absolute',
-            left: '50px',
+            left: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '300px',
-            background: 'white',
-            borderRight: '1px solid #e2e8f0',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelMedium,
+            background: tokens.colors.background.primary,
+            borderRight: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="ConvertPanel" showMinimalError={true}>
-              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+              <Suspense fallback={<div style={{ padding: tokens.spacing[5], textAlign: 'center', color: tokens.colors.neutral[500] }}>Loading...</div>}>
                 <ConvertPanel
                   expanded={true}
                   onToggle={() => {
@@ -2863,15 +2854,15 @@ function App(): React.JSX.Element {
         {tidyUpExpanded && (
           <div style={{
             position: 'absolute',
-            left: '50px',
+            left: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '300px',
-            background: 'white',
-            borderRight: '1px solid #e2e8f0',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelMedium,
+            background: tokens.colors.background.primary,
+            borderRight: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="AlignmentControls" showMinimalError={true}>
               <AlignmentControls
@@ -2890,7 +2881,7 @@ function App(): React.JSX.Element {
         <main style={{
           flex: 1,
           position: 'relative',
-          background: '#3b82f6',
+          background: tokens.colors.semantic.info,
           overflow: 'hidden',
           cursor: getCursor()
         }}>
@@ -2962,41 +2953,41 @@ function App(): React.JSX.Element {
           {/* Status overlay - shows active tool and current measurements */}
           <div style={{
             position: 'absolute',
-            bottom: '16px',
+            bottom: tokens.spacing[4],
             left: `${16 + leftPanelOffset}px`,
             background: isProfessionalMode ? 'rgba(59, 130, 246, 0.95)' : 'rgba(255,255,255,0.95)',
             padding: '12px 16px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            fontSize: '14px',
-            color: isProfessionalMode ? 'white' : '#374151',
+            borderRadius: tokens.radius.md,
+            boxShadow: tokens.shadows.lg,
+            fontSize: tokens.typography.body.size,
+            color: isProfessionalMode ? 'white' : tokens.colors.neutral[700],
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            border: isProfessionalMode ? '2px solid #3b82f6' : 'none',
+            gap: tokens.spacing[3],
+            border: isProfessionalMode ? `2px solid ${tokens.colors.semantic.info}` : 'none',
             transition: 'left 0.2s ease'
           }}>
             {isProfessionalMode && (
               <>
-                <span style={{ fontSize: '16px' }}>⚡</span>
-                <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.3)' }}></div>
+                <span style={{ fontSize: tokens.typography.body.size }}>⚡</span>
+                <div style={{ width: tokens.sizing.separator, height: tokens.spacing[4], background: 'rgba(255,255,255,0.3)' }}></div>
               </>
             )}
             <span><strong>Tool:</strong> {activeTool}</span>
-            <div style={{ width: '1px', height: '16px', background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : '#d1d5db' }}></div>
+            <div style={{ width: tokens.sizing.separator, height: tokens.spacing[4], background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : tokens.colors.neutral[300] }}></div>
             <span><strong>Shapes:</strong> {drawing.isDrawing ? 'Drawing...' : `${getShapeCount()} total`}</span>
-            <div style={{ width: '1px', height: '16px', background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : '#d1d5db' }}></div>
+            <div style={{ width: tokens.sizing.separator, height: tokens.spacing[4], background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : tokens.colors.neutral[300] }}></div>
             <span>
               <strong>Total Area:</strong> {isProfessionalMode ? parseFloat(getTotalArea()).toFixed(4) : getTotalArea()} m²
               {isProfessionalMode && (
-                <span style={{ fontSize: '11px', marginLeft: '4px', opacity: 0.8 }}>
+                <span style={{ fontSize: tokens.typography.caption.size, marginLeft: '4px', opacity: 0.8 }}>
                   (Survey Grade ±0.01%)
                 </span>
               )}
             </span>
             {getShapeCount() > 1 && (
               <>
-                <div style={{ width: '1px', height: '16px', background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : '#d1d5db' }}></div>
+                <div style={{ width: tokens.sizing.separator, height: tokens.spacing[4], background: isProfessionalMode ? 'rgba(255,255,255,0.3)' : tokens.colors.neutral[300] }}></div>
                 <span>
                   <strong>Avg Area:</strong> {isProfessionalMode ? parseFloat(getAverageArea()).toFixed(4) : getAverageArea()} m²
                 </span>
@@ -3004,8 +2995,8 @@ function App(): React.JSX.Element {
             )}
             {isProfessionalMode && (
               <>
-                <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.3)' }}></div>
-                <span style={{ fontSize: '11px', fontWeight: '600' }}>PRO MODE</span>
+                <div style={{ width: tokens.sizing.separator, height: tokens.spacing[4], background: 'rgba(255,255,255,0.3)' }}></div>
+                <span style={{ fontSize: tokens.typography.caption.size, fontWeight: tokens.typography.label.weight }}>PRO MODE</span>
               </>
             )}
           </div>
@@ -3014,10 +3005,10 @@ function App(): React.JSX.Element {
           {activeTool !== 'select' && isMouseOver3D && (
             <div style={{
               position: 'absolute',
-              bottom: '80px', // Above the status overlay
+              bottom: tokens.spacing[20], // Above the status overlay
               left: `${16 + leftPanelOffset}px`,
               display: 'flex',
-              gap: '12px',
+              gap: tokens.spacing[3],
               alignItems: 'flex-start',
               zIndex: 100,
               transition: 'left 0.2s ease'
@@ -3027,23 +3018,23 @@ function App(): React.JSX.Element {
                 background: 'rgba(30, 30, 30, 0.95)',
                 color: 'white',
                 padding: '8px 12px',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontWeight: '500',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                borderRadius: tokens.radius.md,
+                fontSize: tokens.typography.bodySmall.size,
+                fontWeight: tokens.typography.label.weight,
+                boxShadow: tokens.shadows.lg,
                 border: '1px solid rgba(255,255,255,0.1)',
                 backdropFilter: 'blur(10px)',
-                minWidth: '140px'
+                minWidth: tokens.sizing.elementMedium
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '14px' }}>📍</span>
-                  <span style={{ fontWeight: '600' }}>Mouse Position</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2], marginBottom: tokens.spacing[1] }}>
+                  <span style={{ fontSize: tokens.typography.body.size }}>📍</span>
+                  <span style={{ fontWeight: tokens.typography.label.weight }}>Mouse Position</span>
                 </div>
-                <div style={{ fontSize: '11px', opacity: 0.9 }}>
+                <div style={{ fontSize: tokens.typography.caption.size, opacity: 0.9 }}>
                   <div>X: {mousePosition.x.toFixed(1)}m, Z: {mousePosition.y.toFixed(1)}m</div>
-                  <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px' }}>
+                  <div style={{ fontSize: tokens.typography.caption.size, opacity: 0.7, marginTop: '2px' /* 2px - consider adding tokens.spacing[0] = '2px' */ }}>
                     Grid: {drawing.snapping?.config?.activeTypes?.has?.('grid') ? `${drawing.gridSize}m snap` : 'Free move'} 
-                    {drawing.snapping?.config?.activeTypes?.has?.('grid') && <span style={{ color: '#22c55e', marginLeft: '4px' }}>📍</span>}
+                    {drawing.snapping?.config?.activeTypes?.has?.('grid') && <span style={{ color: tokens.colors.semantic.success, marginLeft: tokens.spacing[1] }}>📍</span>}
                   </div>
                 </div>
               </div>
@@ -3054,29 +3045,29 @@ function App(): React.JSX.Element {
                   background: 'rgba(59, 130, 246, 0.95)',
                   color: 'white',
                   padding: '8px 12px',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+                  borderRadius: tokens.radius.md,
+                  fontSize: tokens.typography.bodySmall.size,
+                  fontWeight: tokens.typography.label.weight,
+                  boxShadow: tokens.shadows.info,
                   border: '1px solid rgba(255,255,255,0.2)',
                   backdropFilter: 'blur(10px)',
-                  minWidth: '140px'
+                  minWidth: tokens.sizing.elementMedium
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2], marginBottom: tokens.spacing[1] }}>
                     <Icon name="ruler" size={14} />
-                    <span style={{ fontWeight: '600' }}>Dimensions</span>
+                    <span style={{ fontWeight: tokens.typography.label.weight }}>Dimensions</span>
                   </div>
                   
                   {currentDimensions ? (
-                    <div style={{ fontSize: '11px', opacity: 0.9 }}>
+                    <div style={{ fontSize: tokens.typography.caption.size, opacity: 0.9 }}>
                       {/* Rectangle dimensions */}
                       {currentDimensions.width !== undefined && currentDimensions.height !== undefined && currentDimensions.radius === undefined && (
                         <div>
-                          <div style={{ fontWeight: '600', marginBottom: '2px' }}>
+                          <div style={{ fontWeight: tokens.typography.label.weight, marginBottom: '2px' }}>
                             {currentDimensions.width.toFixed(1)}m × {currentDimensions.height.toFixed(1)}m
                           </div>
                           {currentDimensions.area !== undefined && (
-                            <div style={{ fontSize: '10px', opacity: 0.7 }}>
+                            <div style={{ fontSize: tokens.typography.caption.size, opacity: 0.7 }}>
                               Area: {currentDimensions.area.toFixed(1)} m²
                             </div>
                           )}
@@ -3086,11 +3077,11 @@ function App(): React.JSX.Element {
                       {/* Circle dimensions */}
                       {currentDimensions.radius !== undefined && (
                         <div>
-                          <div style={{ fontWeight: '600', marginBottom: '2px' }}>
+                          <div style={{ fontWeight: tokens.typography.label.weight, marginBottom: '2px' }}>
                             Radius: {currentDimensions.radius.toFixed(1)}m
                           </div>
                           {currentDimensions.area !== undefined && (
-                            <div style={{ fontSize: '10px', opacity: 0.7 }}>
+                            <div style={{ fontSize: tokens.typography.caption.size, opacity: 0.7 }}>
                               Area: {currentDimensions.area.toFixed(1)} m²
                             </div>
                           )}
@@ -3098,7 +3089,7 @@ function App(): React.JSX.Element {
                       )}
                     </div>
                   ) : (
-                    <div style={{ fontSize: '11px', opacity: 0.7 }}>
+                    <div style={{ fontSize: tokens.typography.caption.size, opacity: 0.7 }}>
                       {activeTool === 'rectangle' && 'Click to place corners'}
                       {activeTool === 'circle' && 'Click to place center'}
                       {(activeTool !== 'rectangle' && activeTool !== 'circle') && 'Select a drawing tool'}
@@ -3113,9 +3104,9 @@ function App(): React.JSX.Element {
 
         {/* Right Sidebar - Fixed width */}
         <div style={{
-          width: '50px',
-          background: 'white',
-          borderLeft: '1px solid #e5e5e5',
+          width: tokens.sizing.iconButton,
+          background: tokens.colors.background.primary,
+          borderLeft: `1px solid ${tokens.colors.neutral[200]}`,
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -3127,28 +3118,28 @@ function App(): React.JSX.Element {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '8px',
+            gap: tokens.spacing[2],
             paddingLeft: '0',
             paddingRight: '0',
             flex: 1
           }}>
             <button style={{
-              padding: '8px',
-              borderRadius: '8px',
-              background: drawing.snapToGrid ? '#dbeafe' : 'transparent',
+              padding: tokens.spacing[2],
+              borderRadius: tokens.radius.md,
+              background: drawing.snapToGrid ? `${tokens.colors.semantic.info}20` : 'transparent',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '11px',
+              fontSize: tokens.typography.caption.size,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '4px',
+              gap: tokens.spacing[1],
               width: '100%',
               textAlign: 'center',
               justifyContent: 'center',
-              transition: 'all 0.2s ease',
-              color: drawing.snapToGrid ? '#1d4ed8' : '#374151',
-              fontWeight: '500'
+              transition: `all ${tokens.animation.timing.smooth} ease`,
+              color: drawing.snapToGrid ? tokens.colors.semantic.info : tokens.colors.neutral[700],
+              fontWeight: tokens.typography.label.weight
             }}
             title="Toggle Grid Snapping"
             onClick={() => {
@@ -3177,7 +3168,7 @@ function App(): React.JSX.Element {
             }}
             onMouseEnter={(e) => {
               if (!drawing.snapToGrid) {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = tokens.colors.neutral[100];
               }
               e.currentTarget.style.transform = 'translateY(-1px)';
             }}
@@ -3185,7 +3176,7 @@ function App(): React.JSX.Element {
               if (!drawing.snapToGrid) {
                 e.currentTarget.style.background = 'transparent';
               } else {
-                e.currentTarget.style.background = '#dbeafe';
+                e.currentTarget.style.background = `${tokens.colors.semantic.info}20`;
               }
               e.currentTarget.style.transform = 'translateY(0px)';
             }}
@@ -3196,30 +3187,30 @@ function App(): React.JSX.Element {
                 <rect x="14" y="14" width="7" height="7"></rect>
                 <rect x="3" y="14" width="7" height="7"></rect>
               </svg>
-              <span style={{ fontWeight: '500' }}>Grid</span>
+              <span style={{ fontWeight: tokens.typography.label.weight }}>Grid</span>
             </button>
 
             <button style={{
-              padding: '8px',
-              borderRadius: '8px',
+              padding: tokens.spacing[2],
+              borderRadius: tokens.radius.md,
               background: ['endpoint', 'midpoint', 'center'].some(type =>
                 drawing.snapping?.config?.activeTypes?.has?.(type)
-              ) ? '#dcfce7' : 'transparent',
+              ) ? `${tokens.colors.semantic.success}20` : 'transparent',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '11px',
+              fontSize: tokens.typography.caption.size,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '4px',
+              gap: tokens.spacing[1],
               width: '100%',
               textAlign: 'center',
               justifyContent: 'center',
-              transition: 'all 0.2s ease',
+              transition: `all ${tokens.animation.timing.smooth} ease`,
               color: ['endpoint', 'midpoint', 'center'].some(type =>
                 drawing.snapping?.config?.activeTypes?.has?.(type)
-              ) ? '#166534' : '#374151',
-              fontWeight: '500'
+              ) ? tokens.colors.semantic.success : tokens.colors.neutral[700],
+              fontWeight: tokens.typography.label.weight
             }}
             title="Toggle Shape Snapping (corners, midpoints, centers)"
             onClick={() => {
@@ -3256,7 +3247,7 @@ function App(): React.JSX.Element {
               if (!['endpoint', 'midpoint', 'center'].some(type =>
                 drawing.snapping?.config?.activeTypes?.has?.(type)
               )) {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = tokens.colors.neutral[100];
               }
               e.currentTarget.style.transform = 'translateY(-1px)';
             }}
@@ -3266,7 +3257,7 @@ function App(): React.JSX.Element {
               )) {
                 e.currentTarget.style.background = 'transparent';
               } else {
-                e.currentTarget.style.background = '#dcfce7';
+                e.currentTarget.style.background = `${tokens.colors.semantic.success}20`;
               }
               e.currentTarget.style.transform = 'translateY(0px)';
             }}
@@ -3279,26 +3270,26 @@ function App(): React.JSX.Element {
                 <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
                 <circle cx="20" cy="12" r="2" fill="currentColor"></circle>
               </svg>
-              <span style={{ fontWeight: '500' }}>Snap</span>
+              <span style={{ fontWeight: tokens.typography.label.weight }}>Snap</span>
             </button>
 
             <button style={{
-              padding: '8px',
-              borderRadius: '8px',
-              background: '#f0f9ff',
+              padding: tokens.spacing[2],
+              borderRadius: tokens.radius.md,
+              background: `${tokens.colors.semantic.info}10`,
               border: 'none',
               cursor: 'pointer',
-              fontSize: '11px',
+              fontSize: tokens.typography.caption.size,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '4px',
+              gap: tokens.spacing[1],
               width: '100%',
               textAlign: 'center',
               justifyContent: 'center',
-              transition: 'all 0.2s ease',
-              color: '#1e40af',
-              fontWeight: '500'
+              transition: `all ${tokens.animation.timing.smooth} ease`,
+              color: tokens.colors.semantic.info,
+              fontWeight: tokens.typography.label.weight
             }}
             title="Smart Align - Canva-style alignment system (Always Active)"
             onClick={() => {
@@ -3306,22 +3297,22 @@ function App(): React.JSX.Element {
               setSmartAlignHelpOpen(true);
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#dbeafe';
+              e.currentTarget.style.background = `${tokens.colors.semantic.info}20`;
               e.currentTarget.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#f0f9ff';
+              e.currentTarget.style.background = `${tokens.colors.semantic.info}10`;
               e.currentTarget.style.transform = 'translateY(0px)';
             }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="6" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
                 <rect x="14" y="6" width="4" height="4" fill="currentColor" opacity="0.3"></rect>
-                <line x1="8" y1="3" x2="8" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
-                <line x1="16" y1="3" x2="16" y2="21" strokeDasharray="3 2" stroke="#8B5CF6" strokeWidth="1.5"></line>
-                <circle cx="12" cy="14" r="2" fill="#8B5CF6" opacity="0.8"></circle>
+                <line x1="8" y1="3" x2="8" y2="21" strokeDasharray="3 2" stroke={tokens.colors.brand.purple} strokeWidth="1.5"></line>
+                <line x1="16" y1="3" x2="16" y2="21" strokeDasharray="3 2" stroke={tokens.colors.brand.purple} strokeWidth="1.5"></line>
+                <circle cx="12" cy="14" r="2" fill={tokens.colors.brand.purple} opacity="0.8"></circle>
               </svg>
-              <span style={{ fontWeight: '500' }}>Smart Align</span>
+              <span style={{ fontWeight: tokens.typography.label.weight }}>Smart Align</span>
             </button>
             
             <button 
@@ -3339,27 +3330,27 @@ function App(): React.JSX.Element {
                 }
               }}
               style={{ 
-                padding: '8px', 
-                borderRadius: '8px', 
-                background: propertiesExpanded ? '#3b82f6' : 'transparent', 
+                padding: tokens.spacing[2], 
+                borderRadius: tokens.radius.md, 
+                background: propertiesExpanded ? tokens.colors.semantic.info : 'transparent', 
                 border: 'none', 
                 cursor: 'pointer', 
-                fontSize: '11px',
-                color: propertiesExpanded ? '#ffffff' : '#374151',
+                fontSize: tokens.typography.caption.size,
+                color: propertiesExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700],
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '4px',
+                gap: tokens.spacing[1],
                 width: '100%',
                 textAlign: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.2s ease',
-                fontWeight: '500'
+                transition: `all ${tokens.animation.timing.smooth} ease`,
+                fontWeight: tokens.typography.label.weight
               }} 
               title="Properties"
               onMouseEnter={(e) => {
                 if (!propertiesExpanded) {
-                  e.currentTarget.style.background = '#f3f4f6';
+                  e.currentTarget.style.background = tokens.colors.neutral[100];
                   e.currentTarget.style.transform = 'translateY(-1px)';
                 }
               }}
@@ -3370,8 +3361,8 @@ function App(): React.JSX.Element {
                 }
               }}
             >
-              <Icon name="properties" size={20} color={propertiesExpanded ? "#ffffff" : "#000000"} />
-              <span style={{ fontWeight: '500', color: propertiesExpanded ? '#ffffff' : '#374151' }}>Properties</span>
+              <Icon name="properties" size={20} color={propertiesExpanded ? tokens.colors.background.primary : tokens.colors.neutral[900]} />
+              <span style={{ fontWeight: tokens.typography.label.weight, color: propertiesExpanded ? tokens.colors.background.primary : tokens.colors.neutral[700] }}>Properties</span>
             </button>
 
             {/* Reset Camera Button */}
@@ -3382,26 +3373,26 @@ function App(): React.JSX.Element {
                 }
               }}
               style={{
-                padding: '8px',
-                borderRadius: '8px',
+                padding: tokens.spacing[2],
+                borderRadius: tokens.radius.md,
                 background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: '11px',
+                fontSize: tokens.typography.caption.size,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '4px',
+                gap: tokens.spacing[1],
                 width: '100%',
                 textAlign: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.2s ease',
-                color: '#374151',
-                fontWeight: '500'
+                transition: `all ${tokens.animation.timing.smooth} ease`,
+                color: tokens.colors.neutral[700],
+                fontWeight: tokens.typography.label.weight
               }}
               title="Reset Camera View (Shortcut: 0)"
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = tokens.colors.neutral[100];
                 e.currentTarget.style.transform = 'translateY(-1px)';
               }}
               onMouseLeave={(e) => {
@@ -3415,7 +3406,7 @@ function App(): React.JSX.Element {
                 <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
                 <path d="M8 16H3v5"/>
               </svg>
-              <span style={{ fontWeight: '500', color: '#374151' }}>Reset View</span>
+              <span style={{ fontWeight: tokens.typography.label.weight, color: tokens.colors.neutral[700] }}>Reset View</span>
             </button>
           </div>
 
@@ -3426,18 +3417,18 @@ function App(): React.JSX.Element {
         {propertiesExpanded && (
           <div style={{
             position: 'absolute',
-            right: '50px',
+            right: tokens.sizing.iconButton,
             top: 0,
             bottom: 0,
-            width: '280px',
-            background: 'white',
-            borderLeft: '1px solid #e2e8f0',
-            boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
+            width: tokens.sizing.panelSmall,
+            background: tokens.colors.background.primary,
+            borderLeft: `1px solid ${tokens.colors.neutral[200]}`,
+            boxShadow: tokens.shadows.md,
             overflowY: 'auto',
-            zIndex: 20
+            zIndex: tokens.zIndex.panel
           }}>
             <UIErrorBoundary componentName="PropertiesPanel" showMinimalError={true}>
-              <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>}>
+              <Suspense fallback={<div style={{ padding: tokens.spacing[5], textAlign: 'center', color: tokens.colors.neutral[500] }}>Loading...</div>}>
                 <PropertiesPanel
                   isOpen={true}
                   onClose={() => {

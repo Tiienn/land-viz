@@ -73,6 +73,7 @@ export const tokens = {
    */
   spacing: {
     0: '0',
+    0.5: '2px',    // Extra tight spacing (half of base unit)
     1: '4px',      // Tight spacing
     2: '8px',      // Small gaps
     3: '12px',     // Default spacing
@@ -83,6 +84,7 @@ export const tokens = {
     10: '40px',    // Major sections
     12: '48px',    // Hero spacing
     16: '64px',    // Extra large spacing
+    20: '80px',    // Extra extra large spacing
   },
 
   /**
@@ -149,6 +151,22 @@ export const tokens = {
   },
 
   /**
+   * Sizing System
+   * Common UI component dimensions
+   */
+  sizing: {
+    separator: '1px',       // Vertical/horizontal separator line
+    buttonHeight: '56px',   // Standard button height
+    buttonMinWidth: '52px', // Standard button minimum width
+    iconButton: '50px',     // Icon button size
+    separatorHeight: '66px', // Tall separator height
+    elementMedium: '140px', // Medium element width
+    elementLarge: '160px',  // Large element width
+    panelSmall: '280px',    // Small panel width
+    panelMedium: '300px',   // Medium panel width
+  },
+
+  /**
    * Border Radius System
    * Consistent rounded corners throughout the app
    */
@@ -173,6 +191,7 @@ export const tokens = {
     xl: '0 8px 16px rgba(0, 0, 0, 0.1)',
     brand: '0 4px 12px rgba(0, 196, 204, 0.2)', // Teal glow
     brandHover: '0 8px 16px rgba(0, 196, 204, 0.3)', // Enhanced teal glow
+    info: '0 4px 12px rgba(59, 130, 246, 0.3)', // Blue info glow
   },
 
   /**
@@ -201,7 +220,9 @@ export const tokens = {
    */
   zIndex: {
     base: 0,
+    scene: 1,              // 3D scene elements (dimensions, text labels)
     dropdown: 1000,
+    panel: 1001,           // Side panels (must be above scene elements)
     sticky: 1100,
     overlay: 1200,
     modal: 1300,

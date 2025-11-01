@@ -6,6 +6,7 @@ import { CalculationsSection } from './CalculationsSection';
 import { SearchSection } from './SearchSection';
 import { CategoryTabs } from './CategoryTabs';
 import { MobileComparisonPanel } from './MobileComparisonPanel';
+import { tokens } from '../../styles/tokens';
 import type { ReferenceCategory, ReferenceObject } from '../../types/referenceObjects';
 
 interface ComparisonPanelProps {
@@ -158,7 +159,7 @@ function ComparisonPanelHeader({ onToggle, inline = false }: { onToggle: () => v
         style={styles.closeButton}
         onClick={onToggle}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#f3f4f6';
+          e.currentTarget.style.backgroundColor = tokens.colors.neutral[100];
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = 'transparent';
@@ -171,97 +172,97 @@ function ComparisonPanelHeader({ onToggle, inline = false }: { onToggle: () => v
   );
 }
 
-// Styles following Canva design system with inline styles
+// Styles following Canva design system with design tokens
 const styles = {
   panel: {
     position: 'fixed' as const,
-    right: '16px',
+    right: tokens.spacing[4],
     top: '120px',
     width: '360px',
     maxHeight: 'calc(100vh - 140px)',
-    backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    boxShadow: '0 4px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)',
+    backgroundColor: tokens.colors.background.primary,
+    borderRadius: tokens.radius.lg,
+    boxShadow: tokens.shadows.xl,
     overflow: 'hidden',
-    transition: 'all 200ms ease-out',
-    fontFamily: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
-    zIndex: 1000,
+    transition: `all ${tokens.animation.timing.smooth} ${tokens.animation.easing.easeOut}`,
+    fontFamily: tokens.typography.fontFamily.primary,
+    zIndex: tokens.zIndex.panel,
     display: 'flex',
     flexDirection: 'column' as const
   },
 
   inlinePanel: {
     height: '100%',
-    backgroundColor: '#ffffff',
+    backgroundColor: tokens.colors.background.primary,
     overflow: 'hidden',
-    fontFamily: '"Nunito Sans", -apple-system, BlinkMacSystemFont, sans-serif',
+    fontFamily: tokens.typography.fontFamily.primary,
     display: 'flex',
     flexDirection: 'column' as const
   },
 
   collapsedPanel: {
     position: 'fixed' as const,
-    right: '16px',
+    right: tokens.spacing[4],
     top: '280px',
     width: '60px',
     height: '60px',
-    backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
+    backgroundColor: tokens.colors.background.primary,
+    borderRadius: tokens.radius.lg,
+    boxShadow: tokens.shadows.md,
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    transition: 'all 200ms ease-out',
-    zIndex: 1000,
-    gap: '4px'
+    transition: `all ${tokens.animation.timing.smooth} ${tokens.animation.easing.easeOut}`,
+    zIndex: tokens.zIndex.panel,
+    gap: tokens.spacing[1]
   },
 
   collapsedIcon: {
-    fontSize: '20px'
+    fontSize: tokens.typography.h3.size
   },
 
   collapsedText: {
-    fontSize: '11px',
-    fontWeight: 600,
-    color: '#6b7280'
+    fontSize: tokens.typography.caption.size,
+    fontWeight: tokens.typography.label.weight,
+    color: tokens.colors.neutral[500]
   },
 
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '16px 20px',
-    borderBottom: '1px solid #e5e7eb',
-    backgroundColor: '#fafafa',
+    padding: `${tokens.spacing[4]} ${tokens.spacing[5]}`,
+    borderBottom: `1px solid ${tokens.colors.neutral[200]}`,
+    backgroundColor: tokens.colors.neutral[50],
     flexShrink: 0
   },
 
   title: {
     margin: 0,
-    fontSize: '16px',
-    fontWeight: 700,
-    color: '#1f2937',
+    fontSize: tokens.typography.body.size,
+    fontWeight: tokens.typography.h1.weight,
+    color: tokens.colors.neutral[700],
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: tokens.spacing[2]
   },
 
   titleIcon: {
-    color: '#6b7280',
+    color: tokens.colors.neutral[500],
     flexShrink: 0
   },
 
   closeButton: {
     background: 'none',
     border: 'none',
-    fontSize: '24px',
+    fontSize: tokens.typography.h1.size,
     cursor: 'pointer',
-    color: '#6b7280',
-    padding: '4px 8px',
-    borderRadius: '6px',
-    transition: 'all 200ms ease',
+    color: tokens.colors.neutral[500],
+    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+    borderRadius: tokens.radius.sm,
+    transition: `all ${tokens.animation.timing.smooth} ease`,
     lineHeight: 1,
     fontWeight: 300
   },

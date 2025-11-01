@@ -5,6 +5,7 @@ import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { logger } from '@/utils/logger';
+import { tokens } from '@/styles/tokens';
 
 // Minimum rectangle constraints to prevent degenerate shapes
 const MIN_RECTANGLE_AREA = 10; // 10 m² minimum area
@@ -953,10 +954,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 center
                 sprite
                 occlude={false}
+                zIndexRange={[1, 0]}
                 style={{
                   pointerEvents: 'auto',
                   userSelect: 'none',
-                  zIndex: 999,
+                  zIndex: tokens.zIndex.scene,
                 }}
               >
                 <div
@@ -1093,11 +1095,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 center
                 sprite
                 occlude={false}
+                zIndexRange={[1, 0]}
                 rotation-z={rotationRadians}
                 style={{
                   pointerEvents: 'auto',
                   userSelect: 'none',
-                  zIndex: 998,
+                  zIndex: tokens.zIndex.scene,
                 }}
               >
                 <div
@@ -1205,10 +1208,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 center
                 sprite
                 occlude={false}
+                zIndexRange={[1, 0]}
                 style={{
                   pointerEvents: 'auto',
                   userSelect: 'none',
-                  zIndex: 999,
+                  zIndex: tokens.zIndex.scene,
                 }}
               >
                 <div
@@ -1293,10 +1297,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 center
                 sprite
                 occlude={false}
+                zIndexRange={[1, 0]}
                 style={{
                   pointerEvents: 'auto',
                   userSelect: 'none',
-                  zIndex: 998,
+                  zIndex: tokens.zIndex.scene,
                 }}
               >
                 <div

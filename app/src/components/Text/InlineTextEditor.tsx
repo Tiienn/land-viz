@@ -259,7 +259,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = React.memo(({
       transform={!is2DMode} // Billboard in 3D mode only
       sprite={!is2DMode} // Sprite effect in 3D mode only
       occlude={false}
-      zIndexRange={is2DMode ? [100, 0] : [10, 0]} // Match TextObject z-index
+      zIndexRange={[1, 0]} // Scene-level z-index for proper layering below UI panels
       distanceFactor={is2DMode ? 2.5 : 20} // Match TextObject scale exactly
       style={containerStyle}
     >

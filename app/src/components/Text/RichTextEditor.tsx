@@ -246,7 +246,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = React.memo(({
       transform={!is2DMode}
       sprite={!is2DMode}
       occlude={false}
-      zIndexRange={is2DMode ? [100, 0] : [10, 0]}
+      zIndexRange={[1, 0]} // Scene-level z-index for proper layering below UI panels
       distanceFactor={is2DMode ? 2.5 : 20}
       style={containerStyle}
     >

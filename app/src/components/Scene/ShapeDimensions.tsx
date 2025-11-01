@@ -3,6 +3,7 @@ import { Html } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import { useAppStore } from '@/store/useAppStore';
 import { precisionCalculator } from '@/services/precisionCalculations';
+import { tokens } from '@/styles/tokens';
 import type { Shape, Point2D } from '@/types';
 
 // Utility function to apply rotation transform to a single point
@@ -115,10 +116,11 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
               center
               sprite
               occlude={false}
+              zIndexRange={[1, 0]}
               style={{
                 pointerEvents: 'none',
                 userSelect: 'none',
-                zIndex: 1
+                zIndex: tokens.zIndex.scene
               }}
             >
               <div style={{
@@ -212,10 +214,11 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
           center
           sprite
           occlude={false}
+          zIndexRange={[1, 0]}
           style={{
             pointerEvents: 'none',
             userSelect: 'none',
-            zIndex: 1
+            zIndex: tokens.zIndex.scene
           }}
         >
           <div style={{
@@ -296,7 +299,13 @@ const ShapeDimensions: React.FC<ShapeDimensionsProps> = ({
         center
         sprite
         occlude={false}
+        zIndexRange={[1, 0]}
         distanceFactor={scaleInfo.distanceFactor}
+        style={{
+          pointerEvents: 'none',
+          userSelect: 'none',
+          zIndex: tokens.zIndex.scene
+        }}
       >
         <div style={{
           background: 'rgba(34, 197, 94, 0.9)',

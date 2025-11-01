@@ -73,7 +73,7 @@ export const TextElementRenderer: React.FC<TextElementRendererProps> = ({
         position={[element.position.x, element.z, element.position.y]}
         center
         occlude={false}
-        zIndexRange={[100, 0]}
+        zIndexRange={[1, 0]} // Scene-level z-index for proper layering below UI panels
         distanceFactor={2.5}
         style={{
           pointerEvents: element.locked ? 'none' : 'auto'
@@ -122,7 +122,7 @@ export const TextElementRenderer: React.FC<TextElementRendererProps> = ({
       transform
       sprite
       occlude={false}
-      zIndexRange={[10, 0]}
+      zIndexRange={[1, 0]} // Scene-level z-index for proper layering below UI panels
       distanceFactor={20}
       style={{
         transform: `rotate(${element.rotation}deg)`,

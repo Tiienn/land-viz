@@ -72,7 +72,7 @@ export const TextObject: React.FC<TextObjectProps> = ({ text, isSelected, onClic
         position={[text.position.x, text.position.y, text.position.z]}
         center // Center the HTML element on the position
         occlude={false}
-        zIndexRange={[100, 0]} // Higher z-index for visibility
+        zIndexRange={[1, 0]} // Scene-level z-index for proper layering below UI panels
         distanceFactor={2.5} // Lower value = smaller text (50% reduction again)
         style={{
           pointerEvents: text.locked ? 'none' : 'auto'
@@ -129,7 +129,7 @@ export const TextObject: React.FC<TextObjectProps> = ({ text, isSelected, onClic
       transform // Enable billboard - text always faces camera
       sprite // Enhanced billboard that works from all angles including top-down
       occlude={false}
-      zIndexRange={[10, 0]}
+      zIndexRange={[1, 0]} // Scene-level z-index for proper layering below UI panels
       distanceFactor={20} // Higher value for 3D viewing
       style={{
         transform: `rotate(${text.rotation}deg)`,
