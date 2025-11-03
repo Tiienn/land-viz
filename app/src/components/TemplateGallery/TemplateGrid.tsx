@@ -11,9 +11,15 @@ import { useTemplateStore } from '../../store/useTemplateStore';
 
 interface TemplateGridProps {
   templates: PropertyTemplate[];
+  selectedTemplateId?: string | null;
+  onSelectTemplate?: (templateId: string) => void;
 }
 
-export function TemplateGrid({ templates }: TemplateGridProps): React.JSX.Element {
+export function TemplateGrid({
+  templates,
+  selectedTemplateId = null,
+  onSelectTemplate
+}: TemplateGridProps): React.JSX.Element {
   const closeGallery = useTemplateStore((state) => state.closeGallery);
   const [contextMenuTemplate, setContextMenuTemplate] = React.useState<PropertyTemplate | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = React.useState<{ x: number; y: number } | null>(null);
@@ -24,6 +30,14 @@ export function TemplateGrid({ templates }: TemplateGridProps): React.JSX.Elemen
       closeGallery();
     } catch (error: any) {
       alert(`Failed to load template: ${error.message}`);
+    }
+  };
+
+  const handleClick = (templateId: string) => {
+    if (onSelectTemplate) {
+      onSelectTemplate(templateId);
+    } else {
+      handleLoadTemplate(templateId);
     }
   };
 
@@ -91,7 +105,8 @@ export function TemplateGrid({ templates }: TemplateGridProps): React.JSX.Elemen
           <TemplateCard
             key={template.id}
             template={template}
-            onClick={() => handleLoadTemplate(template.id)}
+            isSelected={selectedTemplateId === template.id}
+            onClick={() => handleClick(template.id)}
             onContextMenu={(e) => handleContextMenu(e, template)}
           />
         ))}

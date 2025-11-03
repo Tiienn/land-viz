@@ -26,8 +26,6 @@ export const Camera2DToggle: React.FC = () => {
     bottom: number;
   } | null>(null);
 
-  // Removed debug logging - issue fixed!
-
   // Calculate orthographic camera bounds based on viewport
   // Keep bounds constant - zoom is handled by camera.zoom property via OrbitControls
   const orthoBounds = useMemo(() => {
@@ -111,18 +109,62 @@ export const Camera2DToggle: React.FC = () => {
         typeof currentBounds.top === 'number' && !isNaN(currentBounds.top) &&
         typeof currentBounds.bottom === 'number' && !isNaN(currentBounds.bottom);
 
+      // Check if current bounds match the expected orthoBounds (valid viewport-driven change)
+      const matchesOrthoBounds =
+        Math.abs(currentBounds.left - orthoBounds.left) < 0.1 &&
+        Math.abs(currentBounds.right - orthoBounds.right) < 0.1 &&
+        Math.abs(currentBounds.top - orthoBounds.top) < 0.1 &&
+        Math.abs(currentBounds.bottom - orthoBounds.bottom) < 0.1;
+
+      // Check if ref matches orthoBounds (to detect viewport resizes)
+      const refMatchesOrthoBounds = currentBoundsRef.current ? (
+        Math.abs(currentBoundsRef.current.left - orthoBounds.left) < 0.1 &&
+        Math.abs(currentBoundsRef.current.right - orthoBounds.right) < 0.1 &&
+        Math.abs(currentBoundsRef.current.top - orthoBounds.top) < 0.1 &&
+        Math.abs(currentBoundsRef.current.bottom - orthoBounds.bottom) < 0.1
+      ) : true;
+
+      // If orthoBounds changed (viewport resize like F12), apply them immediately
+      if (!refMatchesOrthoBounds && boundsAreValid) {
+        orthoCamera.left = orthoBounds.left;
+        orthoCamera.right = orthoBounds.right;
+        orthoCamera.top = orthoBounds.top;
+        orthoCamera.bottom = orthoBounds.bottom;
+        currentBoundsRef.current = {
+          left: orthoBounds.left,
+          right: orthoBounds.right,
+          top: orthoBounds.top,
+          bottom: orthoBounds.bottom
+        };
+        needsUpdate = true;
+      }
       // If we have a previous bounds reference, check if they've changed unexpectedly
-      if (currentBoundsRef.current && boundsAreValid) {
+      else if (currentBoundsRef.current && boundsAreValid) {
         const leftDelta = Math.abs(currentBounds.left - currentBoundsRef.current.left);
         const rightDelta = Math.abs(currentBounds.right - currentBoundsRef.current.right);
+        const topDelta = Math.abs(currentBounds.top - currentBoundsRef.current.top);
+        const bottomDelta = Math.abs(currentBounds.bottom - currentBoundsRef.current.bottom);
 
-        // If bounds changed significantly (more than 1 unit), restore from ref
-        if (!isNaN(leftDelta) && !isNaN(rightDelta) && (leftDelta > 1 || rightDelta > 1)) {
-          orthoCamera.left = currentBoundsRef.current.left;
-          orthoCamera.right = currentBoundsRef.current.right;
-          orthoCamera.top = currentBoundsRef.current.top;
-          orthoCamera.bottom = currentBoundsRef.current.bottom;
-          needsUpdate = true;
+        // If bounds changed significantly...
+        if (!isNaN(leftDelta) && !isNaN(rightDelta) && !isNaN(topDelta) && !isNaN(bottomDelta) &&
+            (leftDelta > 1 || rightDelta > 1 || topDelta > 1 || bottomDelta > 1)) {
+
+          // Check if new bounds match orthoBounds (valid viewport resize like F12)
+          if (matchesOrthoBounds) {
+            // Valid change - accept new bounds and update ref
+            currentBoundsRef.current = currentBounds;
+          } else {
+            // Invalid change - restore from ref
+            orthoCamera.left = currentBoundsRef.current.left;
+            orthoCamera.right = currentBoundsRef.current.right;
+            orthoCamera.top = currentBoundsRef.current.top;
+            orthoCamera.bottom = currentBoundsRef.current.bottom;
+            needsUpdate = true;
+          }
+        } else if (leftDelta < 0.1 && rightDelta < 0.1 && topDelta < 0.1 && bottomDelta < 0.1) {
+          // Bounds are stable and good - update our ref with these values
+          // This ensures we always have the latest good bounds to restore to
+          currentBoundsRef.current = currentBounds;
         }
       } else if (boundsAreValid) {
         // First time or ref was invalid, store the bounds if they're valid

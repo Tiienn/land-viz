@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTemplateStore } from '../../store/useTemplateStore';
 import { TemplateGrid } from './TemplateGrid';
 import type { TemplateCategory } from '../../types/template';
@@ -6,6 +6,7 @@ import type { TemplateCategory } from '../../types/template';
 /**
  * Template Gallery Modal
  * Main interface for browsing and loading templates
+ * Design matches PresetsModal for consistency
  */
 
 export function TemplateGalleryModal(): React.JSX.Element | null {
@@ -18,8 +19,10 @@ export function TemplateGalleryModal(): React.JSX.Element | null {
     activeFilter,
     setFilter,
     loadAllTemplates,
-    openSaveDialog,
+    loadTemplate,
   } = useTemplateStore();
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   // Load templates on mount
   useEffect(() => {
@@ -27,6 +30,34 @@ export function TemplateGalleryModal(): React.JSX.Element | null {
       loadAllTemplates();
     }
   }, [isGalleryOpen, loadAllTemplates]);
+
+  // Set data attribute for ShapeDimensions to hide when modal is open
+  useEffect(() => {
+    if (isGalleryOpen) {
+      document.body.setAttribute('data-modal-open', 'true');
+    } else {
+      document.body.removeAttribute('data-modal-open');
+    }
+
+    return () => {
+      document.body.removeAttribute('data-modal-open');
+    };
+  }, [isGalleryOpen]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!isGalleryOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeGallery();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isGalleryOpen, closeGallery]);
 
   // Filter templates
   const filteredTemplates = useMemo(() => {
@@ -75,248 +106,312 @@ export function TemplateGalleryModal(): React.JSX.Element | null {
     { value: 'custom', label: 'Custom' },
   ];
 
+  const selectedCategory = activeFilter.category || 'all';
+  const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null;
+
+  // Styles matching PresetsModal
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999999,
+    padding: '20px',
+    animation: 'fadeIn 0.2s ease-out',
+    isolation: 'isolate' as any,
+    willChange: 'transform'
+  };
+
+  const modalStyle: React.CSSProperties = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '12px',
+    width: '100%',
+    maxWidth: '900px',
+    maxHeight: '80vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+    fontFamily: 'Nunito Sans, sans-serif',
+    animation: 'slideIn 0.2s ease-out',
+    position: 'relative'
+  };
+
+  const headerStyle: React.CSSProperties = {
+    padding: '24px 24px 0 24px',
+    borderBottom: '1px solid #E5E7EB',
+    paddingBottom: '16px',
+  };
+
+  const titleStyle: React.CSSProperties = {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#1F2937',
+    margin: '0 0 16px 0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  };
+
+  const closeButtonStyle: React.CSSProperties = {
+    background: 'none',
+    border: 'none',
+    fontSize: '24px',
+    cursor: 'pointer',
+    color: '#6B7280',
+    padding: '4px',
+    borderRadius: '6px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+  };
+
+  const searchStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 16px',
+    border: '2px solid #E5E7EB',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: 'Nunito Sans, sans-serif',
+    outline: 'none',
+    transition: 'border-color 0.2s ease',
+  };
+
+  const tabsStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '4px',
+    marginTop: '16px',
+    borderBottom: '1px solid #E5E7EB',
+  };
+
+  const getTabStyle = (isActive: boolean): React.CSSProperties => ({
+    padding: '12px 16px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: isActive ? '#3B82F6' : '#6B7280',
+    fontWeight: isActive ? '600' : '500',
+    fontSize: '14px',
+    fontFamily: 'Nunito Sans, sans-serif',
+    cursor: 'pointer',
+    borderBottom: `2px solid ${isActive ? '#3B82F6' : 'transparent'}`,
+    transition: 'all 0.2s ease',
+  });
+
+  const contentStyle: React.CSSProperties = {
+    padding: '24px',
+    flex: 1,
+    overflow: 'auto',
+  };
+
+  const sectionTitleStyle: React.CSSProperties = {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: '12px',
+  };
+
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+    gap: '16px',
+  };
+
+  const actionsStyle: React.CSSProperties = {
+    padding: '16px 24px',
+    borderTop: '1px solid #E5E7EB',
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    padding: '12px 24px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    fontFamily: 'Nunito Sans, sans-serif',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    border: 'none',
+  };
+
+  const primaryButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+    color: '#FFFFFF',
+  };
+
+  const secondaryButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    backgroundColor: '#F3F4F6',
+    color: '#374151',
+  };
+
+  const handleLoadTemplate = async () => {
+    if (!selectedTemplate) return;
+    await loadTemplate(selectedTemplate.id);
+    closeGallery();
+  };
+
   return (
     <div
-      onClick={closeGallery}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        backdropFilter: 'blur(4px)',
-      }}
+      className="template-gallery-modal"
+      style={overlayStyle}
+      onClick={(e) => e.target === e.currentTarget && closeGallery()}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '16px',
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-          maxWidth: '1000px',
-          maxHeight: '85vh',
-          width: '90%',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
+      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div
-          style={{
-            padding: '24px 32px',
-            borderBottom: '1px solid #e5e7eb',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                backgroundColor: '#3b82f6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '20px',
+        <div style={headerStyle}>
+          <div style={titleStyle}>
+            Template Gallery
+            <button
+              style={closeButtonStyle}
+              onClick={closeGallery}
+              onMouseEnter={(e) => {
+                (e.target as HTMLElement).style.backgroundColor = '#F3F4F6';
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.backgroundColor = 'transparent';
               }}
             >
-              📄
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
-                Template Gallery
-              </h2>
-              <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
-                {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''} available
-              </p>
-            </div>
+              ✕
+            </button>
           </div>
-          <button
-            onClick={closeGallery}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: '6px',
-              transition: 'background-color 150ms',
-              fontSize: '20px',
-              color: '#6b7280',
+
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search templates by name, description, or tags..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={searchStyle}
+            onFocus={(e) => {
+              (e.target as HTMLElement).style.borderColor = '#3B82F6';
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#f3f4f6';
+            onBlur={(e) => {
+              (e.target as HTMLElement).style.borderColor = '#E5E7EB';
             }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            ×
-          </button>
+          />
+
+          {/* Category Tabs */}
+          <div style={tabsStyle}>
+            {categories.map((category) => {
+              const isActive =
+                category.value === 'all'
+                  ? !activeFilter.category
+                  : activeFilter.category === category.value;
+
+              return (
+                <button
+                  key={category.value}
+                  style={getTabStyle(isActive)}
+                  onClick={() =>
+                    setFilter({
+                      category: category.value === 'all' ? undefined : (category.value as TemplateCategory),
+                    })
+                  }
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      (e.target as HTMLElement).style.color = '#3B82F6';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      (e.target as HTMLElement).style.color = '#6B7280';
+                    }
+                  }}
+                >
+                  {category.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Search Bar */}
-        <div style={{ padding: '16px 32px', borderBottom: '1px solid #e5e7eb' }}>
-          <div
-            style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                left: '12px',
-                fontSize: '18px',
-                color: '#9ca3af',
-              }}
-            >
-              🔍
+        {/* Content */}
+        <div style={contentStyle}>
+          {/* Main Templates Grid */}
+          <div style={sectionTitleStyle}>
+            {categories.find(c => c.value === selectedCategory)?.label} Templates
+            <span style={{ color: '#6B7280', fontWeight: '400', fontSize: '14px', marginLeft: '8px' }}>
+              ({filteredTemplates.length})
             </span>
-            <input
-              type="text"
-              placeholder="Search templates..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 12px 10px 40px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                outline: 'none',
-                transition: 'border-color 150ms',
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = '#3b82f6';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = '#d1d5db';
-              }}
-            />
           </div>
+
+          {filteredTemplates.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              color: '#6B7280',
+              padding: '48px 24px',
+              fontSize: '16px',
+            }}>
+              {searchQuery ? `No templates found for "${searchQuery}"` : 'No templates in this category'}
+            </div>
+          ) : (
+            <div style={gridStyle}>
+              <TemplateGrid
+                templates={filteredTemplates}
+                selectedTemplateId={selectedTemplateId}
+                onSelectTemplate={setSelectedTemplateId}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Category Tabs */}
-        <div
-          style={{
-            padding: '16px 32px',
-            borderBottom: '1px solid #e5e7eb',
-            display: 'flex',
-            gap: '8px',
-            overflowX: 'auto',
-          }}
-        >
-          {categories.map((category) => {
-            const isActive =
-              category.value === 'all'
-                ? !activeFilter.category
-                : activeFilter.category === category.value;
-
-            return (
-              <button
-                key={category.value}
-                onClick={() =>
-                  setFilter({
-                    category: category.value === 'all' ? undefined : (category.value as TemplateCategory),
-                  })
-                }
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  backgroundColor: isActive ? '#3b82f6' : '#f3f4f6',
-                  color: isActive ? '#ffffff' : '#374151',
-                  transition: 'all 150ms',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.backgroundColor = '#e5e7eb';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
-                  }
-                }}
-              >
-                {category.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Template Grid */}
-        <div
-          style={{
-            padding: '32px',
-            overflowY: 'auto',
-            flex: 1,
-          }}
-        >
-          <TemplateGrid templates={filteredTemplates} />
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            padding: '16px 32px',
-            borderTop: '1px solid #e5e7eb',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ fontSize: '13px', color: '#6b7280' }}>
-            {templates.filter((t) => t.author === 'built-in').length} built-in • {templates.filter((t) => t.author === 'user').length} custom
-          </div>
+        {/* Actions */}
+        <div style={actionsStyle}>
           <button
-            onClick={() => {
-              closeGallery();
-              openSaveDialog();
-            }}
-            style={{
-              padding: '10px 20px',
-              border: 'none',
-              borderRadius: '8px',
-              backgroundColor: '#10b981',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              transition: 'all 150ms',
-            }}
+            style={secondaryButtonStyle}
+            onClick={closeGallery}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#059669';
+              (e.target as HTMLElement).style.backgroundColor = '#E5E7EB';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#10b981';
+              (e.target as HTMLElement).style.backgroundColor = '#F3F4F6';
             }}
           >
-            <span style={{ fontSize: '16px' }}>+</span>
-            Create New Template
+            Cancel
+          </button>
+          <button
+            style={primaryButtonStyle}
+            disabled={!selectedTemplate}
+            onClick={handleLoadTemplate}
+            onMouseEnter={(e) => {
+              if (!selectedTemplate) return;
+              (e.target as HTMLElement).style.background = 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)';
+              (e.target as HTMLElement).style.transform = 'translateY(-1px)';
+              (e.target as HTMLElement).style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              if (!selectedTemplate) return;
+              (e.target as HTMLElement).style.background = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)';
+              (e.target as HTMLElement).style.transform = 'translateY(0)';
+              (e.target as HTMLElement).style.boxShadow = 'none';
+            }}
+          >
+            Load Template
           </button>
         </div>
       </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+          from { transform: translateY(-20px) scale(0.95); }
+          to { transform: translateY(0) scale(1); }
+        }
+      `}</style>
     </div>
   );
 }

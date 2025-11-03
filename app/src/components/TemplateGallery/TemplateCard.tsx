@@ -8,11 +8,17 @@ import type { PropertyTemplate } from '../../types/template';
 
 interface TemplateCardProps {
   template: PropertyTemplate;
+  isSelected?: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
-export function TemplateCard({ template, onClick, onContextMenu }: TemplateCardProps): React.JSX.Element {
+export function TemplateCard({
+  template,
+  isSelected = false,
+  onClick,
+  onContextMenu
+}: TemplateCardProps): React.JSX.Element {
   const [isHovered, setIsHovered] = React.useState(false);
 
   return (
@@ -23,12 +29,12 @@ export function TemplateCard({ template, onClick, onContextMenu }: TemplateCardP
       onMouseLeave={() => setIsHovered(false)}
       style={{
         cursor: 'pointer',
-        borderRadius: '8px',
+        borderRadius: '12px',
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
-        border: '1px solid #e5e7eb',
-        transition: 'all 150ms ease-in-out',
-        transform: isHovered ? 'scale(1.02)' : 'scale(1)',
+        backgroundColor: isSelected ? '#F0F9FF' : '#ffffff',
+        border: `2px solid ${isSelected ? '#3B82F6' : '#E5E7EB'}`,
+        transition: 'all 0.2s ease',
+        transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
         boxShadow: isHovered ? '0 4px 12px rgba(0, 0, 0, 0.1)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
       }}
     >
