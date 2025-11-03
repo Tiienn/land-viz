@@ -17,10 +17,8 @@ export const CONVERSION_FACTORS: Record<AreaUnit, number> = {
   sqmi: 3.861e-7,               // Square miles per square meter (NIST)
   toise: 0.263158,              // Toise per square meter (1 / 3.8) - Historical French land measurement
   perches: 0.03953686,          // Perches per square meter (1 / 25.29285264) - Historical British land measurement
-  'perches-mauritius': 0.02368, // Mauritius perches per square meter (1 / 42.21) - Mauritius land measurement
   'arpent-na': 0.0002925,       // North American arpent per square meter (1 / 3419) - North American standard
-  'arpent-paris': 0.0001958,    // Parisian arpent per square meter (1 / 5107) - Historical Parisian standard
-  'arpent-mauritius': 0.000237  // Mauritius arpent per square meter (1 / 4221) - Mauritius standard
+  'arpent-paris': 0.0001958     // Parisian arpent per square meter (1 / 5107) - Historical Parisian standard
 } as const;
 
 /**
@@ -77,12 +75,6 @@ export const UNIT_CONFIGS: Record<AreaUnit, UnitConfig> = {
     precision: 4,
     useScientific: false
   },
-  'perches-mauritius': {
-    name: 'Perches (Mauritius)',
-    symbol: 'perch-mu',
-    precision: 4,
-    useScientific: false
-  },
   'arpent-na': {
     name: 'Arpent (North America)',
     symbol: 'arp-na',
@@ -92,12 +84,6 @@ export const UNIT_CONFIGS: Record<AreaUnit, UnitConfig> = {
   'arpent-paris': {
     name: 'Arpent (Paris)',
     symbol: 'arp-pa',
-    precision: 4,
-    useScientific: false
-  },
-  'arpent-mauritius': {
-    name: 'Arpent (Mauritius)',
-    symbol: 'arp-mu',
     precision: 4,
     useScientific: false
   }

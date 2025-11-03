@@ -479,7 +479,7 @@ export interface LineToolState {
 export type UnitType = 'metric' | 'imperial' | 'toise';
 
 // Area unit types for Insert Area feature
-export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm' | 'toise' | 'perches' | 'perches-mauritius' | 'arpent-na' | 'arpent-paris' | 'arpent-mauritius';
+export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm' | 'toise' | 'perches' | 'arpent-na' | 'arpent-paris';
 
 // ================================
 // VISUAL COMPARISON TOOL TYPES

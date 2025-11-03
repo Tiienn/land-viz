@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { ComparisonCalculations, ObjectComparison } from '../../types/referenceObjects';
 import { ComparisonCalculator } from '../../utils/comparisonCalculations';
+import Icon from '../Icon';
 
 interface CalculationsSectionProps {
   calculations: ComparisonCalculations | null;
@@ -11,15 +12,40 @@ export function CalculationsSection({
   calculations,
   onRecalculate
 }: CalculationsSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false); // Start collapsed
+
   if (!calculations || calculations.objectComparisons.length === 0) {
+    return null; // Hide completely when no objects selected
+  }
+
+  // Compact header when collapsed
+  if (!isExpanded) {
     return (
-      <div style={styles.emptyState}>
-        <div style={styles.emptyText}>
-          Select objects above to see size comparisons
-        </div>
-        <div style={styles.emptyHint}>
-          Toggle objects on to compare them with your land
-        </div>
+      <div style={styles.collapsedSection}>
+        <button
+          style={styles.expandButton}
+          onClick={() => setIsExpanded(true)}
+          aria-label="Expand size comparisons"
+          aria-expanded={false}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.borderColor = '#00C4CC';
+            e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 196, 204, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#f9fafb';
+            e.currentTarget.style.borderColor = '#e5e7eb';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
+          }}
+        >
+          <span style={styles.expandIcon}>
+            <Icon name="bar-chart" size={20} color="#00C4CC" strokeWidth={2.5} />
+          </span>
+          <span style={styles.expandText}>
+            Size Comparisons ({calculations.objectComparisons.length})
+          </span>
+          <span style={styles.chevron}>▼</span>
+        </button>
       </div>
     );
   }
@@ -27,11 +53,31 @@ export function CalculationsSection({
   return (
     <div style={styles.calculationsSection}>
       <div style={styles.sectionHeader}>
-        <h4 style={styles.sectionTitle}>Size Comparisons</h4>
+        <div style={styles.titleRow}>
+          <h4 style={styles.sectionTitle}>Size Comparisons</h4>
+          <button
+            style={styles.collapseButton}
+            onClick={() => setIsExpanded(false)}
+            title="Collapse comparisons"
+            aria-label="Collapse size comparisons"
+            aria-expanded={true}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#e5e7eb';
+              e.currentTarget.style.color = '#1f2937';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#6b7280';
+            }}
+          >
+            ▲
+          </button>
+        </div>
         <button
           style={styles.refreshButton}
           onClick={onRecalculate}
           title="Recalculate comparisons"
+          aria-label="Recalculate comparisons"
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = 'rotate(180deg)';
           }}
@@ -39,7 +85,7 @@ export function CalculationsSection({
             e.currentTarget.style.transform = 'rotate(0deg)';
           }}
         >
-          🔄
+          <Icon name="refresh" size={16} color="#6b7280" strokeWidth={2} />
         </button>
       </div>
 
@@ -137,6 +183,56 @@ function formatTime(date: Date): string {
 }
 
 const styles = {
+  // Collapsed state - compact single-line button
+  collapsedSection: {
+    padding: '8px 12px',
+    backgroundColor: '#ffffff',
+    borderTop: '1px solid #e5e7eb',
+    borderBottom: '1px solid #e5e7eb'
+  },
+
+  expandButton: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 16px',
+    minHeight: '48px', // Touch-friendly
+    backgroundColor: '#f9fafb',
+    border: '1.5px solid #e5e7eb',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+    fontFamily: 'inherit',
+    fontSize: '14px',
+    fontWeight: 600,
+    color: '#1f2937',
+    outline: 'none',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
+  },
+
+  expandIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1
+  },
+
+  expandText: {
+    flex: 1,
+    textAlign: 'left' as const,
+    fontSize: '14px',
+    fontWeight: 600,
+    color: '#374151'
+  },
+
+  chevron: {
+    fontSize: '12px',
+    color: '#9ca3af',
+    transition: 'transform 200ms ease'
+  },
+
+  // Expanded state
   calculationsSection: {
     padding: '12px',
     backgroundColor: '#f9fafb',
@@ -150,6 +246,13 @@ const styles = {
     marginBottom: '8px'
   },
 
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flex: 1
+  },
+
   sectionTitle: {
     margin: 0,
     fontSize: '14px',
@@ -157,12 +260,26 @@ const styles = {
     color: '#1f2937'
   },
 
-  refreshButton: {
+  collapseButton: {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '16px',
-    padding: '4px',
+    fontSize: '12px',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    color: '#6b7280',
+    transition: 'all 200ms ease',
+    outline: 'none'
+  },
+
+  refreshButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '6px',
     borderRadius: '4px',
     transition: 'transform 300ms ease',
     outline: 'none'

@@ -23,6 +23,7 @@ import type { AreaPreset, PresetsState, PresetCategory } from '../types/presets'
 import type { ConversionActions } from '../types/conversion';
 import type { ContextMenuState, ContextMenuType } from '../types/contextMenu';
 import { useTextStore } from './useTextStore'; // Phase 4: Import for text grouping
+import { invalidateLayerThumbnail } from '../services/thumbnailService'; // Phase 3: Thumbnail invalidation
 
 interface AppStore extends AppState {
   // Layer actions
@@ -30,11 +31,21 @@ interface AppStore extends AppState {
   updateLayer: (id: string, updates: Partial<Layer>) => void;
   deleteLayer: (id: string) => void;
   setActiveLayer: (id: string) => void;
+  selectLayer: (id: string, multiSelect: boolean) => void;
+  selectLayerRange: (startId: string, endId: string) => void;
   moveShapeToLayer: (shapeId: string, layerId: string) => void;
   moveLayerToFront: (layerId: string) => void;
   moveLayerForward: (layerId: string) => void;
   moveLayerBackward: (layerId: string) => void;
   moveLayerToBack: (layerId: string) => void;
+
+  // Folder actions (Phase 3)
+  createFolder: (name: string) => void;
+  moveToFolder: (layerId: string, folderId: string) => void;
+  deleteFolder: (folderId: string, deleteContents?: boolean) => void;
+  toggleFolderCollapse: (folderId: string) => void;
+  getFolderDepth: (folderId: string) => number;
+  folderContains: (folderId: string, targetLayerId: string) => boolean;
   
   // Drawing actions
   setActiveTool: (tool: DrawingTool) => void;
@@ -681,7 +692,7 @@ export const useAppStore = create<AppStore>()(
             const updatedLayers = state.layers.map(layer =>
               layer.id === id ? { ...layer, ...updates, modified: new Date() } : layer
             );
-            
+
             // If color is being updated, also update all shapes in this layer
             let updatedShapes = state.shapes;
             if (updates.color && updates.color !== state.layers.find(l => l.id === id)?.color) {
@@ -689,7 +700,7 @@ export const useAppStore = create<AppStore>()(
                 shape.layerId === id ? { ...shape, color: updates.color!, modified: new Date() } : shape
               );
             }
-            
+
             return {
               layers: updatedLayers,
               shapes: updatedShapes,
@@ -698,6 +709,10 @@ export const useAppStore = create<AppStore>()(
           false,
           'updateLayer'
         );
+
+        // Invalidate thumbnail cache when layer is modified
+        // This ensures thumbnails regenerate with updated colors/properties
+        invalidateLayerThumbnail(id);
       },
 
       deleteLayer: (id: string) => {
@@ -726,6 +741,61 @@ export const useAppStore = create<AppStore>()(
 
       setActiveLayer: (id: string) => {
         set({ activeLayerId: id }, false, 'setActiveLayer');
+      },
+
+      selectLayer: (id: string, multiSelect: boolean) => {
+        set(
+          (state) => {
+            if (multiSelect) {
+              // Multi-select: toggle the layer in the selection
+              const isSelected = state.selectedLayerIds?.includes(id);
+              const newSelection = isSelected
+                ? (state.selectedLayerIds || []).filter((layerId) => layerId !== id)
+                : [...(state.selectedLayerIds || []), id];
+
+              return {
+                selectedLayerIds: newSelection,
+                activeLayerId: id // Set as active layer
+              };
+            } else {
+              // Single select: clear all and select only this one
+              return {
+                selectedLayerIds: [id],
+                activeLayerId: id // Set as active layer
+              };
+            }
+          },
+          false,
+          'selectLayer'
+        );
+      },
+
+      selectLayerRange: (startId: string, endId: string) => {
+        set(
+          (state) => {
+            const layers = state.layers;
+            const startIndex = layers.findIndex((l) => l.id === startId);
+            const endIndex = layers.findIndex((l) => l.id === endId);
+
+            if (startIndex === -1 || endIndex === -1) {
+              return state; // Invalid range, don't change anything
+            }
+
+            // Get all layer IDs in the range (inclusive)
+            const minIndex = Math.min(startIndex, endIndex);
+            const maxIndex = Math.max(startIndex, endIndex);
+            const rangeIds = layers
+              .slice(minIndex, maxIndex + 1)
+              .map((l) => l.id);
+
+            return {
+              selectedLayerIds: rangeIds,
+              activeLayerId: endId // Set the end layer as active
+            };
+          },
+          false,
+          'selectLayerRange'
+        );
       },
 
       moveShapeToLayer: (shapeId: string, layerId: string) => {
@@ -794,16 +864,215 @@ export const useAppStore = create<AppStore>()(
           state => {
             const layerIndex = state.layers.findIndex(l => l.id === layerId);
             if (layerIndex === -1 || layerIndex === 0) return state;
-            
+
             const newLayers = [...state.layers];
             const layer = newLayers.splice(layerIndex, 1)[0];
             newLayers.unshift(layer); // Move to beginning (back in rendering order)
-            
+
             return { layers: newLayers };
           },
           false,
           'moveLayerToBack'
         );
+      },
+
+      // Folder actions (Phase 3)
+      createFolder: (name: string) => {
+        const newFolder: Layer = {
+          id: `folder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name,
+          type: 'folder',
+          visible: true,
+          locked: false,
+          color: '#6b7280', // Gray color for folders
+          opacity: 1,
+          collapsed: false, // Folders start expanded
+          created: new Date(),
+          modified: new Date()
+        };
+
+        set(
+          state => ({
+            layers: [...state.layers, newFolder],
+            activeLayerId: newFolder.id
+          }),
+          false,
+          'createFolder'
+        );
+
+        logger.info('Folder created', { folderId: newFolder.id, name });
+      },
+
+      moveToFolder: (layerId: string, folderId: string) => {
+        set(
+          state => {
+            // Validate folder exists and is actually a folder
+            const folder = state.layers.find(l => l.id === folderId);
+            if (!folder || folder.type !== 'folder') {
+              logger.warn('Invalid folder', { folderId });
+              return state;
+            }
+
+            // Prevent circular nesting (folder containing itself)
+            if (layerId === folderId) {
+              logger.warn('Cannot move folder into itself', { layerId, folderId });
+              return state;
+            }
+
+            // Check if moving a folder that would create circular dependency
+            const layer = state.layers.find(l => l.id === layerId);
+            if (layer?.type === 'folder') {
+              // Check if target folder is a descendant of the layer being moved
+              const isCircular = get().folderContains(layerId, folderId);
+              if (isCircular) {
+                logger.warn('Circular folder nesting prevented', { layerId, folderId });
+                return state;
+              }
+            }
+
+            const updatedLayers = state.layers.map(l =>
+              l.id === layerId ? { ...l, parentId: folderId, modified: new Date() } : l
+            );
+
+            return { layers: updatedLayers };
+          },
+          false,
+          'moveToFolder'
+        );
+
+        logger.info('Layer moved to folder', { layerId, folderId });
+      },
+
+      deleteFolder: (folderId: string, deleteContents: boolean = false) => {
+        set(
+          state => {
+            const folder = state.layers.find(l => l.id === folderId);
+            if (!folder || folder.type !== 'folder') {
+              logger.warn('Invalid folder for deletion', { folderId });
+              return state;
+            }
+
+            let updatedLayers = state.layers.filter(l => l.id !== folderId);
+            const children = state.layers.filter(l => l.parentId === folderId);
+
+            if (deleteContents) {
+              // Delete all children recursively
+              const getAllDescendants = (parentId: string): string[] => {
+                const directChildren = state.layers.filter(l => l.parentId === parentId);
+                let allDescendants: string[] = directChildren.map(c => c.id);
+
+                directChildren.forEach(child => {
+                  if (child.type === 'folder') {
+                    allDescendants = allDescendants.concat(getAllDescendants(child.id));
+                  }
+                });
+
+                return allDescendants;
+              };
+
+              const descendantIds = getAllDescendants(folderId);
+              updatedLayers = updatedLayers.filter(l => !descendantIds.includes(l.id));
+
+              // Also delete shapes in deleted layers
+              const deletedLayerIds = [folderId, ...descendantIds];
+              const updatedShapes = state.shapes.filter(s => !deletedLayerIds.includes(s.layerId));
+
+              logger.info('Folder and contents deleted', { folderId, deletedCount: deletedLayerIds.length });
+
+              return {
+                layers: updatedLayers,
+                shapes: updatedShapes
+              };
+            } else {
+              // Move children to the parent's level (folder's parent)
+              updatedLayers = updatedLayers.map(l =>
+                l.parentId === folderId
+                  ? { ...l, parentId: folder.parentId, modified: new Date() }
+                  : l
+              );
+
+              logger.info('Folder deleted, children moved to parent', { folderId, childrenCount: children.length });
+
+              return { layers: updatedLayers };
+            }
+          },
+          false,
+          'deleteFolder'
+        );
+
+        get().saveToHistory();
+      },
+
+      toggleFolderCollapse: (folderId: string) => {
+        set(
+          state => {
+            const folder = state.layers.find(l => l.id === folderId);
+            if (!folder || folder.type !== 'folder') {
+              return state;
+            }
+
+            const updatedLayers = state.layers.map(l =>
+              l.id === folderId
+                ? { ...l, collapsed: !l.collapsed, modified: new Date() }
+                : l
+            );
+
+            return { layers: updatedLayers };
+          },
+          false,
+          'toggleFolderCollapse'
+        );
+
+        logger.info('Folder collapse toggled', { folderId });
+      },
+
+      getFolderDepth: (folderId: string): number => {
+        const state = get();
+        const folder = state.layers.find(l => l.id === folderId);
+
+        if (!folder) return 0;
+
+        let depth = 0;
+        let currentId: string | undefined = folder.parentId;
+
+        while (currentId) {
+          depth++;
+          const parent = state.layers.find(l => l.id === currentId);
+          currentId = parent?.parentId;
+
+          // Prevent infinite loop in case of circular reference
+          if (depth > 100) {
+            logger.error('Circular folder reference detected', { folderId });
+            break;
+          }
+        }
+
+        return depth;
+      },
+
+      folderContains: (folderId: string, targetLayerId: string): boolean => {
+        const state = get();
+
+        let currentId: string | undefined = targetLayerId;
+        let iterations = 0;
+
+        while (currentId) {
+          if (currentId === folderId) {
+            return true;
+          }
+
+          const layer = state.layers.find(l => l.id === currentId);
+          currentId = layer?.parentId;
+
+          // Prevent infinite loop
+          iterations++;
+          if (iterations > 100) {
+            logger.error('Circular folder reference detected in folderContains', { folderId, targetLayerId });
+            break;
+          }
+        }
+
+        return false;
       },
 
       // Drawing actions
@@ -4492,16 +4761,19 @@ export const useAppStore = create<AppStore>()(
 
       // Utility actions
       clearAll: () => {
+        // Clear all text objects
+        useTextStore.getState().clearTexts();
+
         set(
           state => {
             // Keep only the default shape (preserve it from deletion)
             const defaultShape = state.shapes.find(shape => shape.id === 'default-land-area');
             const preservedShapes = defaultShape ? [defaultShape] : [];
-            
+
             // Keep only the default layer (preserve it from deletion)
             const defaultLayer = state.layers.find(layer => layer.id === 'default-layer');
             const preservedLayers = defaultLayer ? [defaultLayer] : [];
-            
+
             return {
               shapes: preservedShapes,
               layers: preservedLayers,

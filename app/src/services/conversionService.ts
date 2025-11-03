@@ -200,7 +200,7 @@ export class ConversionService {
     }
 
     const results: ConversionResult[] = [];
-    const allUnits: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'sqmi', 'toise', 'perches', 'perches-mauritius', 'arpent-na', 'arpent-paris', 'arpent-mauritius'];
+    const allUnits: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'sqmi', 'toise', 'perches', 'arpent-na', 'arpent-paris'];
 
     for (const targetUnit of allUnits) {
       if (targetUnit === sourceUnit) continue;

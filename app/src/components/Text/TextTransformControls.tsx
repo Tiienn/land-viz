@@ -20,6 +20,7 @@ import type { TextObject, Point2D } from '../../types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { logger } from '../../utils/logger';
+import { tokens } from '../../styles/tokens';
 
 // Font size constraints
 const MIN_FONT_SIZE = 8;
@@ -152,6 +153,14 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   const [isRotating, setIsRotating] = useState(false);
   const [currentAngle, setCurrentAngle] = useState(text.rotation || 0);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
+
+  // Check if controls would overlap with panels
+  const [shouldHideControls, setShouldHideControls] = useState(false);
+  const { size } = useThree();
+
+  // Panel dimensions
+  const PANEL_WIDTH = 320;
+  const HANDLE_BUFFER = 150; // Extra space needed for handles
 
   // Refs for drag state
   const shiftPressedRef = useRef(false);
@@ -392,8 +401,44 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     };
   }, [handlePointerMove, handlePointerUp]);
 
-  // Don't render if text is not selected or tool is not select
-  if (!isActive || text.locked) {
+  // Check overlap with panels on every frame
+  useEffect(() => {
+    const checkOverlap = () => {
+      // Project 3D position to 2D screen coordinates
+      const vector = new THREE.Vector3(text.position.x, text.position.y, text.position.z);
+      vector.project(camera);
+
+      // Behind camera
+      if (vector.z > 1) {
+        setShouldHideControls(true);
+        return;
+      }
+
+      const screenX = (vector.x * 0.5 + 0.5) * size.width;
+
+      // Check if too close to left edge (LayerPanel area)
+      if (screenX < PANEL_WIDTH + HANDLE_BUFFER) {
+        setShouldHideControls(true);
+        return;
+      }
+
+      // Check if too close to right edge (PropertiesPanel area)
+      if (screenX > size.width - (PANEL_WIDTH + HANDLE_BUFFER)) {
+        setShouldHideControls(true);
+        return;
+      }
+
+      setShouldHideControls(false);
+    };
+
+    checkOverlap();
+    const interval = setInterval(checkOverlap, 100); // Check every 100ms
+
+    return () => clearInterval(interval);
+  }, [text.position, camera, size.width]);
+
+  // Don't render if text is not selected, tool is not select, or would overlap panels
+  if (!isActive || text.locked || shouldHideControls) {
     return null;
   }
 
@@ -571,7 +616,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
             style={{
               pointerEvents: 'auto',
               userSelect: 'none',
-              zIndex: 999,
+              zIndex: tokens.zIndex.scene,
             }}
           >
             <div
@@ -619,7 +664,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
             style={{
               pointerEvents: 'auto',
               userSelect: 'none',
-              zIndex: 998,
+              zIndex: tokens.zIndex.scene,
             }}
           >
             <div
@@ -660,7 +705,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
         style={{
           pointerEvents: 'auto',
           userSelect: 'none',
-          zIndex: 1000,
+          zIndex: tokens.zIndex.scene,
         }}
       >
         <div
@@ -700,7 +745,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
           style={{
             pointerEvents: 'none',
             userSelect: 'none',
-            zIndex: 1001,
+            zIndex: tokens.zIndex.scene,
           }}
         >
           <div

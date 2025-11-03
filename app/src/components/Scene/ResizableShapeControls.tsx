@@ -114,7 +114,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   
   // Track if we're in a cursor override state
   const [cursorOverride, setCursorOverride] = React.useState<string | null>(null);
-  
+
   // Apply cursor to the canvas element
   useEffect(() => {
     if (cursorOverride) {
@@ -928,6 +928,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   // CRITICAL: Don't show resize handles for multi-selection (use MultiSelectionBoundary instead)
   const isMultiSelection = selectedShapeIds && selectedShapeIds.length > 1;
 
+  // Hide resize handles when conditions aren't met
   if (!drawing.isResizeMode || !resizingShape || activeTool !== 'select' || isMultiSelection) {
     return null;
   }

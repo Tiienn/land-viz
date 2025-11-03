@@ -53,11 +53,11 @@ export const QuickWorkflows: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Icon name="zap" size={14} color="#3b82f6" />
+          <Icon name="zap" size={14} color="#3b82f6" strokeWidth={2.5} />
           <h3
             style={{
               fontSize: '12px',
-              fontWeight: '600',
+              fontWeight: '700',
               color: '#6b7280',
               margin: 0,
               textTransform: 'uppercase',
@@ -77,30 +77,35 @@ export const QuickWorkflows: React.FC = () => {
             padding: '6px 12px',
             background: recording.isRecording
               ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
-              : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              : '#3b82f6',
             border: 'none',
             borderRadius: '6px',
             color: '#ffffff',
             fontSize: '11px',
-            fontWeight: '600',
+            fontWeight: '700',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
             transition: 'all 0.2s ease',
+            boxShadow: recording.isRecording
+              ? '0 2px 6px rgba(239, 68, 68, 0.3)'
+              : '0 2px 6px rgba(59, 130, 246, 0.3)',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
             e.currentTarget.style.boxShadow = recording.isRecording
-              ? '0 4px 12px rgba(239, 68, 68, 0.4)'
-              : '0 4px 12px rgba(59, 130, 246, 0.4)';
+              ? '0 6px 12px rgba(239, 68, 68, 0.4)'
+              : '0 6px 12px rgba(59, 130, 246, 0.4)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = 'none';
+            e.currentTarget.style.boxShadow = recording.isRecording
+              ? '0 2px 6px rgba(239, 68, 68, 0.3)'
+              : '0 2px 6px rgba(59, 130, 246, 0.3)';
           }}
           onFocus={(e) => {
-            e.currentTarget.style.outline = '2px solid #ffffff';
+            e.currentTarget.style.outline = '2px solid #3b82f6';
             e.currentTarget.style.outlineOffset = '2px';
           }}
           onBlur={(e) => {
@@ -166,12 +171,14 @@ export const QuickWorkflows: React.FC = () => {
                 transition: 'all 0.2s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = '#eff6ff';
                 e.currentTarget.style.borderColor = '#3b82f6';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = '#f9fafb';
                 e.currentTarget.style.borderColor = '#e5e7eb';
+                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <button
@@ -203,14 +210,15 @@ export const QuickWorkflows: React.FC = () => {
                     width: '32px',
                     height: '32px',
                     borderRadius: '6px',
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    background: '#3b82f6',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
+                    boxShadow: '0 2px 6px rgba(59, 130, 246, 0.25)',
                   }}
                 >
-                  <Icon name={workflow.icon} size={16} color="#ffffff" />
+                  <Icon name={workflow.icon} size={16} color="#ffffff" strokeWidth={2} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div
@@ -232,7 +240,7 @@ export const QuickWorkflows: React.FC = () => {
                     {workflow.description}
                   </div>
                 </div>
-                <Icon name="play" size={16} color="#3b82f6" />
+                <Icon name="play" size={16} color="#3b82f6" strokeWidth={2} />
               </button>
 
               <div style={{ position: 'relative' }}>
@@ -315,7 +323,7 @@ export const QuickWorkflows: React.FC = () => {
                         e.currentTarget.style.outline = 'none';
                       }}
                     >
-                      <Icon name="copy" size={14} color="#6b7280" />
+                      <Icon name="copy" size={14} color="#6b7280" strokeWidth={2} />
                       Duplicate
                     </button>
                     {!workflow.isBuiltIn && (
@@ -334,6 +342,9 @@ export const QuickWorkflows: React.FC = () => {
                           fontSize: '13px',
                           color: '#ef4444',
                           transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = '#fef2f2';
@@ -351,7 +362,8 @@ export const QuickWorkflows: React.FC = () => {
                           e.currentTarget.style.outline = 'none';
                         }}
                       >
-                        🗑️ Delete
+                        <Icon name="trash" size={14} color="#ef4444" strokeWidth={2} />
+                        Delete
                       </button>
                     )}
                   </div>

@@ -39,40 +39,55 @@ export class StatueOfLibertyGeometry {
   }
 
   private createMaterials(): void {
-    const baseColor = new THREE.Color(this.options.color);
-    const lightColor = new THREE.Color(this.options.color).multiplyScalar(1.2);
-    const darkColor = new THREE.Color(this.options.color).multiplyScalar(0.8);
+    // Modern PBR materials with realistic patina effect
 
-    // Copper patina material (main statue)
-    this.materials.statue = new THREE.MeshLambertMaterial({
-      color: baseColor,
-      transparent: false,
-      side: THREE.DoubleSide
+    // Main statue - Authentic copper patina (sea green/turquoise)
+    this.materials.statue = new THREE.MeshStandardMaterial({
+      color: 0x2DD4BF, // Vibrant turquoise patina (Canva teal-inspired)
+      metalness: 0.6,  // Moderate metalness for oxidized copper
+      roughness: 0.5,  // Moderate roughness for weathered surface
+      side: THREE.DoubleSide,
+      emissive: 0x1a7f7a, // Subtle teal glow
+      emissiveIntensity: 0.08
     });
 
-    // Darker material for shadows and recesses
-    this.materials.shadow = new THREE.MeshLambertMaterial({
-      color: darkColor,
-      transparent: false
+    // Shadow/recess material - Darker patina for depth
+    this.materials.shadow = new THREE.MeshStandardMaterial({
+      color: 0x1e948a, // Darker turquoise for shadows
+      metalness: 0.5,
+      roughness: 0.6,  // Rougher for recessed areas
+      emissive: 0x0d4f4a,
+      emissiveIntensity: 0.05
     });
 
-    // Lighter material for highlights
-    this.materials.highlight = new THREE.MeshLambertMaterial({
-      color: lightColor,
-      transparent: false
+    // Highlight material - Lighter patina for raised surfaces
+    this.materials.highlight = new THREE.MeshStandardMaterial({
+      color: 0x5eead4, // Lighter turquoise for highlights
+      metalness: 0.7,  // Higher metalness on prominent features
+      roughness: 0.3,  // Smoother for polished effect
+      emissive: 0x3da59a,
+      emissiveIntensity: 0.12
     });
 
-    // Pedestal material (stone)
-    this.materials.pedestal = new THREE.MeshLambertMaterial({
-      color: 0x8c7853, // Stone color
-      transparent: false
+    // Pedestal - Elegant granite with warm tone
+    this.materials.pedestal = new THREE.MeshStandardMaterial({
+      color: 0xa89968, // Warm stone/granite
+      metalness: 0.1,  // Very low metalness for stone
+      roughness: 0.9,  // Very rough for natural stone texture
+      emissive: 0x4a4530,
+      emissiveIntensity: 0.03
     });
 
-    // Torch flame material
-    this.materials.flame = new THREE.MeshLambertMaterial({
-      color: 0xffd700, // Gold color
+    // Torch flame - Vibrant golden fire with high emission
+    this.materials.flame = new THREE.MeshStandardMaterial({
+      color: 0xFFD700, // Brilliant gold
+      metalness: 0.0,  // No metalness for flame
+      roughness: 0.2,  // Smooth for glowing effect
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9,
+      emissive: 0xFFA500, // Orange-gold glow
+      emissiveIntensity: 1.2, // Strong emission for torch light
+      side: THREE.DoubleSide
     });
   }
 

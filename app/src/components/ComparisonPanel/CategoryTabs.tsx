@@ -1,5 +1,5 @@
 import React from 'react';
-import { useCategoryIcons } from '../../hooks/useCategoryIcons';
+import Icon from '../Icon';
 import type { ReferenceCategory } from '../../types/referenceObjects';
 
 interface CategoryTabsProps {
@@ -8,8 +8,16 @@ interface CategoryTabsProps {
   counts: Record<ReferenceCategory | 'all', number>;
 }
 
+// Map categories to SVG icon names
+const categoryIconNames: Record<ReferenceCategory | 'all', string> = {
+  all: 'all',
+  sports: 'sports',
+  buildings: 'building',
+  landmarks: 'landmark',
+  nature: 'nature'
+};
+
 export function CategoryTabs({ selected, onChange, counts }: CategoryTabsProps) {
-  const { categoryIcons, loading } = useCategoryIcons();
   const categories: (ReferenceCategory | 'all')[] = ['all', 'sports', 'buildings', 'landmarks', 'nature'];
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -25,7 +33,7 @@ export function CategoryTabs({ selected, onChange, counts }: CategoryTabsProps) 
     <div style={styles.container} onWheel={handleWheel}>
       {categories.map(category => {
         const isSelected = selected === category;
-        const icon = category === 'all' ? '🌐' : categoryIcons[category];
+        const iconName = categoryIconNames[category];
         const label = category === 'all' ? 'All' : category.charAt(0).toUpperCase() + category.slice(1);
 
         return (
@@ -46,8 +54,17 @@ export function CategoryTabs({ selected, onChange, counts }: CategoryTabsProps) 
                 e.currentTarget.style.backgroundColor = 'transparent';
               }
             }}
+            aria-label={`Filter by ${label}`}
+            aria-pressed={isSelected}
           >
-            <span style={styles.tabIcon}>{icon}</span>
+            <span style={styles.tabIcon}>
+              <Icon
+                name={iconName}
+                size={18}
+                color={isSelected ? '#ffffff' : '#6b7280'}
+                strokeWidth={2}
+              />
+            </span>
             <span style={styles.tabLabel}>{label}</span>
             <span style={{
               ...styles.tabCount,
@@ -65,56 +82,71 @@ export function CategoryTabs({ selected, onChange, counts }: CategoryTabsProps) 
 const styles = {
   container: {
     display: 'flex',
-    gap: '4px',
-    padding: '8px 12px',
+    gap: '8px',
+    padding: '12px',
     backgroundColor: '#ffffff',
     borderBottom: '1px solid #e5e7eb',
-    overflowX: 'auto' as const
+    overflowX: 'auto' as const,
+    scrollbarWidth: 'thin' as const
   },
 
   tab: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    padding: '6px 10px',
-    border: 'none',
-    borderRadius: '6px',
+    gap: '8px',
+    padding: '10px 14px', // Balanced padding for readability
+    minHeight: '44px',    // WCAG 2.1 minimum touch target
+    border: '1.5px solid transparent',
+    borderRadius: '8px',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    transition: 'all 200ms ease',
+    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
     fontFamily: 'inherit',
-    fontSize: '12px',
-    fontWeight: 500,
+    fontSize: '14px',     // Larger text
+    fontWeight: 600,      // Bolder for better readability
     color: '#6b7280',
     whiteSpace: 'nowrap' as const,
-    outline: 'none'
+    outline: 'none',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)', // Subtle depth
+    flexShrink: 0         // Prevent tabs from shrinking below content size
   },
 
   selectedTab: {
-    backgroundColor: '#3b82f6',
-    color: '#ffffff'
+    background: 'linear-gradient(135deg, #00C4CC 0%, #7C3AED 100%)', // Canva teal-purple gradient
+    color: '#ffffff',
+    borderColor: 'transparent',
+    boxShadow: '0 4px 12px rgba(0, 196, 204, 0.3)', // Brand glow
+    transform: 'translateY(-1px)' // Subtle lift effect
   },
 
   tabIcon: {
-    fontSize: '14px'
+    fontSize: '18px',     // Larger icons
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
 
   tabLabel: {
-    fontSize: '12px'
+    fontSize: '14px',     // Larger label text
+    fontWeight: 600,
+    letterSpacing: '0.3px'
   },
 
   tabCount: {
-    fontSize: '11px',
-    padding: '2px 4px',
-    borderRadius: '4px',
+    fontSize: '12px',     // Slightly larger count
+    padding: '3px 8px',   // More padding
+    borderRadius: '12px', // More rounded (pill shape)
     backgroundColor: '#f3f4f6',
     color: '#6b7280',
-    minWidth: '18px',
-    textAlign: 'center' as const
+    minWidth: '24px',
+    textAlign: 'center' as const,
+    fontWeight: 700       // Bolder count
   },
 
   selectedCount: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    color: '#ffffff'
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    color: '#ffffff',
+    fontWeight: 700
   }
 };

@@ -297,7 +297,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
   };
 
 
-  // Phase 3: Extended to support text visibility toggle
+  // Phase 3: Extended to support text visibility toggle and folder cascading
   const handleToggleLayerVisibility = (layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
     if (layer) {
@@ -305,6 +305,29 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
 
       // Update layer visibility
       updateLayer(layerId, { visible: newVisibility });
+
+      // Phase 3: If this is a folder, also toggle visibility of all child layers recursively
+      if (layer.type === 'folder') {
+        const updateChildLayersVisibility = (parentId: string) => {
+          const childLayers = layers.filter(l => l.parentId === parentId);
+          childLayers.forEach(childLayer => {
+            updateLayer(childLayer.id, { visible: newVisibility });
+
+            // Recursively update children's text objects
+            const childTexts = texts.filter(text => text.layerId === childLayer.id);
+            childTexts.forEach(text => {
+              updateText(text.id, { visible: newVisibility });
+            });
+
+            // If child is also a folder, recurse
+            if (childLayer.type === 'folder') {
+              updateChildLayersVisibility(childLayer.id);
+            }
+          });
+        };
+
+        updateChildLayersVisibility(layerId);
+      }
 
       // Phase 3: If this is a text layer, also toggle text visibility
       const layerTexts = texts.filter(text => text.layerId === layerId);
@@ -486,7 +509,15 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
       // Move dragged item into the folder
       moveToFolder(draggedLayer, targetLayerId);
     } else {
-      // Phase 3: Reordering (above/below) - maintain existing logic
+      // Phase 3: Reordering (above/below) - update parentId to match target layer
+      // This allows moving folders out of their parent folders
+      const targetParentId = targetLayer.parentId || null;
+
+      // Update the parent if it's different
+      if (draggedLayerObj.parentId !== targetParentId) {
+        updateLayer(draggedLayer, { parentId: targetParentId });
+      }
+
       const draggedIndex = layers.findIndex(l => l.id === draggedLayer);
       const targetIndex = layers.findIndex(l => l.id === targetLayerId);
 
@@ -625,9 +656,11 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
           color: '#6b7280',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          gap: '12px',
+          minWidth: 0
         }}>
-          <span style={{ fontWeight: '500' }}>
+          <span style={{ fontWeight: '500', flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {filteredLayers.length} Layer{filteredLayers.length !== 1 ? 's' : ''}
             {selectedLayerIds.length > 1 && (
               <span style={{ marginLeft: '8px', color: '#3b82f6', fontSize: '13px' }}>
@@ -635,7 +668,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               </span>
             )}
           </span>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
             {/* Phase 3: New Folder Button */}
             <button
               onClick={() => {
@@ -647,11 +680,16 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 color: '#6b7280',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
-                padding: '4px 12px',
+                padding: '8px',
                 fontSize: '12px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                fontWeight: '500'
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = '#3b82f6';
@@ -663,8 +701,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               }}
               title="Create new folder"
             >
-              <Icon name="folder" size={16} style={{ marginRight: '6px' }} />
-              New Folder
+              <Icon name="folder" size={16} />
             </button>
             <button
               onClick={() => setCheckboxMode(!checkboxMode)}
@@ -673,11 +710,16 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 color: checkboxMode ? 'white' : '#6b7280',
                 border: `1px solid ${checkboxMode ? '#3b82f6' : '#d1d5db'}`,
                 borderRadius: '6px',
-                padding: '4px 12px',
+                padding: '8px',
                 fontSize: '12px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                fontWeight: '500'
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px'
               }}
               onMouseEnter={(e) => {
                 if (!checkboxMode) {
@@ -693,7 +735,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               }}
               title={checkboxMode ? 'Exit multi-select mode' : 'Enter multi-select mode'}
             >
-              {checkboxMode ? '✓ Multi-Select' : 'Multi-Select'}
+              <Icon name="check-square" size={16} />
             </button>
           </div>
         </div>
@@ -724,6 +766,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             onClick={() => {
               if (window.confirm(`Delete ${selectedLayerIds.length} selected layers?`)) {
                 selectedLayerIds.forEach(id => deleteLayer(id));
+                // Clear selection after deletion to hide Bulk Actions toolbar
+                useAppStore.setState({ selectedLayerIds: [] });
               }
             }}
             style={{
@@ -731,18 +775,22 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              padding: '6px 12px',
+              padding: '8px',
               fontSize: '12px',
               cursor: 'pointer',
               fontWeight: '500',
-              transition: 'background 0.2s'
+              transition: 'background 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px'
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
             onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
             title="Delete all selected layers"
           >
-            <Icon name="trash" size={16} style={{ marginRight: '6px' }} />
-            Delete
+            <Icon name="trash" size={16} />
           </button>
 
           {/* Toggle Visibility */}
@@ -763,11 +811,16 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               color: '#1f2937',
               border: '1px solid #d1d5db',
               borderRadius: '6px',
-              padding: '6px 12px',
+              padding: '8px',
               fontSize: '12px',
               cursor: 'pointer',
               fontWeight: '500',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = '#3b82f6';
@@ -779,8 +832,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             }}
             title="Toggle visibility for all selected layers"
           >
-            <Icon name="eye" size={16} style={{ marginRight: '6px' }} />
-            Toggle Visibility
+            <Icon name="eye" size={16} />
           </button>
 
           {/* Toggle Lock */}
@@ -801,11 +853,16 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
               color: '#1f2937',
               border: '1px solid #d1d5db',
               borderRadius: '6px',
-              padding: '6px 12px',
+              padding: '8px',
               fontSize: '12px',
               cursor: 'pointer',
               fontWeight: '500',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = '#3b82f6';
@@ -817,8 +874,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             }}
             title="Toggle lock for all selected layers"
           >
-            <Icon name="lock" size={16} style={{ marginRight: '6px' }} />
-            Toggle Lock
+            <Icon name="lock" size={16} />
           </button>
 
           {/* Opacity Slider */}
@@ -918,292 +974,43 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 fontWeight: '500',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: '8px'
               }}>
-                <span>
-                  {isFolder ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Icon name="folder" size={14} color="#6B7280" />
-                      <span>Folder ({children.length} items)</span>
-                    </span>
-                  ) : shapeInfo.isText ? (
-                    // Text layer - show text icon and content preview
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Icon name="text" size={14} color="#6B7280" />
-                      <span style={{ color: '#374151', fontWeight: '500' }}>
-                        {shapeInfo.textContent}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>
+                    {isFolder ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Icon name="folder" size={14} color="#6B7280" />
+                        <span>Folder ({children.length} items)</span>
                       </span>
+                    ) : shapeInfo.isText ? (
+                      // Text layer - show text icon and content preview
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Icon name="text" size={14} color="#6B7280" />
+                        <span style={{ color: '#374151', fontWeight: '500' }}>
+                          {shapeInfo.textContent}
+                        </span>
+                      </span>
+                    ) : (
+                      // Shape layer - show type
+                      shapeInfo.type
+                    )}
+                  </span>
+                  {/* Phase 3: Drop into folder indicator */}
+                  {isFolder && dragOverLayer === layer.id && dropZone === 'inside' && (
+                    <span style={{
+                      fontSize: '11px',
+                      color: dropValid ? '#3b82f6' : '#ef4444',
+                      fontWeight: '600',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: dropValid ? '#eff6ff' : '#fef2f2'
+                    }}>
+                      {dropValid ? '↓ Drop into folder' : '✕ Cannot drop here'}
                     </span>
-                  ) : (
-                    // Shape layer - show type
-                    shapeInfo.type
                   )}
-                </span>
-                {/* Phase 3: Drop into folder indicator */}
-                {isFolder && dragOverLayer === layer.id && dropZone === 'inside' && (
-                  <span style={{
-                    fontSize: '11px',
-                    color: dropValid ? '#3b82f6' : '#ef4444',
-                    fontWeight: '600',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    background: dropValid ? '#eff6ff' : '#fef2f2'
-                  }}>
-                    {dropValid ? '↓ Drop into folder' : '✕ Cannot drop here'}
-                  </span>
-                )}
-              </div>
-
-              {/* Main Layer Content */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '8px'
-              }}>
-                {/* Phase 3: Folder expand/collapse icon */}
-                {isFolder ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFolderCollapse(layer.id);
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      fontSize: '16px',
-                      cursor: 'pointer',
-                      padding: '2px',
-                      color: '#6b7280',
-                      flexShrink: 0,
-                      width: '18px',
-                      textAlign: 'center',
-                      transition: 'color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
-                    title={isCollapsed ? 'Expand folder' : 'Collapse folder'}
-                  >
-                    <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={14} />
-                  </button>
-                ) : checkboxMode && (
-                  <div style={{ width: '18px', flexShrink: 0 }} />
-                )}
-
-                {/* Phase 2: Checkbox for multi-selection mode */}
-                {checkboxMode && (
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      selectLayer(layer.id, true);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer',
-                      accentColor: '#3b82f6',
-                      flexShrink: 0
-                    }}
-                    title="Select layer"
-                  />
-                )}
-
-                {/* Drag Handle */}
-                <div
-                  style={{
-                    color: draggedLayer === layer.id ? '#3b82f6' : '#9ca3af',
-                    fontSize: '14px',
-                    cursor: draggedLayer === layer.id ? 'grabbing' : 'grab',
-                    padding: '2px',
-                    transition: 'color 0.2s'
-                  }}
-                  title="Drag to reorder"
-                  onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
-                  onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
-                >
-                  ⋮⋮
                 </div>
-
-                {/* Layer Thumbnail - Phase 1: Visual preview (not for folders or text layers) */}
-                {!isFolder && !shapeInfo.isText && <LayerThumbnail layer={layer} size={40} />}
-                {/* Phase 4: Text layer icon */}
-                {!isFolder && shapeInfo.isText && (
-                  <div style={{
-                    width: '40px',
-                    height: '40px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '20px',
-                    flexShrink: 0,
-                    color: '#6B7280'
-                  }}>
-                    <Icon name="text" size={20} color="#6B7280" />
-                  </div>
-                )}
-                {/* Phase 3: Folder icon */}
-                {isFolder && (
-                  <div style={{
-                    width: '40px',
-                    height: '40px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <Icon name="folder" size={24} color="#6B7280" />
-                  </div>
-                )}
-
-                {/* Layer Color Indicator - Clickable */}
-                <div style={{ position: 'relative' }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setColorPaletteOpen(colorPaletteOpen === layer.id ? null : layer.id);
-                    }}
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      background: layer.color,
-                      borderRadius: '4px',
-                      border: '1px solid #e5e7eb',
-                      flexShrink: 0,
-                      cursor: 'pointer',
-                      padding: 0
-                    }}
-                    title="Change layer color"
-                  />
-                  
-                  {/* Inline Color Palette Window */}
-                  {colorPaletteOpen === layer.id && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        position: 'absolute',
-                        left: '20px', // Position to the right of the color button
-                        top: '0px',
-                        background: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        padding: '8px',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                        zIndex: 1000,
-                        width: '120px'
-                      }}
-                    >
-                      {/* Color Grid */}
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(5, 1fr)',
-                        gap: '4px',
-                        marginBottom: '4px'
-                      }}>
-                        {colorPalette.slice(0, 10).map((color, index) => (
-                          <button
-                            key={index}
-                            onClick={() => handleColorChange(layer.id, color)}
-                            style={{
-                              width: '16px',
-                              height: '16px',
-                              background: color,
-                              border: layer.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              padding: 0
-                            }}
-                            title={`Change to ${color}`}
-                          />
-                        ))}
-                      </div>
-                      
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(5, 1fr)',
-                        gap: '4px'
-                      }}>
-                        {colorPalette.slice(10, 20).map((color, index) => (
-                          <button
-                            key={index + 10}
-                            onClick={() => handleColorChange(layer.id, color)}
-                            style={{
-                              width: '16px',
-                              height: '16px',
-                              background: color,
-                              border: layer.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              padding: 0
-                            }}
-                            title={`Change to ${color}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                </div>
-
-                {/* Layer Name - Directly clickable to edit */}
-                {isEditing ? (
-                  <input
-                    type="text"
-                    defaultValue={layer.name.split(' (')[0]} // Only edit the name part, not dimensions
-                    onBlur={(e) => {
-                      const namePart = layer.name.split(' (');
-                      const dimensionsPart = namePart[1] ? ` (${namePart[1]}` : '';
-                      handleLayerNameEdit(layer.id, e.target.value + dimensionsPart);
-                    }}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        const namePart = layer.name.split(' (');
-                        const dimensionsPart = namePart[1] ? ` (${namePart[1]}` : '';
-                        handleLayerNameEdit(layer.id, e.currentTarget.value + dimensionsPart);
-                      } else if (e.key === 'Escape') {
-                        setEditingLayer(null);
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    autoFocus
-                    style={{
-                      flex: 1,
-                      padding: '4px 8px',
-                      border: '1px solid #3b82f6',
-                      borderRadius: '4px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      background: 'white'
-                    }}
-                  />
-                ) : (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingLayer(layer.id);
-                    }}
-                    style={{
-                      flex: 1,
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#374151',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      cursor: 'text',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    title={`Click to edit: ${layer.name}`}
-                  >
-                    {layer.name.length > 15 ? layer.name.substring(0, 15) + '...' : layer.name}
-                  </span>
-                )}
 
                 {/* Action Icons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1315,7 +1122,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                           <line x1="3" y1="18" x2="3.01" y2="18"/>
                         </svg>
                       </button>
-                      
+
                     </div>
                   )}
 
@@ -1350,19 +1157,282 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 </div>
               </div>
 
-              {/* Dimensions Display */}
+              {/* Main Layer Content */}
               <div style={{
                 display: 'flex',
-                justifyContent: 'space-between',
                 alignItems: 'center',
-                fontSize: '12px',
-                color: '#6b7280',
-                paddingLeft: '28px', // Align with layer name
+                gap: '12px',
                 marginBottom: '8px'
               }}>
-                <span>{shapeInfo.dimensions}</span>
-                <span style={{ fontWeight: '600' }}>{shapeInfo.area}</span>
+                {/* Phase 3: Folder expand/collapse icon */}
+                {isFolder ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFolderCollapse(layer.id);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      color: '#6b7280',
+                      flexShrink: 0,
+                      width: '18px',
+                      textAlign: 'center',
+                      transition: 'color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+                    title={isCollapsed ? 'Expand folder' : 'Collapse folder'}
+                  >
+                    <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={14} />
+                  </button>
+                ) : checkboxMode && (
+                  <div style={{ width: '18px', flexShrink: 0 }} />
+                )}
+
+                {/* Phase 2: Checkbox for multi-selection mode */}
+                {checkboxMode && (
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      selectLayer(layer.id, true);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#3b82f6',
+                      flexShrink: 0
+                    }}
+                    title="Select layer"
+                  />
+                )}
+
+                {/* Drag Handle */}
+                <div
+                  style={{
+                    color: draggedLayer === layer.id ? '#3b82f6' : '#9ca3af',
+                    fontSize: '14px',
+                    cursor: draggedLayer === layer.id ? 'grabbing' : 'grab',
+                    padding: '2px',
+                    transition: 'color 0.2s'
+                  }}
+                  title="Drag to reorder"
+                  onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
+                  onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
+                  onMouseEnter={(e) => {
+                    if (draggedLayer !== layer.id) {
+                      e.currentTarget.style.color = '#3b82f6';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (draggedLayer !== layer.id) {
+                      e.currentTarget.style.color = '#9ca3af';
+                    }
+                  }}
+                >
+                  ⋮⋮
+                </div>
+
+                {/* Layer Thumbnail - Phase 1: Visual preview (not for folders or text layers) */}
+                {!isFolder && !shapeInfo.isText && <LayerThumbnail layer={layer} size={40} />}
+                {/* Phase 4: Text layer icon */}
+                {!isFolder && shapeInfo.isText && (
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    flexShrink: 0,
+                    color: '#6B7280'
+                  }}>
+                    <Icon name="text" size={20} color="#6B7280" />
+                  </div>
+                )}
+                {/* Phase 3: Folder icon */}
+                {isFolder && (
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <Icon name="folder" size={24} color="#6B7280" />
+                  </div>
+                )}
+
+                {/* Layer Color Indicator - Clickable (Only for non-folder layers) */}
+                {!isFolder && (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setColorPaletteOpen(colorPaletteOpen === layer.id ? null : layer.id);
+                      }}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        background: layer.color,
+                        borderRadius: '4px',
+                        border: '1px solid #e5e7eb',
+                        flexShrink: 0,
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                      title="Change layer color"
+                    />
+
+                    {/* Inline Color Palette Window */}
+                    {colorPaletteOpen === layer.id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          left: '20px', // Position to the right of the color button
+                          top: '0px',
+                          background: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          padding: '8px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                          zIndex: 1000,
+                          width: '120px'
+                        }}
+                      >
+                        {/* Color Grid */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(5, 1fr)',
+                          gap: '4px',
+                          marginBottom: '4px'
+                        }}>
+                          {colorPalette.slice(0, 10).map((color, index) => (
+                            <button
+                              key={index}
+                              onClick={() => handleColorChange(layer.id, color)}
+                              style={{
+                                width: '16px',
+                                height: '16px',
+                                background: color,
+                                border: layer.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
+                                borderRadius: '3px',
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                              title={`Change to ${color}`}
+                            />
+                          ))}
+                        </div>
+
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(5, 1fr)',
+                          gap: '4px'
+                        }}>
+                          {colorPalette.slice(10, 20).map((color, index) => (
+                            <button
+                              key={index + 10}
+                              onClick={() => handleColorChange(layer.id, color)}
+                              style={{
+                                width: '16px',
+                                height: '16px',
+                                background: color,
+                                border: layer.color === color ? '2px solid #1f2937' : '1px solid #e5e7eb',
+                                borderRadius: '3px',
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                              title={`Change to ${color}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
+                {/* Layer Name - Directly clickable to edit */}
+                {isEditing ? (
+                  <input
+                    type="text"
+                    defaultValue={layer.name.split(' (')[0]} // Only edit the name part, not dimensions
+                    onBlur={(e) => {
+                      const namePart = layer.name.split(' (');
+                      const dimensionsPart = namePart[1] ? ` (${namePart[1]}` : '';
+                      handleLayerNameEdit(layer.id, e.target.value + dimensionsPart);
+                    }}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        const namePart = layer.name.split(' (');
+                        const dimensionsPart = namePart[1] ? ` (${namePart[1]}` : '';
+                        handleLayerNameEdit(layer.id, e.currentTarget.value + dimensionsPart);
+                      } else if (e.key === 'Escape') {
+                        setEditingLayer(null);
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      padding: '4px 8px',
+                      border: '1px solid #3b82f6',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      background: 'white'
+                    }}
+                  />
+                ) : (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingLayer(layer.id);
+                    }}
+                    style={{
+                      flex: 1,
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#374151',
+                      cursor: 'text',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    title={`Click to edit: ${layer.name}`}
+                  >
+                    {layer.name}
+                  </span>
+                )}
               </div>
+
+              {/* Dimensions Display - Only for non-folder layers */}
+              {!isFolder && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '12px',
+                  color: '#6b7280',
+                  paddingLeft: '28px', // Align with layer name
+                  marginBottom: '8px'
+                }}>
+                  <span>{shapeInfo.dimensions}</span>
+                  <span style={{ fontWeight: '600' }}>{shapeInfo.area}</span>
+                </div>
+              )}
 
               {/* Opacity Control */}
               <div

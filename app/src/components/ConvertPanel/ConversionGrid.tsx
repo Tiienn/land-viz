@@ -233,10 +233,6 @@ export function ConversionGrid({ conversions, copiedUnit, onCopy }: ConversionGr
       {/* Results Summary */}
       <div style={styles.summary}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <svg style={styles.summaryIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 11H1l2-2m0 4l-2-2"/>
-            <path d="M23 12H15l2-2m0 4l-2-2"/>
-          </svg>
           <span>{conversions.length} units converted</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>

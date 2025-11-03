@@ -108,16 +108,13 @@ const styles = {
     fontSize: '14px',
     fontWeight: '600',
     color: '#374151',
-    marginBottom: '16px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px'
+    marginBottom: '16px'
   },
 
   // Action buttons area
   actions: {
     display: 'flex',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
     paddingTop: '16px',
     borderTop: '1px solid #f3f4f6',
@@ -137,7 +134,8 @@ const styles = {
     transition: 'all 200ms ease',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px'
+    gap: '6px',
+    whiteSpace: 'nowrap' as const
   },
 
   // Help text with modern styling
@@ -371,12 +369,6 @@ export function ConvertPanel({ expanded, onToggle, inline = true }: ConvertPanel
         {hasResults ? (
           <div style={styles.section}>
             <div style={styles.resultsHeader}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 11H1l2-2m0 4l-2-2"/>
-                <path d="M23 12H15l2-2m0 4l-2-2"/>
-                <path d="M8 3H3l2-2m0 4L3 3"/>
-                <path d="M21 21h-5l2-2m0 4l-2-2"/>
-              </svg>
               Converted Values ({conversions.length} units)
             </div>
             <ConversionGrid
@@ -396,9 +388,6 @@ export function ConvertPanel({ expanded, onToggle, inline = true }: ConvertPanel
         {/* Actions Section */}
         {hasInput && (
           <div style={styles.actions}>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>
-              All conversions are calculated instantly
-            </div>
             <button
               style={{
                 ...styles.clearButton,

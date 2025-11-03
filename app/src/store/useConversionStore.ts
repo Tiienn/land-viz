@@ -165,7 +165,7 @@ export const useConversionStore = create<ConversionStore>()(
           const results = new Map<AreaUnit, string>();
           const allUnits: AreaUnit[] = [
             'sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'toise',
-            'perches', 'perches-mauritius', 'arpent-na', 'arpent-paris', 'arpent-mauritius'
+            'perches', 'arpent-na', 'arpent-paris'
           ];
 
           allUnits.forEach(targetUnit => {

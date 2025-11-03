@@ -103,7 +103,7 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#fafafa',
+          background: 'linear-gradient(135deg, #f9fafb 0%, #ffffff 100%)',
           flexShrink: 0,
         }}
       >
@@ -113,9 +113,7 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
             fontSize: '16px',
             fontWeight: '700',
             color: '#1f2937',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            letterSpacing: '0.2px',
           }}
         >
           Tools Panel
@@ -125,24 +123,30 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
           style={{
             background: 'transparent',
             border: 'none',
-            fontSize: '24px',
             cursor: 'pointer',
             color: '#6b7280',
-            padding: '4px 8px',
-            borderRadius: '6px',
-            transition: 'all 200ms ease',
+            padding: '8px',
+            borderRadius: '8px',
+            transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
             lineHeight: 1,
-            fontWeight: 300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minWidth: '36px',
+            minHeight: '36px',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.color = '#1f2937';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = '#6b7280';
           }}
           title="Collapse panel"
+          aria-label="Collapse Tools Panel"
         >
-          ◀
+          <Icon name="chevron-left" size={20} strokeWidth={2} />
         </button>
       </div>
 
@@ -164,87 +168,130 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({ isExpanded, onClose, inl
       {/* Footer with Actions */}
       <div
         style={{
-          padding: '12px 20px',
+          padding: '16px 20px',
           borderTop: '1px solid #e5e7eb',
-          background: '#f9fafb',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)',
           display: 'flex',
-          gap: '8px',
+          justifyContent: 'center',
+          gap: '10px',
+          flexWrap: 'wrap',
         }}
       >
         <button
           onClick={clearHistory}
           style={{
-            flex: 1,
-            padding: '8px 12px',
+            flex: '1 1 auto',
+            maxWidth: '120px',
+            padding: '10px 14px',
             background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '6px',
+            border: '1.5px solid #e5e7eb',
+            borderRadius: '8px',
             fontSize: '13px',
-            fontWeight: '500',
+            fontWeight: '600',
             color: '#6b7280',
             cursor: 'pointer',
-            transition: 'all 0.2s ease',
+            transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            minHeight: '40px',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = '#f3f4f6';
-            e.currentTarget.style.borderColor = '#d1d5db';
+            e.currentTarget.style.borderColor = '#EF4444';
+            e.currentTarget.style.color = '#EF4444';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 8px rgba(239, 68, 68, 0.15)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = '#ffffff';
             e.currentTarget.style.borderColor = '#e5e7eb';
+            e.currentTarget.style.color = '#6b7280';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
           }}
+          aria-label="Clear all history"
         >
-          Clear History
+          <Icon name="trash" size={14} strokeWidth={2} />
+          <span>Clear</span>
         </button>
         <button
           onClick={handleImport}
           style={{
-            flex: 1,
-            padding: '8px 12px',
+            flex: '1 1 auto',
+            maxWidth: '120px',
+            padding: '10px 14px',
             background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '6px',
+            border: '1.5px solid #e5e7eb',
+            borderRadius: '8px',
             fontSize: '13px',
-            fontWeight: '500',
+            fontWeight: '600',
             color: '#6b7280',
             cursor: 'pointer',
-            transition: 'all 0.2s ease',
+            transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            minHeight: '40px',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#f3f4f6';
-            e.currentTarget.style.borderColor = '#d1d5db';
+            e.currentTarget.style.background = '#eff6ff';
+            e.currentTarget.style.borderColor = '#3b82f6';
+            e.currentTarget.style.color = '#3b82f6';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.15)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = '#ffffff';
             e.currentTarget.style.borderColor = '#e5e7eb';
+            e.currentTarget.style.color = '#6b7280';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
           }}
+          aria-label="Import workflows"
         >
-          Import
+          <Icon name="upload" size={14} strokeWidth={2} />
+          <span>Import</span>
         </button>
         <button
           onClick={handleExport}
           style={{
-            flex: 1,
-            padding: '8px 12px',
-            background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '6px',
+            flex: '1 1 auto',
+            maxWidth: '120px',
+            padding: '10px 14px',
+            background: '#3b82f6',
+            border: '1.5px solid transparent',
+            borderRadius: '8px',
             fontSize: '13px',
-            fontWeight: '500',
-            color: '#6b7280',
+            fontWeight: '700',
+            color: '#ffffff',
             cursor: 'pointer',
-            transition: 'all 0.2s ease',
+            transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            minHeight: '40px',
+            boxShadow: '0 2px 6px rgba(59, 130, 246, 0.3)',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#f3f4f6';
-            e.currentTarget.style.borderColor = '#d1d5db';
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 6px 12px rgba(59, 130, 246, 0.4)';
+            e.currentTarget.style.background = '#2563eb';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#ffffff';
-            e.currentTarget.style.borderColor = '#e5e7eb';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 6px rgba(59, 130, 246, 0.3)';
+            e.currentTarget.style.background = '#3b82f6';
           }}
+          aria-label="Export workflows"
         >
-          Export
+          <Icon name="download" size={14} strokeWidth={2.5} />
+          <span>Export</span>
         </button>
       </div>
     </div>

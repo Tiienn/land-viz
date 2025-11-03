@@ -15,9 +15,9 @@ export class EiffelTowerGeometry {
   private group: THREE.Group;
   private options: Required<EiffelTowerOptions>;
   private materials: {
-    main: THREE.MeshLambertMaterial;
+    main: THREE.MeshStandardMaterial;
     lattice: THREE.LineBasicMaterial;
-    platform: THREE.MeshLambertMaterial;
+    platform: THREE.MeshStandardMaterial;
   };
 
   constructor(options: EiffelTowerOptions = {}) {
@@ -40,22 +40,32 @@ export class EiffelTowerGeometry {
 
   /**
    * Create materials for different tower components
+   * Enhanced with metallic properties for realistic iron appearance
    */
   private createMaterials() {
     return {
-      main: new THREE.MeshLambertMaterial({
-        color: this.options.color,
-        side: THREE.DoubleSide
+      main: new THREE.MeshStandardMaterial({
+        color: 0xB87333, // Copper/bronze metallic color (more vibrant than brown)
+        metalness: 0.7,   // High metalness for iron/steel appearance
+        roughness: 0.4,   // Moderate roughness for realistic metal
+        side: THREE.DoubleSide,
+        emissive: 0x3d2817, // Subtle warm glow
+        emissiveIntensity: 0.1
       }),
       lattice: new THREE.LineBasicMaterial({
-        color: 0x6b5b73,
-        opacity: 0.7,
-        transparent: true
+        color: 0xD4A574, // Lighter bronze for lattice contrast
+        opacity: 0.8,
+        transparent: true,
+        linewidth: 2
       }),
-      platform: new THREE.MeshLambertMaterial({
-        color: 0x4a4a4a,
-        opacity: 0.9,
-        transparent: true
+      platform: new THREE.MeshStandardMaterial({
+        color: 0x708090,  // Slate gray for platforms
+        metalness: 0.5,   // Less metallic than main structure
+        roughness: 0.3,   // Smoother for modern platform look
+        opacity: 0.95,
+        transparent: true,
+        emissive: 0x404040, // Subtle gray glow
+        emissiveIntensity: 0.05
       })
     };
   }

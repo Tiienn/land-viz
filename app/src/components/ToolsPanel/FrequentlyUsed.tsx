@@ -61,11 +61,11 @@ export const FrequentlyUsed: React.FC = () => {
             marginBottom: '12px',
           }}
         >
-          <Icon name="star" size={14} color="#f59e0b" />
+          <Icon name="star" size={14} color="#f59e0b" strokeWidth={2.5} />
           <h3
             style={{
               fontSize: '12px',
-              fontWeight: '600',
+              fontWeight: '700',
               color: '#6b7280',
               margin: 0,
               textTransform: 'uppercase',
@@ -106,11 +106,11 @@ export const FrequentlyUsed: React.FC = () => {
           marginBottom: '12px',
         }}
       >
-        <Icon name="star" size={14} color="#f59e0b" />
+        <Icon name="star" size={14} color="#f59e0b" strokeWidth={2.5} />
         <h3
           style={{
             fontSize: '12px',
-            fontWeight: '600',
+            fontWeight: '700',
             color: '#6b7280',
             margin: 0,
             textTransform: 'uppercase',
@@ -188,17 +188,21 @@ export const FrequentlyUsed: React.FC = () => {
                   borderRadius: '6px',
                   background: stats.isPinned
                     ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
-                    : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    : '#3b82f6',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
+                  boxShadow: stats.isPinned
+                    ? '0 2px 6px rgba(245, 158, 11, 0.25)'
+                    : '0 2px 6px rgba(59, 130, 246, 0.25)',
                 }}
               >
                 <Icon
                   name={actionType.replace('tool:', '')}
                   size={16}
                   color="#ffffff"
+                  strokeWidth={2}
                 />
               </div>
               <div style={{ flex: 1 }}>
@@ -258,6 +262,7 @@ export const FrequentlyUsed: React.FC = () => {
                 name="pin"
                 size={16}
                 color={stats.isPinned ? '#f59e0b' : '#9ca3af'}
+                strokeWidth={2}
                 style={{
                   transform: stats.isPinned ? 'rotate(0deg)' : 'rotate(180deg)',
                   transition: 'transform 0.2s ease',

@@ -10,7 +10,7 @@ interface InsertAreaModalProps {
   onSubmit: (area: number, unit: AreaUnit) => void;
 }
 
-const UNITS: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'toise', 'perches', 'perches-mauritius', 'arpent-na', 'arpent-paris', 'arpent-mauritius'];
+const UNITS: AreaUnit[] = ['sqm', 'sqft', 'acres', 'hectares', 'sqkm', 'toise', 'perches', 'arpent-na', 'arpent-paris'];
 
 const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const [areaValue, setAreaValue] = useState('');

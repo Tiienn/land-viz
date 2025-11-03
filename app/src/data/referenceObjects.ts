@@ -241,12 +241,12 @@ export const REFERENCE_OBJECTS: ReferenceObject[] = [
       }
     },
     material: {
-      color: '#8b4513', // Iron/bronze color
-      opacity: 0.8,
+      color: '#B87333', // Metallic copper/bronze color
+      opacity: 0.95,
       wireframe: false
     },
     metadata: {
-      description: '3D model of the Eiffel Tower with lattice structure (scaled height)',
+      description: 'Stunning 3D Eiffel Tower with authentic metallic lattice structure, observation platforms, and illuminated spire',
       source: 'Mathematical model based on official dimensions',
       accuracy: 'exact',
       popularity: 10
@@ -310,12 +310,12 @@ export const REFERENCE_OBJECTS: ReferenceObject[] = [
       }
     },
     material: {
-      color: '#2e8b57', // Sea green patina color
-      opacity: 0.8,
+      color: '#2DD4BF', // Vibrant turquoise patina (Canva-inspired)
+      opacity: 0.95,
       wireframe: false
     },
     metadata: {
-      description: '3D model of the Statue of Liberty with pedestal, crown, torch, and tablet (scaled height)',
+      description: 'Majestic 3D Statue of Liberty with authentic copper patina, illuminated torch, seven-ray crown, and Declaration tablet on granite pedestal',
       source: 'Mathematical model based on National Park Service specifications',
       accuracy: 'exact',
       popularity: 10

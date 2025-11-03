@@ -5,7 +5,7 @@
 /**
  * Supported area units for conversion
  */
-export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm' | 'sqmi' | 'toise' | 'perches' | 'perches-mauritius' | 'arpent-na' | 'arpent-paris' | 'arpent-mauritius';
+export type AreaUnit = 'sqm' | 'sqft' | 'acres' | 'hectares' | 'sqkm' | 'sqmi' | 'toise' | 'perches' | 'arpent-na' | 'arpent-paris';
 
 /**
  * Display configuration for each unit

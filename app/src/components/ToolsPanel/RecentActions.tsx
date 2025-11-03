@@ -42,11 +42,11 @@ export const RecentActions: React.FC = () => {
             marginBottom: '12px',
           }}
         >
-          <Icon name="clock" size={14} color="#3b82f6" />
+          <Icon name="clock" size={14} color="#3b82f6" strokeWidth={2.5} />
           <h3
             style={{
               fontSize: '12px',
-              fontWeight: '600',
+              fontWeight: '700',
               color: '#6b7280',
               margin: 0,
               textTransform: 'uppercase',
@@ -89,11 +89,11 @@ export const RecentActions: React.FC = () => {
           marginBottom: '12px',
         }}
       >
-        <Icon name="clock" size={14} color="#3b82f6" />
+        <Icon name="clock" size={14} color="#3b82f6" strokeWidth={2.5} />
         <h3
           style={{
             fontSize: '12px',
-            fontWeight: '600',
+            fontWeight: '700',
             color: '#6b7280',
             margin: 0,
             textTransform: 'uppercase',
@@ -132,14 +132,16 @@ export const RecentActions: React.FC = () => {
               textAlign: 'left',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.background = '#eff6ff';
               e.currentTarget.style.borderColor = '#3b82f6';
               e.currentTarget.style.transform = 'translateX(2px)';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = '#f9fafb';
               e.currentTarget.style.borderColor = '#e5e7eb';
               e.currentTarget.style.transform = 'translateX(0)';
+              e.currentTarget.style.boxShadow = 'none';
             }}
             onFocus={(e) => {
               e.currentTarget.style.outline = '2px solid #3b82f6';
@@ -154,11 +156,12 @@ export const RecentActions: React.FC = () => {
                 width: '32px',
                 height: '32px',
                 borderRadius: '6px',
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                background: '#3b82f6',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
+                boxShadow: '0 2px 6px rgba(59, 130, 246, 0.25)',
               }}
             >
               <Icon

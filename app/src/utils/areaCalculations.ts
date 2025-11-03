@@ -9,10 +9,8 @@ const CONVERSIONS: Record<AreaUnit, number> = {
   sqkm: 1000000,
   toise: 3.8,
   perches: 25.29285264,
-  'perches-mauritius': 42.21,
   'arpent-na': 3419,
-  'arpent-paris': 5107,
-  'arpent-mauritius': 4221
+  'arpent-paris': 5107
 };
 
 export function convertToSquareMeters(area: number, unit: AreaUnit): number {
@@ -150,10 +148,8 @@ export function getUnitLabel(unit: AreaUnit): string {
     sqkm: 'km²',
     toise: 'T',
     perches: 'perch',
-    'perches-mauritius': 'perch-mu',
     'arpent-na': 'arp-na',
-    'arpent-paris': 'arp-pa',
-    'arpent-mauritius': 'arp-mu'
+    'arpent-paris': 'arp-pa'
   };
   return labels[unit];
 }

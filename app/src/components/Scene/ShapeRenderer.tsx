@@ -727,10 +727,12 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = React.memo(({ elevation = 0.
 
   // Pre-calculate layer elevations for performance
   // Use larger layer separation (0.05 per layer) to prevent z-fighting
+  // IMPORTANT: Layer Panel displays layers in REVERSED order (last item at top)
+  // So we use index directly: higher index = top of panel = higher elevation
   const layerElevations = useMemo(() => {
     const elevations = new Map<string, number>();
     layers.forEach((layer, index) => {
-      const elevationOffset = (layers.length - 1 - index) * 0.05; // Increased from 0.001
+      const elevationOffset = index * 0.05; // Higher index = higher elevation = top of panel
       elevations.set(layer.id, elevation + elevationOffset);
     });
     return elevations;

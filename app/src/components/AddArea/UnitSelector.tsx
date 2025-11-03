@@ -14,10 +14,8 @@ const AREA_UNITS = [
   { value: 'sqkm', label: 'Square Kilometers', symbol: 'km²', description: 'Very large areas' },
   { value: 'toise', label: 'Toise', symbol: 'T', description: 'Historical French land unit (3.8 m²)' },
   { value: 'perches', label: 'Perches (British)', symbol: 'perch', description: 'Historical British land unit (25.29 m²)' },
-  { value: 'perches-mauritius', label: 'Perches (Mauritius)', symbol: 'perch-mu', description: 'Mauritius land unit (42.21 m²)' },
   { value: 'arpent-na', label: 'Arpent (North America)', symbol: 'arp-na', description: 'North American land unit (3,419 m²)' },
-  { value: 'arpent-paris', label: 'Arpent (Paris)', symbol: 'arp-pa', description: 'Historical Parisian unit (5,107 m²)' },
-  { value: 'arpent-mauritius', label: 'Arpent (Mauritius)', symbol: 'arp-mu', description: 'Mauritius land unit (4,221 m²)' }
+  { value: 'arpent-paris', label: 'Arpent (Paris)', symbol: 'arp-pa', description: 'Historical Parisian unit (5,107 m²)' }
 ] as const;
 
 export const UnitSelector: React.FC<UnitSelectorProps> = ({ value = 'sqm', onChange }) => {

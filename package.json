@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "mcp:start": "npx @playwright/mcp@latest --port 8931 --browser chrome --viewport-size 1920x1080 --timeout-action 10000",
+    "mcp:start:headless": "npx @playwright/mcp@latest --port 8931 --browser chrome --viewport-size 1920x1080 --timeout-action 10000 --headless",
+    "mcp:test": "node scripts/test-playwright-mcp.js",
+    "mcp:install": "npx playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

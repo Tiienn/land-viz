@@ -1,7 +1,22 @@
 import React, { useState } from 'react';
-import { useCategoryData } from '../../hooks/useCategoryData';
 import type { ReferenceCategory, ReferenceObject } from '../../types/referenceObjects';
 import Icon from '../Icon';
+
+// Map categories to SVG icon names
+const categoryIconNames: Record<ReferenceCategory, string> = {
+  sports: 'sports',
+  buildings: 'building',
+  landmarks: 'landmark',
+  nature: 'nature'
+};
+
+// Category display names
+const categoryDisplayNames: Record<ReferenceCategory, string> = {
+  sports: 'Sports Venues',
+  buildings: 'Buildings',
+  landmarks: 'Famous Landmarks',
+  nature: 'Natural References'
+};
 
 interface ObjectListProps {
   objectsByCategory: Record<ReferenceCategory, ReferenceObject[]>;
@@ -16,9 +31,8 @@ export function ObjectList({
   onToggleVisibility,
   selectedCategory
 }: ObjectListProps) {
-  const { categoryDisplayNames, categoryIcons, loading } = useCategoryData();
   const [expandedCategories, setExpandedCategories] = useState<Set<ReferenceCategory>>(
-    new Set(['sports', 'buildings']) // Default expanded
+    new Set() // All collapsed by default for cleaner UI
   );
 
   const toggleCategory = (category: ReferenceCategory) => {
@@ -36,14 +50,6 @@ export function ObjectList({
     ? (['sports', 'buildings', 'landmarks', 'nature'] as ReferenceCategory[])
     : [selectedCategory as ReferenceCategory];
 
-  if (loading) {
-    return (
-      <div style={{...styles.objectList, ...styles.loadingContainer}}>
-        <div style={styles.loadingText}>Loading objects...</div>
-      </div>
-    );
-  }
-
   return (
     <div style={styles.objectList}>
       {categoriesToShow.map(category => {
@@ -60,7 +66,7 @@ export function ObjectList({
               <CategoryHeader
                 category={category}
                 displayName={categoryDisplayNames[category]}
-                icon={categoryIcons[category]}
+                iconName={categoryIconNames[category]}
                 isExpanded={isExpanded}
                 objectCount={objects.length}
                 visibleCount={visibleCount}
@@ -99,7 +105,7 @@ export function ObjectList({
 interface CategoryHeaderProps {
   category: ReferenceCategory;
   displayName: string;
-  icon: string;
+  iconName: string;
   isExpanded: boolean;
   objectCount: number;
   visibleCount: number;
@@ -108,7 +114,7 @@ interface CategoryHeaderProps {
 
 function CategoryHeader({
   displayName,
-  icon,
+  iconName,
   isExpanded,
   objectCount,
   visibleCount,
@@ -118,11 +124,15 @@ function CategoryHeader({
     <button
       style={styles.categoryHeader}
       onClick={onToggle}
+      aria-expanded={isExpanded}
+      aria-label={`${displayName} category, ${objectCount} objects`}
       onMouseEnter={(e) => {
         e.currentTarget.style.backgroundColor = '#f9fafb';
+        e.currentTarget.style.borderColor = '#00C4CC';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = 'transparent';
+        e.currentTarget.style.borderColor = 'transparent';
       }}
     >
       <div style={styles.categoryLeft}>
@@ -130,11 +140,25 @@ function CategoryHeader({
           ...styles.categoryIcon,
           transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
         }}>
-          <Icon name="chevron-right" size={14} />
+          <Icon name="chevron-right" size={16} />
+        </span>
+        <span style={styles.categoryIconWrapper}>
+          <Icon
+            name={iconName}
+            size={18}
+            color="#6b7280"
+            strokeWidth={2}
+          />
         </span>
         <span style={styles.categoryName}>{displayName}</span>
       </div>
       <div style={styles.categoryStats}>
+        {visibleCount > 0 && (
+          <>
+            <span style={styles.visibleCount}>{visibleCount}</span>
+            <span style={styles.divider}>/</span>
+          </>
+        )}
         <span style={styles.totalCount}>{objectCount}</span>
       </div>
     </button>
@@ -221,56 +245,75 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px',
-    border: 'none',
-    borderRadius: '6px',
+    padding: '12px',        // Increased padding for better touch targets
+    minHeight: '44px',      // WCAG 2.1 minimum touch target
+    border: '1.5px solid transparent',
+    borderRadius: '8px',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    transition: 'all 200ms ease',
+    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
     fontFamily: 'inherit',
-    outline: 'none'
+    outline: 'none',
+    marginBottom: '4px'     // Spacing between categories
   },
 
   categoryLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '10px'             // Increased gap for better visual separation
   },
 
   categoryIcon: {
-    fontSize: '10px',
+    fontSize: '14px',       // Larger chevron
     color: '#6b7280',
-    transition: 'transform 200ms ease'
+    transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',          // Fixed width for alignment
+    height: '20px'
   },
 
-  categoryEmoji: {
-    fontSize: '16px'
+  categoryIconWrapper: {
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',          // Fixed width for consistent alignment
+    height: '20px'
   },
 
   categoryName: {
     fontSize: '14px',
     fontWeight: 600,
-    color: '#1f2937'
+    color: '#1f2937',
+    letterSpacing: '0.2px'
   },
 
   categoryStats: {
     display: 'flex',
     alignItems: 'center',
-    gap: '2px',
-    fontSize: '12px'
-  },
-
-  visibleCount: {
-    color: '#3b82f6',
+    gap: '4px',             // Better spacing
+    fontSize: '12px',
+    backgroundColor: '#f3f4f6',
+    padding: '4px 10px',    // Pill-shaped badge
+    borderRadius: '12px',
     fontWeight: 600
   },
 
+  visibleCount: {
+    color: '#00C4CC',       // Canva teal for active objects
+    fontWeight: 700
+  },
+
   divider: {
-    color: '#d1d5db'
+    color: '#d1d5db',
+    fontWeight: 400
   },
 
   totalCount: {
-    color: '#6b7280'
+    color: '#6b7280',
+    fontWeight: 600
   },
 
   categoryContent: {
@@ -307,36 +350,38 @@ const styles = {
   },
 
   visibilityButton: {
-    width: '44px',
-    height: '24px',
+    width: '48px',          // Slightly wider for better usability
+    height: '26px',         // Slightly taller
     border: 'none',
-    borderRadius: '12px',
-    backgroundColor: '#f3f4f6',
+    borderRadius: '13px',
+    backgroundColor: '#e5e7eb',
     cursor: 'pointer',
-    transition: 'all 200ms ease',
+    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
     display: 'flex',
     alignItems: 'center',
-    padding: '2px',
+    padding: '3px',
     outline: 'none',
-    position: 'relative' as const
+    position: 'relative' as const,
+    boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.1)'
   },
 
   visibilityButtonActive: {
-    backgroundColor: '#3b82f6'
+    background: 'linear-gradient(135deg, #00C4CC 0%, #7C3AED 100%)', // Canva gradient
+    boxShadow: '0 2px 6px rgba(0, 196, 204, 0.3)' // Brand glow
   },
 
   toggleCircle: {
-    width: '16px',
-    height: '16px',
+    width: '20px',          // Larger circle
+    height: '20px',
     borderRadius: '50%',
     backgroundColor: '#ffffff',
-    transition: 'all 200ms ease',
+    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
     transform: 'translateX(0px)',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)'
   },
 
   toggleCircleActive: {
-    transform: 'translateX(20px)'
+    transform: 'translateX(22px)' // Adjusted for new button width
   },
 
   emptyState: {
