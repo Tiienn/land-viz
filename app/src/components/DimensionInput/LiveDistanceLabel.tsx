@@ -3,11 +3,14 @@
  * Spec 013: Direct Dimension Input
  *
  * Displays distance from start point while dragging shapes
+ *
+ * PERFORMANCE OPTIMIZED: Shared RAF scheduler for cursor tracking
  */
 
 import React, { useState, useEffect } from 'react';
 import { useDimensionStore } from '@/store/useDimensionStore';
 import { formatDistance } from '@/services/dimensionFormatter';
+import { useRAFEventThrottle } from '@/hooks/useRAFThrottle';
 
 const LiveDistanceLabel: React.FC = () => {
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
@@ -19,15 +22,23 @@ const LiveDistanceLabel: React.FC = () => {
     state => state.precision
   );
 
-  // Track cursor position
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+  // Use shared RAF scheduler for cursor tracking (max 60fps)
+  const handleMouseMove = useRAFEventThrottle<MouseEvent>(
+    'live-distance-label-cursor',
+    (e: MouseEvent) => {
       setCursorPos({ x: e.clientX, y: e.clientY });
-    };
+    },
+    'normal' // Normal priority for UI feedback
+  );
 
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  // Add event listener
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [handleMouseMove]);
 
   if (!isShowingDistance) return null;
 

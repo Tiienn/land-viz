@@ -32,7 +32,8 @@ The application features a **Canva-inspired modern UI** with professional CAD fu
 - **⚡ Visual Comparisons** - Compare your land to 16+ familiar objects (sports fields, buildings, landmarks)
 - **📊 Smart Analysis** - Instantly see "25 houses fit in your land" with visual progress bars
 - **✏️ Polyline Drawing** - Advanced polyline tool with real-time dotted preview line
-- **🔧 Professional Controls** - Windows-style resize handles and CAD-style rotation system
+- **🔧 Professional Controls** - Windows-style resize handles and CAD-style rotation system (shapes + text)
+- **📝 Text Rotation** - Full cursor rotation mode for text objects with confirm/cancel pattern
 - **🎯 State Management** - Robust state isolation preventing visual corruption between shapes
 - **🎯 Precision Mode** - Professional-grade accuracy powered by Chili3D
 - **📱 Mobile First** - Works perfectly on phones, tablets, and desktops
@@ -107,25 +108,34 @@ npm test
 ## 📁 Project Structure
 
 ```
-land-visualizer/app/src/
-├── components/
-│   ├── Scene/              # 3D scene components
-│   │   ├── SceneManager.tsx   # Main 3D canvas
-│   │   ├── DrawingCanvas.tsx  # Interactive drawing
-│   │   ├── ShapeRenderer.tsx  # Shape visualization
-│   │   ├── ShapeDimensions.tsx # Dimension labels
-│   │   ├── DrawingFeedback.tsx # Real-time feedback
-│   │   └── GridBackground.tsx  # Infinite grass grid
-│   ├── PropertiesPanel.tsx # Tool instructions & settings
-│   ├── LayerPanel.tsx      # Layer management
-│   └── CoordinateDisplay.tsx # Mouse coordinates
-├── services/
-│   └── precisionCalculations.ts # High-precision geometry
-├── store/
-│   └── useAppStore.ts     # Zustand state management
-├── types/
-│   └── index.ts           # TypeScript definitions
-└── App.tsx                 # Main application
+land-visualizer/
+├── app/src/               # Application source code
+│   ├── components/
+│   │   ├── Scene/         # 3D scene components
+│   │   │   ├── SceneManager.tsx   # Main 3D canvas
+│   │   │   ├── DrawingCanvas.tsx  # Interactive drawing
+│   │   │   ├── ShapeRenderer.tsx  # Shape visualization
+│   │   │   ├── RotationControls.tsx # Cursor rotation
+│   │   │   └── GridBackground.tsx  # Infinite grass grid
+│   │   ├── Text/          # Text annotation components
+│   │   │   ├── TextRenderer.tsx   # Text display
+│   │   │   └── TextTransformControls.tsx # Text editing
+│   │   ├── PropertiesPanel.tsx # Tool instructions
+│   │   └── LayerPanel.tsx      # Layer management
+│   ├── store/
+│   │   ├── useAppStore.ts      # Main state + history
+│   │   ├── useTextStore.ts     # Text annotations
+│   │   └── useLayerStore.ts    # Layer management
+│   └── App.tsx            # Main application
+├── tests/                 # All test-related files
+│   ├── playwright/        # Python/JS test scripts
+│   ├── screenshots/       # Test visual assets
+│   └── logs/              # Console outputs
+├── docs/                  # Documentation
+│   ├── fixes/             # Bug fix documentation
+│   ├── known-issues/      # Known issues
+│   └── PROJECT_REORGANIZATION.md
+└── specs/                 # Feature specifications
 ```
 
 ## 🎮 Usage
@@ -219,7 +229,23 @@ See [ROADMAP.md](docs/project/ROADMAP.md) for detailed plans.
 
 ## ✅ Recent Fixes & Updates
 
-### January 2025
+### January 2025 - Week 2 (Latest)
+- **NEW**: Text Cursor Rotation - full feature parity with shapes
+  - Rotate button now works for text objects (hover-to-rotate with live preview)
+  - Left-click confirms new rotation, ESC cancels and restores original
+  - Extended history system to include text state (unified undo/redo)
+  - Fixed 4 critical bugs: button activation, duplicate handles, immediate exit, ESC cancel
+  - Performance: <1ms updates, 60 FPS maintained
+  - See `docs/fixes/TEXT_CURSOR_ROTATION_FIX.md` for technical details
+
+- **IMPROVED**: Project Directory Organization
+  - Reorganized 93 files from root into proper directories
+  - Test scripts → `tests/playwright/`, screenshots → `tests/screenshots/`
+  - Root directory cleaned from 98 files to 9 core files
+  - Updated .gitignore to prevent future test artifact clutter
+  - See `docs/PROJECT_REORGANIZATION.md` for complete details
+
+### January 2025 - Week 1
 - **NEW**: Direct Dimension Input feature - type exact sizes before creating shapes
   - Rectangle: Width × Height format (e.g., "10x15", "33ft x 50ft")
   - Circle: Radius/Diameter mode with unit selection (r/d toggle)

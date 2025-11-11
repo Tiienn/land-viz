@@ -13,7 +13,7 @@ interface Logger {
 
 const isDevelopment = import.meta.env.DEV;
 const enableVerboseLogging = false; // Set to true to see detailed geometry/transform logs
-const enableDevLogging = false; // Set to true to see info/debug logs in development
+const enableDevLogging = true; // ENABLED for resize snap debugging
 
 export const logger: Logger = {
   log: (...args: unknown[]) => {

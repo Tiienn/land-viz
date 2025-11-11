@@ -12,6 +12,7 @@ import { useAdaptiveSnapRadius } from '../../hooks/useAdaptiveSnapRadius';
 import { parseDimension, convertToMeters } from '@/services/dimensionParser';
 import { generateTextId, createDefaultTextObject } from '@/utils/textUtils';
 import { generateId } from '@/utils/validation';
+import { applySquareConstraint, applyAngleConstraint } from '@/utils/shapeConstraints';
 
 interface DrawingCanvasProps {
   onCoordinateChange?: (worldPos: Point2D, screenPos: Point2D) => void;
@@ -600,10 +601,18 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           addPoint(snappedPos); // First corner - use snapped position for 0.000m precision
         } else if (currentShape?.points && currentShape.points.length === 1) {
           const firstPoint = currentShape.points[0];
-          // Add the remaining 3 points to complete rectangle - use snapped position
-          addPoint({ x: snappedPos.x, y: firstPoint.y });     // Top-right
-          addPoint({ x: snappedPos.x, y: snappedPos.y });     // Bottom-right
-          addPoint({ x: firstPoint.x, y: snappedPos.y });     // Bottom-left
+
+          // Feature 017: Apply square constraint if Shift is held
+          let finalPos = snappedPos;
+          const isShiftPressed = useAppStore.getState().drawing.isShiftKeyPressed;
+          if (isShiftPressed) {
+            finalPos = applySquareConstraint(firstPoint, snappedPos);
+          }
+
+          // Add the remaining 3 points to complete rectangle - use constrained position
+          addPoint({ x: finalPos.x, y: firstPoint.y });     // Top-right
+          addPoint({ x: finalPos.x, y: finalPos.y });     // Bottom-right
+          addPoint({ x: firstPoint.x, y: finalPos.y });     // Bottom-left
           finishDrawing();
         }
         break;
@@ -678,8 +687,16 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           addPoint(snappedPos); // Center point - use snapped position for 0.000m precision
         } else if (currentShape?.points && currentShape.points.length === 1) {
           const center = currentShape.points[0];
+
+          // Feature 017: Apply angle constraint if Shift is held
+          let finalPos = snappedPos;
+          const isShiftPressed = useAppStore.getState().drawing.isShiftKeyPressed;
+          if (isShiftPressed) {
+            finalPos = applyAngleConstraint(center, snappedPos);
+          }
+
           const radius = Math.sqrt(
-            Math.pow(snappedPos.x - center.x, 2) + Math.pow(snappedPos.y - center.y, 2)
+            Math.pow(finalPos.x - center.x, 2) + Math.pow(finalPos.y - center.y, 2)
           );
 
 
@@ -687,7 +704,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           // This matches dimension calculation expectations
           currentShape.points = [
             center, // Center point
-            snappedPos // Edge point
+            finalPos // Edge point (constrained if Shift held)
           ];
           finishDrawing();
         }
@@ -904,6 +921,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       // Reset shift key state on cleanup
       setShiftKey(false);
     };
+  }, []);
+
+  // Feature 017: Defensive cleanup - Reset Shift state if window loses focus
+  useEffect(() => {
+    const handleBlur = () => {
+      const setShiftKey = useAppStore.getState().setShiftKey;
+      setShiftKey(false);
+    };
+
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
   }, []);
 
   // Cleanup on component unmount

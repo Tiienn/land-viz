@@ -8,18 +8,19 @@ import { validateSnapPointProximity } from '../../utils/snapUtils';
 /**
  * Indicator sizes for different view modes
  *
+ * ENLARGED FOR BETTER VISIBILITY - Made 5x bigger
  * 2D mode uses larger grid indicators (10x) because camera is
  * farther away in top-down view. Other indicators (endpoint,
  * midpoint, center) use absolute world sizes (0.2m, 0.5m)
  * and don't need mode-specific adjustment.
  *
  * Values:
- * - GRID_3D: 0.06m (6cm) - 2x larger for better visibility
- * - GRID_2D: 0.02m (2cm) - 2x larger for better visibility
+ * - GRID_3D: 0.3m (30cm) - 5x larger for visibility
+ * - GRID_2D: 0.1m (10cm) - 5x larger for visibility
  */
 const INDICATOR_SIZES = {
-  GRID_3D: 0.06,
-  GRID_2D: 0.02
+  GRID_3D: 0.3,
+  GRID_2D: 0.1
 } as const;
 
 interface SnapIndicatorProps {
@@ -44,15 +45,25 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
 
   const isDragging = dragState.isDragging;
 
+  // Get resize state - MUST be before useMemo to avoid initialization errors
+  const liveResizePoints = useAppStore(state => state.drawing.liveResizePoints);
+  const isActivelyResizing = liveResizePoints !== null;
+  const selectedShapeIds = useAppStore(state => state.selectedShapeIds);
+
   // Debug logging removed for performance
 
   // Performance optimization: limit visible indicators with render-time proximity filtering
-  const maxVisibleIndicators = 25; // Limit to 25 indicators for performance
+  // CRITICAL: For selected shapes, show ALL indicators - no limit
+  // For other cases (drawing, dragging), limit to 25 for performance
+  const isShowingSelectedShape = selectedShapeIds && selectedShapeIds.length > 0;
+  const maxVisibleIndicators = isShowingSelectedShape ? Infinity : 25;
+
   const limitedSnapPoints = useMemo(() => {
-    // FIX: During drag, use dragged shape center; otherwise use cursor position
+    // FIX: During resize, drag, or drawing - use cursor position as reference
+    // Cursor position is updated to handle position during resize operations
     let referencePosition = cursorPosition;
 
-    if (isDragging && dragState.draggedShapeId) {
+    if (isDragging && !isActivelyResizing && dragState.draggedShapeId) {
       const draggedShape = shapes.find(s => s.id === dragState.draggedShapeId);
 
       if (draggedShape && dragState.currentPosition && dragState.startPosition && dragState.originalShapePoints) {
@@ -75,21 +86,25 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
       }
     }
 
-    // Return empty array if no reference position
-    if (!referencePosition) {
-      return [];
-    }
+    // CRITICAL FIX: For selected shapes, show ALL snap points without distance filtering
+    // For other cases (drawing, dragging), use very large radius for performance
+    // This ensures all corners are always visible for rectangles, triangles, etc.
+    // Note: isShowingSelectedShape is already calculated above
 
-    // Get snap radius from config (respects user's UI setting)
-    const snapRadius = snapping?.config?.snapRadius || 15; // Use configured snap radius
-
-    // Filter snap points by actual proximity to reference position
-    const proximityFilteredPoints = (snapping?.availableSnapPoints || []).filter(point =>
-      validateSnapPointProximity(point, referencePosition, snapRadius)
-    );
+    // If showing selected shape, don't filter by distance - show all snap points
+    // No reference position needed when showing all points for selected shapes
+    // Otherwise use very large radius (10000 units = 10km) to handle any reasonable shape size
+    // This fixes the issue where large rectangles/triangles lose corner indicators when zoomed out
+    const proximityFilteredPoints = isShowingSelectedShape
+      ? (snapping?.availableSnapPoints || [])
+      : !referencePosition
+        ? [] // No reference position and not showing selected shape = no indicators
+        : (snapping?.availableSnapPoints || []).filter(point =>
+            validateSnapPointProximity(point, referencePosition, 10000)
+          );
 
     return proximityFilteredPoints.slice(0, maxVisibleIndicators);
-  }, [snapping?.availableSnapPoints, snapping?.config?.snapRadius, cursorPosition, isDragging, dragState, shapes, is2DMode, maxVisibleIndicators]);
+  }, [snapping?.availableSnapPoints, snapping?.config?.snapRadius, cursorPosition, isDragging, dragState, shapes, is2DMode, maxVisibleIndicators, isActivelyResizing, selectedShapeIds, isShowingSelectedShape]);
   
   // Create fresh geometries each time to ensure proper size updates
   const getGeometries = () => {
@@ -98,12 +113,12 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
     // Grid size optimization for view mode
 
     return {
-      grid: new THREE.PlaneGeometry(gridSize * 4, gridSize * 4), // 2x larger (was 2x, now 4x)
-      endpoint: new THREE.CircleGeometry(2.0, 16), // 2x larger blue circles at corners
-      midpoint: new THREE.RingGeometry(1.4, 2.2, 4, 1, Math.PI / 4), // 2x larger orange squares at edges
+      grid: new THREE.PlaneGeometry(gridSize * 8, gridSize * 8), // 8x larger for visibility
+      endpoint: new THREE.CircleGeometry(4.0, 24), // 4x larger blue circles at corners - VERY VISIBLE
+      midpoint: new THREE.RingGeometry(2.8, 4.4, 4, 1, Math.PI / 4), // 4x larger orange squares at edges - VERY VISIBLE
       center: (() => {
         const geometry = new THREE.BufferGeometry();
-        const centerSize = is2DMode ? 0.2 : 2.4; // 2x larger green crosshairs
+        const centerSize = is2DMode ? 1.5 : 4.8; // 4x larger green crosshairs - VERY VISIBLE
         const vertices = new Float32Array([
           -centerSize, 0, 0,  centerSize, 0, 0,  // Horizontal line
           0, -centerSize, 0,  0, centerSize, 0   // Vertical line
@@ -111,21 +126,24 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
         geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
         return geometry;
       })(),
-      quadrant: new THREE.CircleGeometry(2.0, 12), // 2x larger
-      intersection: new THREE.RingGeometry(1.0, 1.8, 8), // 2x larger
-      perpendicular: new THREE.PlaneGeometry(2.8, 0.48), // 2x larger
-      extension: new THREE.PlaneGeometry(3.2, 0.4), // 2x larger
-      tangent: new THREE.CircleGeometry(1.6, 8), // 2x larger
-      edge: new THREE.PlaneGeometry(2.0, 0.4) // 2x larger
+      quadrant: new THREE.CircleGeometry(4.0, 16), // 4x larger
+      intersection: new THREE.RingGeometry(2.0, 3.6, 12), // 4x larger
+      perpendicular: new THREE.PlaneGeometry(5.6, 1.0), // 4x larger - VERY VISIBLE
+      extension: new THREE.PlaneGeometry(6.4, 0.8), // 4x larger - VERY VISIBLE
+      tangent: new THREE.CircleGeometry(3.2, 12), // 4x larger - VERY VISIBLE
+      edge: new THREE.PlaneGeometry(4.0, 0.8) // 4x larger - VERY VISIBLE
     };
   };
 
   // Materials for different snap types
+  // CONSISTENCY FIX: All indicators use same opacity for uniform visibility
+  const UNIFORM_OPACITY = 0.6;
+
   const materials = useMemo(() => ({
     grid: new THREE.MeshBasicMaterial({
       color: '#9CA3AF',
       transparent: true,
-      opacity: 0.7,
+      opacity: UNIFORM_OPACITY,
       side: THREE.DoubleSide,
       depthTest: false,
       depthWrite: false
@@ -133,21 +151,21 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
     endpoint: new THREE.MeshBasicMaterial({
       color: '#3B82F6',
       transparent: true,
-      opacity: 0.9,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     midpoint: new THREE.MeshBasicMaterial({
       color: '#F59E0B',
       transparent: true,
-      opacity: 0.9,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     center: new THREE.LineBasicMaterial({
       color: '#22C55E',
       transparent: true,
-      opacity: 1.0,
+      opacity: UNIFORM_OPACITY,
       linewidth: 3,
       depthTest: false,
       depthWrite: false
@@ -155,42 +173,42 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
     quadrant: new THREE.MeshBasicMaterial({
       color: '#8B5CF6',
       transparent: true,
-      opacity: 0.8,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     intersection: new THREE.MeshBasicMaterial({
       color: '#EF4444',
       transparent: true,
-      opacity: 0.9,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     perpendicular: new THREE.MeshBasicMaterial({
       color: '#06B6D4',
       transparent: true,
-      opacity: 0.8,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     extension: new THREE.MeshBasicMaterial({
       color: '#84CC16',
       transparent: true,
-      opacity: 0.7,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     tangent: new THREE.MeshBasicMaterial({
       color: '#F97316',
       transparent: true,
-      opacity: 0.8,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     }),
     edge: new THREE.MeshBasicMaterial({
       color: '#6366F1',
       transparent: true,
-      opacity: 0.7,
+      opacity: UNIFORM_OPACITY,
       depthTest: false,
       depthWrite: false
     })
@@ -331,41 +349,43 @@ export const SnapIndicator: React.FC<SnapIndicatorProps> = ({
       const snapPoint = limitedSnapPoints[index];
       if (!snapPoint) return;
 
-      const distance = cameraPosition.distanceTo(
-        new THREE.Vector3(snapPoint.position.x, 0, snapPoint.position.y)
-      );
+      // CRITICAL FIX: For selected shapes, disable camera-distance culling
+      // This ensures all indicators stay visible regardless of zoom level
+      // For other cases (drawing, dragging), use normal distance culling for performance
+      if (!isShowingSelectedShape) {
+        const distance = cameraPosition.distanceTo(
+          new THREE.Vector3(snapPoint.position.x, 0, snapPoint.position.y)
+        );
 
-      // Cull distant points
-      if (distance > maxDistance) {
-        child.visible = false;
-        return;
+        // Cull distant points when not showing selected shape
+        if (distance > maxDistance) {
+          child.visible = false;
+          return;
+        }
       }
 
       child.visible = true;
 
-      // Fade based on distance
-      const fadeStart = maxDistance * 0.7;
-      if (distance > fadeStart) {
-        const fadeOpacity = 1 - (distance - fadeStart) / (maxDistance - fadeStart);
-        if (child.material && 'opacity' in child.material) {
-          (child.material as THREE.Material & { opacity: number }).opacity = fadeOpacity * (
-            snapPoint.type === 'grid' ? 0.6 : 0.8
-          );
-        }
-      } else {
-        if (child.material && 'opacity' in child.material) {
-          (child.material as THREE.Material & { opacity: number }).opacity = snapPoint.type === 'grid' ? 0.6 : 0.8;
-        }
+      // CONSISTENCY FIX: All indicators use same opacity - no distance-based fading
+      if (child.material && 'opacity' in child.material) {
+        (child.material as THREE.Material & { opacity: number }).opacity = UNIFORM_OPACITY;
       }
     });
   });
 
+  // Get resize state
+  const isResizeMode = useAppStore(state => state.drawing.isResizeMode);
+
   // Show indicators when:
   // 1. Actively drawing or dragging shapes
   // 2. Hovering with a drawing tool active (rectangle, circle, polyline, line, measure)
+  // 3. In resize mode (showing resize handles) - so user can see snap points before dragging
+  // 4. Actively resizing (dragging a resize handle) - CRITICAL for resize snap to work
+  // 5. A shape is selected - CRITICAL so users can see all snap points on selected shapes
   const isDrawingTool = ['rectangle', 'circle', 'polyline', 'line', 'measure'].includes(activeTool);
   const isHoveringWithDrawingTool = isDrawingTool && cursorPosition !== null;
-  const shouldShowIndicators = (isDrawing || isDragging || isHoveringWithDrawingTool) && snapping.config.enabled;
+  const isShapeSelected = selectedShapeIds && selectedShapeIds.length > 0;
+  const shouldShowIndicators = (isDrawing || isDragging || isResizeMode || isActivelyResizing || isHoveringWithDrawingTool || isShapeSelected) && snapping.config.enabled;
 
   if (!shouldShowIndicators) return null;
 

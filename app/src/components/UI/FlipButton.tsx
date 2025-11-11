@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icon';
 
 interface FlipButtonProps {
@@ -9,7 +10,20 @@ interface FlipButtonProps {
 export const FlipButton: React.FC<FlipButtonProps> = ({ disabled, onFlip }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<'horizontal' | 'vertical' | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Update dropdown position when opened
+  useEffect(() => {
+    if (dropdownOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    }
+  }, [dropdownOpen]);
 
   // Set data attribute to hide ShapeDimensions when dropdown is open
   useEffect(() => {
@@ -29,7 +43,11 @@ export const FlipButton: React.FC<FlipButtonProps> = ({ disabled, onFlip }) => {
     if (!dropdownOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const isInsideContainer = containerRef.current?.contains(target);
+      const isInsideDropdown = dropdownRef.current?.contains(target);
+
+      if (!isInsideContainer && !isInsideDropdown) {
         setDropdownOpen(false);
       }
     };
@@ -52,13 +70,31 @@ export const FlipButton: React.FC<FlipButtonProps> = ({ disabled, onFlip }) => {
     return () => document.removeEventListener('keydown', handleEsc);
   }, [dropdownOpen]);
 
+  // Close dropdown when modal opens
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    const observer = new MutationObserver(() => {
+      if (document.body.hasAttribute('data-modal-open')) {
+        setDropdownOpen(false);
+      }
+    });
+
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-modal-open'],
+    });
+
+    return () => observer.disconnect();
+  }, [dropdownOpen]);
+
   const handleFlip = (direction: 'horizontal' | 'vertical') => {
     onFlip(direction);
     setDropdownOpen(false);
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block', zIndex: 5000 }}>
       {/* Main button */}
       <button
         disabled={disabled}
@@ -98,22 +134,23 @@ export const FlipButton: React.FC<FlipButtonProps> = ({ disabled, onFlip }) => {
         <span style={{ marginTop: '4px' }}>Flip</span>
       </button>
 
-      {/* Dropdown menu */}
-      {dropdownOpen && !disabled && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          marginTop: '4px',
-          backgroundColor: '#FFFFFF',
-          border: '1px solid #D1D5DB',
-          borderRadius: '6px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-          zIndex: 9999,
-          minWidth: '220px',
-          overflow: 'hidden',
-          animation: 'fadeIn 200ms ease'
-        }}>
+      {/* Dropdown menu - rendered via Portal */}
+      {dropdownOpen && !disabled && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #D1D5DB',
+            borderRadius: '6px',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            zIndex: 5001,
+            minWidth: '220px',
+            overflow: 'hidden',
+            animation: 'fadeIn 200ms ease'
+          }}>
           {/* Horizontal option */}
           <button
             onClick={() => handleFlip('horizontal')}
@@ -163,7 +200,8 @@ export const FlipButton: React.FC<FlipButtonProps> = ({ disabled, onFlip }) => {
             </div>
             <span style={{ color: '#6B7280', fontSize: '12px' }}>Shift+V</span>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Inline fadeIn animation */}

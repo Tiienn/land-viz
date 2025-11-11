@@ -37,11 +37,22 @@ export class SnapGrid {
 
     // Skip snap point generation for incomplete shapes
     // Rectangle needs at least 2 points, circle needs 2 points, other shapes need at least 2 points for meaningful snapping
-    const minPointsRequired = shape.type === 'polyline' ? 1 : 2;
+    const minPointsRequired = (shape.type === 'polyline' || shape.type === 'line') ? 1 : 2;
     if (shape.points.length < minPointsRequired) return snapPoints;
 
     // Apply rotation if exists
-    const points = this.applyRotation(shape.points, shape.rotation);
+    let points = this.applyRotation(shape.points, shape.rotation);
+
+    // CRITICAL FIX: For rectangles in 2-point format, expand to all 4 corners for endpoint snapping
+    if (shape.type === 'rectangle' && points.length === 2) {
+      const [topLeft, bottomRight] = points;
+      points = [
+        { x: topLeft.x, y: topLeft.y },        // 0: Top-left
+        { x: bottomRight.x, y: topLeft.y },    // 1: Top-right
+        { x: bottomRight.x, y: bottomRight.y }, // 2: Bottom-right
+        { x: topLeft.x, y: bottomRight.y }      // 3: Bottom-left
+      ];
+    }
 
     // Endpoint snapping
     points.forEach((point, index) => {
@@ -57,7 +68,45 @@ export class SnapGrid {
 
     // Midpoint snapping for line segments
     // For closed shapes (rectangle, polygon), include the closing segment
-    const isClosedShape = shape.type === 'rectangle' || shape.type === 'polygon';
+    // Also check if polyline forms a closed loop
+    let isClosedShape = shape.type === 'rectangle' || shape.type === 'polygon';
+
+    // For polylines and lines with 3+ points, check if they form a closed loop
+    // Smart detection handles both precise closures and intentional "visual" closures
+    if ((shape.type === 'polyline' || shape.type === 'line') && points.length >= 3) {
+      const first = points[0];
+      const last = points[points.length - 1];
+      const distance = Math.sqrt(
+        Math.pow(last.x - first.x, 2) + Math.pow(last.y - first.y, 2)
+      );
+
+      // Calculate average edge length for better heuristic
+      let totalEdgeLength = 0;
+      for (let i = 0; i < points.length - 1; i++) {
+        const dx = points[i + 1].x - points[i].x;
+        const dy = points[i + 1].y - points[i].y;
+        totalEdgeLength += Math.sqrt(dx * dx + dy * dy);
+      }
+      const avgEdgeLength = totalEdgeLength / (points.length - 1);
+
+      // For small polylines (3-5 points, typical user-drawn shapes),
+      // if the gap is smaller than the average edge, it's likely intentionally closed
+      // For larger polylines (6+ points), use stricter threshold
+      let threshold: number;
+      if (points.length <= 5) {
+        // Small polylines: generous threshold = 1.5x average edge length
+        // This catches triangles/quads even with sloppy closures
+        threshold = Math.max(5.0, avgEdgeLength * 1.5);
+      } else {
+        // Large polylines: stricter threshold = 50% of average edge
+        threshold = Math.max(5.0, avgEdgeLength * 0.5);
+      }
+
+      if (distance < threshold) {
+        isClosedShape = true;
+      }
+    }
+
     const segmentCount = isClosedShape ? points.length : points.length - 1;
 
     for (let i = 0; i < segmentCount; i++) {
@@ -94,12 +143,189 @@ export class SnapGrid {
       });
     }
 
-    // Grid intersection points (cursor-proximity based)
+    // Edge snapping: Find closest point on each edge (NEW FEATURE)
+    if (cursorPosition) {
+      const edgeSnapPoints = this.generateEdgeSnapPoints(shape, cursorPosition);
+      snapPoints.push(...edgeSnapPoints);
+    }
+
+    // DISABLED: Grid points during shape-to-shape snapping
+    // Grid intersection points flood the snap detection with thousands of points,
+    // making it impossible to snap to actual shape features (endpoints, midpoints, centers).
+    // Grid snapping is handled separately during drawing operations.
+    /*
     if (cursorPosition) {
       this.addNearbyGridPoints(snapPoints, cursorPosition);
     }
+    */
 
     return snapPoints;
+  }
+
+  /**
+   * Generate edge snap points - snap to closest point ON an edge, not just endpoints/midpoints
+   * This is a CAD-level feature for ultra-precise alignment
+   */
+  private generateEdgeSnapPoints(shape: Shape, cursorPosition: Point2D): SnapPoint[] {
+    const edgeSnapPoints: SnapPoint[] = [];
+
+    if (!shape.points || shape.points.length < 2) return edgeSnapPoints;
+
+    // Apply rotation if exists
+    const points = this.applyRotation(shape.points, shape.rotation);
+
+    // For closed shapes (rectangle, polygon), include the closing segment
+    // Also check if polyline forms a closed loop
+    let isClosedShape = shape.type === 'rectangle' || shape.type === 'polygon';
+
+    // For polylines and lines with 3+ points, check if they form a closed loop
+    // Use adaptive threshold based on shape size for better detection
+    if ((shape.type === 'polyline' || shape.type === 'line') && points.length >= 3) {
+      const first = points[0];
+      const last = points[points.length - 1];
+      const distance = Math.sqrt(
+        Math.pow(last.x - first.x, 2) + Math.pow(last.y - first.y, 2)
+      );
+
+      // Calculate bounding box diagonal for adaptive threshold
+      const xs = points.map(p => p.x);
+      const ys = points.map(p => p.y);
+      const width = Math.max(...xs) - Math.min(...xs);
+      const height = Math.max(...ys) - Math.min(...ys);
+      const diagonal = Math.sqrt(width * width + height * height);
+
+      // Consider closed if endpoints are within 5% of the diagonal OR within 2 meters
+      const adaptiveThreshold = Math.max(2.0, diagonal * 0.05);
+
+      if (distance < adaptiveThreshold) {
+        isClosedShape = true;
+      }
+    }
+
+    const segmentCount = isClosedShape ? points.length : points.length - 1;
+
+    for (let i = 0; i < segmentCount; i++) {
+      const p1 = points[i];
+      const p2 = points[(i + 1) % points.length];
+
+      // Find closest point on this edge segment
+      const closestPoint = this.closestPointOnLineSegment(cursorPosition, p1, p2);
+      const distance = Math.sqrt(
+        Math.pow(closestPoint.x - cursorPosition.x, 2) +
+        Math.pow(closestPoint.y - cursorPosition.y, 2)
+      );
+
+      // Only create edge snap if cursor is close to the edge (within snap distance)
+      // and the closest point is not too close to endpoints (avoid duplicate with endpoint snaps)
+      const distToP1 = Math.sqrt(Math.pow(closestPoint.x - p1.x, 2) + Math.pow(closestPoint.y - p1.y, 2));
+      const distToP2 = Math.sqrt(Math.pow(closestPoint.x - p2.x, 2) + Math.pow(closestPoint.y - p2.y, 2));
+
+      // Only add edge snap if it's not too close to endpoints (>0.5 units from endpoints)
+      if (distance <= this.snapDistance && distToP1 > 0.5 && distToP2 > 0.5) {
+        edgeSnapPoints.push({
+          id: `${shape.id}_edge_snap_${i}`,
+          position: closestPoint,
+          type: 'edge',
+          strength: 0.6,  // Lower than endpoint/midpoint but higher than extension
+          shapeId: shape.id,
+          metadata: {
+            description: `Edge ${i + 1} snap`,
+            edgeIndex: i,
+            edgeStart: p1,
+            edgeEnd: p2
+          }
+        });
+      }
+
+      // PERPENDICULAR SNAP: Detect if cursor is creating perpendicular angle with this edge
+      const perpendicularPoint = this.findPerpendicularSnapPoint(cursorPosition, p1, p2, shape.id, i);
+      if (perpendicularPoint) {
+        edgeSnapPoints.push(perpendicularPoint);
+      }
+    }
+
+    return edgeSnapPoints;
+  }
+
+  /**
+   * Calculate closest point on a line segment to a given point
+   * This is the core algorithm for edge snapping
+   */
+  private closestPointOnLineSegment(point: Point2D, lineStart: Point2D, lineEnd: Point2D): Point2D {
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+
+    // If line segment is a point, return that point
+    if (dx === 0 && dy === 0) {
+      return { x: lineStart.x, y: lineStart.y };
+    }
+
+    // Calculate parameter t for closest point on infinite line
+    // t = 0 means lineStart, t = 1 means lineEnd
+    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy);
+
+    // Clamp t to [0, 1] to stay on line segment
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    return {
+      x: lineStart.x + clampedT * dx,
+      y: lineStart.y + clampedT * dy
+    };
+  }
+
+  /**
+   * Find perpendicular snap point if cursor is creating ~90° angle with an edge
+   * CAD-style perpendicular snapping for precise right angles
+   */
+  private findPerpendicularSnapPoint(
+    cursorPosition: Point2D,
+    edgeStart: Point2D,
+    edgeEnd: Point2D,
+    shapeId: string,
+    edgeIndex: number
+  ): SnapPoint | null {
+    // Calculate vector from edge start to cursor
+    const toCursor = {
+      x: cursorPosition.x - edgeStart.x,
+      y: cursorPosition.y - edgeStart.y
+    };
+
+    // Calculate edge vector
+    const edgeVector = {
+      x: edgeEnd.x - edgeStart.x,
+      y: edgeEnd.y - edgeStart.y
+    };
+
+    // Calculate dot product to check angle
+    const dotProduct = toCursor.x * edgeVector.x + toCursor.y * edgeVector.y;
+    const edgeLengthSq = edgeVector.x * edgeVector.x + edgeVector.y * edgeVector.y;
+
+    if (edgeLengthSq === 0) return null;
+
+    // Calculate angle between vectors
+    const cursorLengthSq = toCursor.x * toCursor.x + toCursor.y * toCursor.y;
+    const cosAngle = dotProduct / Math.sqrt(edgeLengthSq * cursorLengthSq);
+    const angleDegrees = Math.acos(Math.max(-1, Math.min(1, cosAngle))) * (180 / Math.PI);
+
+    // Check if angle is close to 90° (perpendicular) - within 5° tolerance
+    if (Math.abs(angleDegrees - 90) < 5) {
+      // Create perpendicular snap point at cursor position
+      return {
+        id: `${shapeId}_perpendicular_${edgeIndex}`,
+        position: { x: cursorPosition.x, y: cursorPosition.y },
+        type: 'perpendicular',
+        strength: 0.5,  // Medium-low strength
+        shapeId: shapeId,
+        metadata: {
+          description: `Perpendicular to edge ${edgeIndex + 1}`,
+          angle: angleDegrees,
+          edgeStart: edgeStart,
+          edgeEnd: edgeEnd
+        }
+      };
+    }
+
+    return null;
   }
 
   /**
@@ -244,11 +470,29 @@ export class SnapGrid {
   updateSnapPoints(shapes: Shape[], cursorPosition?: Point2D): void {
     // Throttle updates to 60fps for performance
     const now = performance.now();
-    if (now - this.lastUpdateTime < this.UPDATE_INTERVAL) {
+    const timeSinceLastUpdate = now - this.lastUpdateTime;
+
+    if (timeSinceLastUpdate < this.UPDATE_INTERVAL) {
       return;
     }
-    this.lastUpdateTime = now;
 
+    this.lastUpdateTime = now;
+    this.performUpdate(shapes, cursorPosition);
+  }
+
+  /**
+   * Force update snap points, bypassing throttle
+   * Used when starting new operations that require fresh snap data
+   */
+  forceUpdate(shapes: Shape[], cursorPosition?: Point2D): void {
+    this.lastUpdateTime = performance.now();
+    this.performUpdate(shapes, cursorPosition);
+  }
+
+  /**
+   * Perform the actual grid update (shared by updateSnapPoints and forceUpdate)
+   */
+  private performUpdate(shapes: Shape[], cursorPosition?: Point2D): void {
     // Clear existing grid
     this.grid.clear();
 
@@ -275,13 +519,14 @@ export class SnapGrid {
 
   /**
    * Find nearest snap point to given position
+   * Prioritizes higher-strength snap points (corners/endpoints) when distances are similar
    */
   findNearestSnapPoint(position: Point2D, maxDistance?: number): SnapPoint | null {
     const searchDistance = maxDistance || this.snapDistance;
     const nearbyKeys = this.getNearbyGridKeys(position, Math.ceil(searchDistance / this.cellSize));
 
     let nearestSnapPoint: SnapPoint | null = null;
-    let nearestDistance = searchDistance;
+    let nearestDistance = Infinity;
 
     nearbyKeys.forEach(key => {
       const snapPoints = this.grid.get(key) || [];
@@ -292,9 +537,29 @@ export class SnapGrid {
           Math.pow(position.y - snapPoint.position.y, 2)
         );
 
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearestSnapPoint = snapPoint;
+        // Only consider points within search distance
+        if (distance <= searchDistance) {
+          if (!nearestSnapPoint) {
+            // First valid snap point found
+            nearestSnapPoint = snapPoint;
+            nearestDistance = distance;
+          } else {
+            // PRIORITY SNAP: If distances are similar (within 3 units), prefer higher strength
+            const distanceDiff = Math.abs(distance - nearestDistance);
+
+            if (distanceDiff < 3.0) {
+              // Distances are similar, prefer higher-strength snap point (corners over edges)
+              if (snapPoint.strength > nearestSnapPoint.strength) {
+                nearestSnapPoint = snapPoint;
+                nearestDistance = distance;
+              }
+              // If equal or lower strength, keep the current one
+            } else if (distance < nearestDistance) {
+              // New point is significantly closer (>3 units), use it regardless of strength
+              nearestSnapPoint = snapPoint;
+              nearestDistance = distance;
+            }
+          }
         }
       });
     });

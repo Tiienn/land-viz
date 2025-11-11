@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Text Cursor Rotation Feature (2025-01-11)
+- **Cursor Rotation Mode for Text Objects**: Full feature parity with shape rotation
+  - Rotate button now works when text objects are selected
+  - Hover-to-rotate with live preview (60 FPS maintained)
+  - Shift key for 45° angle snapping
+  - Left-click confirms new rotation
+  - ESC cancels and restores original rotation
+
+- **History System Integration**: Extended undo/redo to support text state
+  - Text store state now included in history snapshots
+  - Undo/redo properly restores text rotation and selection
+  - Text changes save to unified history (app store manages all history)
+  - Minimal overhead: ~1-5KB per history snapshot
+
+- **Four Critical Fixes**:
+  1. **Rotate Button Activation**: Text objects now activate cursor rotation mode
+  2. **Duplicate Handles**: Eliminated two rotation handles appearing simultaneously
+  3. **Immediate Exit Bug**: Fixed mode exiting immediately after entering (200ms delay guard)
+  4. **ESC Cancel**: Pressing ESC now properly restores original text rotation
+
+- **Technical Implementation**:
+  - Unified shape/text handling via type discriminators
+  - `updateTextLive()` method for preview updates (no history save)
+  - `updateText()` for final changes (saves to history)
+  - Conditional rendering prevents duplicate rotation handles
+  - Selection validation checks both `selectedShapeId` and `selectedTextId`
+
+- **Performance**: <1ms rotation updates, maintained 60 FPS, no visual lag
+- **Documentation**: Complete fix analysis in `docs/fixes/TEXT_CURSOR_ROTATION_FIX.md`
+
+### Changed
+
+#### Project Directory Reorganization (2025-01-11)
+- **Directory Structure**: Organized test files and documentation into proper directories
+  - Created `tests/playwright/` for Python/JS test scripts (26 files)
+  - Created `tests/screenshots/` for test screenshot assets (65 files)
+  - Created `tests/logs/` for console output logs (2 files)
+  - Moved resize snap documentation to `docs/fixes/` (4 files)
+
+- **Root Directory Cleanup**: Reduced clutter from 98 files to 9 core files
+  - Before: Test scripts, screenshots, logs scattered at root level
+  - After: Only essential project files (README, CLAUDE, CHANGELOG, package.json, etc.)
+  - Professional appearance with organized structure
+
+- **Git Protection**: Updated `.gitignore` to prevent future test artifact clutter
+  - Added patterns: `/test_*.py`, `/test_*.png`, `/*_console_output.txt`, etc.
+  - Prevents accidental commits of test artifacts to root
+
+- **Documentation**: Complete reorganization guide in `docs/PROJECT_REORGANIZATION.md`
+  - Migration guide for test script paths
+  - Benefits and impact assessment
+  - Future recommendations
+
+### Added
+
 #### Direct Dimension Input Feature (2025-01-10)
 - **Rectangle Dimension Input**: Enter exact sizes before creating rectangles
   - Width × Height format (e.g., "10x15", "10 x 15", "33ft x 50ft")

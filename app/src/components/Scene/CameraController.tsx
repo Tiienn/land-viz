@@ -184,13 +184,20 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
 
       resetCamera: (duration = 1000) => {
         // Reset to the initial camera position based on current mode
-        if (is2DMode && initial2DCameraState.current.captured) {
-          // Reset to initial 2D camera state
+        if (is2DMode) {
+          // Always reset to fixed default 2D position (not captured state)
+          // This ensures consistent reset behavior regardless of where camera was initially
           animateCamera(
-            initial2DCameraState.current.position.clone(),
-            initial2DCameraState.current.target.clone(),
+            new Vector3(0, 100, 0.1),
+            new Vector3(0, 0, 0),
             duration
           );
+          // Reset zoom to 1.0 in 2D mode
+          if (camera && 'zoom' in camera) {
+            camera.zoom = 1.0;
+            camera.updateProjectionMatrix();
+            setZoom2D(1.0);
+          }
         } else if (!is2DMode && initial3DCameraState.current.captured) {
           // Reset to initial 3D camera state
           animateCamera(
@@ -199,22 +206,12 @@ const CameraController = forwardRef<CameraControllerRef, CameraControllerProps>(
             duration
           );
         } else {
-          // Fallback to default positions if initial state not captured yet
-          if (is2DMode) {
-            // Default 2D orthographic view from top
-            animateCamera(
-              new Vector3(0, 100, 0.1),
-              new Vector3(0, 0, 0),
-              duration
-            );
-          } else {
-            // Default 3D perspective view
-            animateCamera(
-              new Vector3(0, 80, 80),
-              new Vector3(0, 0, 0),
-              duration
-            );
-          }
+          // Fallback to default 3D position if initial state not captured yet
+          animateCamera(
+            new Vector3(0, 80, 80),
+            new Vector3(0, 0, 0),
+            duration
+          );
         }
       },
 

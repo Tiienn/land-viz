@@ -6,6 +6,10 @@ import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { logger } from '@/utils/logger';
 import { tokens } from '@/styles/tokens';
+import { SnapGrid } from '@/utils/SnapGrid';
+
+// Create SnapGrid instance for resize snapping
+const resizeSnapGrid = new SnapGrid(10, 2);
 
 // Minimum rectangle constraints to prevent degenerate shapes
 const MIN_RECTANGLE_AREA = 10; // 10 m² minimum area
@@ -309,16 +313,16 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     // For polylines and other shapes, apply transform to corner handles
     // SIMPLIFIED: Apply transforms in correct order: rotate first, then drag
     let transformedPoints = renderPoints;
-    
+
     // Apply drag offset if shape is being dragged
     const isBeingDragged = globalDragState.isDragging && globalDragState.draggedShapeId === resizingShape.id;
     if (isBeingDragged && globalDragState.startPosition && globalDragState.currentPosition) {
       const offsetX = globalDragState.currentPosition.x - globalDragState.startPosition.x;
       const offsetY = globalDragState.currentPosition.y - globalDragState.startPosition.y;
-      
+
       // First apply rotation to original points (if any)
       const rotatedPoints = applyRotationTransform(renderPoints, resizingShape.rotation);
-      
+
       // Then apply drag offset to rotated points
       transformedPoints = rotatedPoints.map(point => ({
         x: point.x + offsetX,
@@ -328,7 +332,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
       // Normal case: just apply rotation to original points
       transformedPoints = applyRotationTransform(renderPoints, resizingShape.rotation);
     }
-    
+
     return { corners: transformedPoints, edges: [], allHandles: transformedPoints };
   }, [resizingShape, globalDragState]);
 
@@ -663,12 +667,22 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
   }, [maintainRectangleAspectRatio]);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
+    // DEBUG: Log every pointer move during resize
+    logger.info('🖱️ RESIZE handlePointerMove called');
+
     if (!dragState.current.isDragging ||
         !dragState.current.handleType ||
         dragState.current.handleIndex === null ||
         !resizingShape ||
         !dragState.current.originalPoints ||
         (dragState.current.pointerId !== null && event.pointerId !== dragState.current.pointerId)) {
+      logger.warn('❌ RESIZE early return:', {
+        isDragging: dragState.current.isDragging,
+        handleType: dragState.current.handleType,
+        handleIndex: dragState.current.handleIndex,
+        hasResizingShape: !!resizingShape,
+        hasOriginalPoints: !!dragState.current.originalPoints
+      });
       return;
     }
 
@@ -745,6 +759,253 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         // For polylines, only corner dragging is supported
         if (dragState.current.handleType === 'corner') {
           newPoints[dragState.current.handleIndex] = newPoint;
+        }
+      }
+
+      // CRITICAL: Always update cursor position for snap indicators (even if snap disabled)
+      if (dragState.current.handleIndex !== null) {
+        logger.info('✅ RESIZE handle index valid:', dragState.current.handleIndex);
+
+        // Get the handle position that we're dragging (in world space for snap detection)
+        // CRITICAL FIX: For rectangles, newPoints is in 2-point format but handleIndex is in 4-corner format
+        // Convert 2-point to 4-corner format to get correct handle position
+        let handleWorldPos: Point2D | undefined;
+
+        if (resizingShape.type === 'rectangle' && newPoints.length === 2) {
+          // Convert 2-point [topLeft, bottomRight] to 4-corner format
+          const [topLeft, bottomRight] = newPoints;
+          const fourCorners = [
+            { x: topLeft.x, y: topLeft.y },        // 0: Top-left
+            { x: bottomRight.x, y: topLeft.y },    // 1: Top-right
+            { x: bottomRight.x, y: bottomRight.y }, // 2: Bottom-right
+            { x: topLeft.x, y: bottomRight.y }      // 3: Bottom-left
+          ];
+          handleWorldPos = fourCorners[dragState.current.handleIndex];
+        } else {
+          // For circles and polylines, use direct indexing
+          handleWorldPos = newPoints[dragState.current.handleIndex];
+        }
+
+        logger.info('📍 RESIZE handle world position:', handleWorldPos);
+
+        // Only proceed with snap logic if handle position is valid
+        if (handleWorldPos) {
+          // If this is a rotated single-selection shape, convert local handle position back to world space
+          if (dragState.current.shapeRotation && dragState.current.shapeRotation.angle !== 0 && dragState.current.isSingleSelection) {
+            const rotation = dragState.current.shapeRotation;
+            const angleRadians = (rotation.angle * Math.PI) / 180;
+            const cos = Math.cos(angleRadians);
+            const sin = Math.sin(angleRadians);
+            const dx = handleWorldPos.x - rotation.center.x;
+            const dy = handleWorldPos.y - rotation.center.y;
+            handleWorldPos = {
+              x: rotation.center.x + (dx * cos - dy * sin),
+              y: rotation.center.y + (dx * sin + dy * cos)
+            };
+          }
+
+          // REAL-TIME MAGNETIC SNAP: Apply snap correction during resize
+          const drawing = useAppStore.getState().drawing;
+          const shapes = useAppStore.getState().shapes;
+          let snapConfig = drawing.snapping?.config;
+
+          // WORKAROUND: Force missing snap types (perpendicular, edge) if not present
+          // This fixes the localStorage bug where old state is restored
+          if (snapConfig && snapConfig.activeTypes &&
+              (!snapConfig.activeTypes.has('perpendicular') || !snapConfig.activeTypes.has('edge'))) {
+            const fixedActiveTypes = new Set(['grid', 'endpoint', 'midpoint', 'center', 'edge', 'perpendicular']);
+            snapConfig = {
+              ...snapConfig,
+              activeTypes: fixedActiveTypes
+            };
+
+            // CRITICAL FIX: Update the store's activeTypes so SnapDistanceIndicator can see them
+            // This enables the badge to show during resize drag
+            useAppStore.setState((prevState) => ({
+              drawing: {
+                ...prevState.drawing,
+                snapping: {
+                  ...prevState.drawing.snapping,
+                  config: {
+                    ...prevState.drawing.snapping.config,
+                    activeTypes: fixedActiveTypes
+                  }
+                }
+              }
+            }), false, 'workaround-fix-activeTypes');
+          }
+
+          const snapActive = snapConfig?.enabled && !event.shiftKey;
+
+          // CRITICAL DEBUG: Log what we're actually reading from the store
+          const typesArray = snapConfig?.activeTypes ? Array.from(snapConfig.activeTypes) : [];
+          logger.info('🔍 STORE READ - activeTypes:', typesArray.join(', '));
+          logger.info('🔍 STORE READ - count:', typesArray.length);
+
+          logger.info('⚙️ RESIZE snap config:', {
+            snapEnabled: snapConfig?.enabled,
+            shiftKey: event.shiftKey,
+            snapActive,
+            otherShapesCount: shapes.filter(s => s.id !== resizingShape.id).length
+          });
+
+          if (snapActive) {
+          try {
+            // Get other shapes (exclude resizing shape)
+            const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+
+            // Run snap detection for the handle position
+            const snapRadius = snapConfig.snapRadius || 25;
+            resizeSnapGrid.setSnapDistance(snapRadius);
+            resizeSnapGrid.updateSnapPoints(otherShapes, handleWorldPos);
+
+            // CRITICAL FIX: Update store's availableSnapPoints so SnapIndicator can see them
+            // Get all snap points within a large radius (100 units) to show indicators
+            const availableSnapPoints = resizeSnapGrid.findSnapPointsInRadius(handleWorldPos, 100);
+
+            const nearestSnapPoint = resizeSnapGrid.findNearestSnapPoint(handleWorldPos, snapRadius);
+
+            // Calculate distance to nearest snap point (for badge display threshold)
+            const snapPointDistance = nearestSnapPoint ? Math.sqrt(
+              Math.pow(nearestSnapPoint.position.x - handleWorldPos.x, 2) +
+              Math.pow(nearestSnapPoint.position.y - handleWorldPos.y, 2)
+            ) : Infinity;
+
+
+            // Apply magnetic snap if valid snap found
+            if (nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type)) {
+              // Calculate snap offset in world space
+              const magneticOffset = {
+                x: nearestSnapPoint.position.x - handleWorldPos.x,
+                y: nearestSnapPoint.position.y - handleWorldPos.y
+              };
+
+              // Apply offset to the handle position (convert offset to local space if needed)
+              let localOffset = magneticOffset;
+              if (dragState.current.shapeRotation && dragState.current.shapeRotation.angle !== 0 && dragState.current.isSingleSelection) {
+                const rotation = dragState.current.shapeRotation;
+                const angleRadians = (-rotation.angle * Math.PI) / 180;
+                const cos = Math.cos(angleRadians);
+                const sin = Math.sin(angleRadians);
+                localOffset = {
+                  x: magneticOffset.x * cos - magneticOffset.y * sin,
+                  y: magneticOffset.x * sin + magneticOffset.y * cos
+                };
+              }
+
+              // Apply the snap offset to newPoint and recalculate
+              const snappedPoint: Point2D = {
+                x: newPoint.x + localOffset.x,
+                y: newPoint.y + localOffset.y
+              };
+
+              // Recalculate newPoints with snapped position
+              if (resizingShape.type === 'rectangle') {
+                newPoints = calculateRectangleResize(
+                  dragState.current.originalPoints,
+                  dragState.current.handleType,
+                  dragState.current.handleIndex,
+                  snappedPoint,
+                  maintainAspect
+                );
+              } else if (resizingShape.type === 'circle') {
+                if (dragState.current.handleType === 'corner') {
+                  newPoints = calculateCircleResize(
+                    dragState.current.originalPoints,
+                    dragState.current.handleIndex,
+                    snappedPoint
+                  );
+                } else {
+                  newPoints = calculateEllipseResize(
+                    dragState.current.originalPoints,
+                    dragState.current.handleIndex,
+                    snappedPoint
+                  );
+                }
+              } else {
+                if (dragState.current.handleType === 'corner') {
+                  newPoints[dragState.current.handleIndex] = snappedPoint;
+                }
+              }
+
+              // CRITICAL FIX: After magnetic snap, the handle is AT the snap point
+              // So the cursor position should be the snap point position (world coords)
+              const snappedWorldPos = nearestSnapPoint.position;
+
+              // Only set activeSnapPoint when conditions are met
+              // 1. Close enough for visible feedback (< 3 units before snap)
+              // 2. NOT a perpendicular/edge snap at distance 0 (those are alignment helpers)
+              let shouldShowBadge = snapPointDistance < 3.0;
+
+              // EXCEPTION: Don't show badge for perpendicular/edge snaps at distance 0
+              if ((nearestSnapPoint.type === 'perpendicular' || nearestSnapPoint.type === 'edge') &&
+                  snapPointDistance < 0.1) {
+                shouldShowBadge = false;
+              }
+
+
+              // BATCH UPDATE: Update cursor position to SNAPPED position for accurate badge display
+              useAppStore.setState((prevState) => ({
+                drawing: {
+                  ...prevState.drawing,
+                  cursorPosition: snappedWorldPos,  // Use snapped position, not original handleWorldPos
+                  snapping: {
+                    ...prevState.drawing.snapping,
+                    availableSnapPoints,
+                    activeSnapPoint: shouldShowBadge ? nearestSnapPoint : null
+                  }
+                }
+              }), false, 'resizeSnapActive');
+            } else {
+              // Snap NOT applied - log reason
+              if (nearestSnapPoint) {
+                logger.info('❌ SNAP NOT APPLIED - Type not active:', nearestSnapPoint.type);
+              }
+              // BATCH UPDATE: Update cursor position, available snap points, AND clear active snap
+              useAppStore.setState((prevState) => ({
+                drawing: {
+                  ...prevState.drawing,
+                  cursorPosition: handleWorldPos,
+                  snapping: {
+                    ...prevState.drawing.snapping,
+                    availableSnapPoints,
+                    activeSnapPoint: null
+                  }
+                }
+              }), false, 'resizeSnapInactive');
+            }
+          } catch (error) {
+            logger.warn('⚠️ Resize snap error, continuing without snap:', error);
+            // Still update cursor position even if snap fails
+            useAppStore.setState((prevState) => ({
+              drawing: {
+                ...prevState.drawing,
+                cursorPosition: handleWorldPos,
+                snapping: {
+                  ...prevState.drawing.snapping,
+                  availableSnapPoints: [],
+                  activeSnapPoint: null
+                }
+              }
+            }), false, 'resizeSnapError');
+          }
+        } else {
+          // Snap disabled - clear snap points
+          useAppStore.setState((prevState) => ({
+            drawing: {
+              ...prevState.drawing,
+              cursorPosition: handleWorldPos,
+              snapping: {
+                ...prevState.drawing.snapping,
+                availableSnapPoints: [],
+                activeSnapPoint: null
+              }
+            }
+          }), false, 'resizeNoSnap');
+        }
+        } else {
+          // Handle position is invalid - log warning
+          logger.warn('⚠️ Handle position is undefined, skipping snap logic for this frame');
         }
       }
 
@@ -880,6 +1141,134 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         logger.warn('⚠️ Using fallback to original points - resize may be lost');
       }
 
+      // SNAP-ON-RELEASE: Apply snap correction to resize handle before finalizing
+      let snapConfig = drawing.snapping?.config;
+
+      // WORKAROUND: Force missing snap types (perpendicular, edge) if not present
+      if (snapConfig && snapConfig.activeTypes &&
+          (!snapConfig.activeTypes.has('perpendicular') || !snapConfig.activeTypes.has('edge'))) {
+        snapConfig = {
+          ...snapConfig,
+          activeTypes: new Set(['grid', 'endpoint', 'midpoint', 'center', 'edge', 'perpendicular'])
+        };
+      }
+
+      const snapActive = snapConfig?.enabled && !event.shiftKey;
+
+      if (snapActive && finalPoints && dragState.current.handleIndex !== null) {
+        try {
+          const handleIndex = dragState.current.handleIndex;
+
+          // CRITICAL FIX: For rectangles, convert 2-point to 4-corner format to get handle position
+          let handlePosition: Point2D | undefined;
+
+          if (resizingShape.type === 'rectangle' && finalPoints.length === 2) {
+            // Convert 2-point [topLeft, bottomRight] to 4-corner format
+            const [topLeft, bottomRight] = finalPoints;
+            const fourCorners = [
+              { x: topLeft.x, y: topLeft.y },        // 0: Top-left
+              { x: bottomRight.x, y: topLeft.y },    // 1: Top-right
+              { x: bottomRight.x, y: bottomRight.y }, // 2: Bottom-right
+              { x: topLeft.x, y: bottomRight.y }      // 3: Bottom-left
+            ];
+            handlePosition = fourCorners[handleIndex];
+          } else {
+            // For circles and polylines, use direct indexing
+            handlePosition = finalPoints[handleIndex];
+          }
+
+          if (handlePosition) {
+            // Get other shapes (exclude resizing shape)
+            const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+
+            // Run snap detection for the handle position
+            const snapRadius = snapConfig.snapRadius || 15;
+            resizeSnapGrid.setSnapDistance(snapRadius);
+            resizeSnapGrid.updateSnapPoints(otherShapes, handlePosition);
+
+            const nearestSnapPoint = resizeSnapGrid.findNearestSnapPoint(handlePosition, snapRadius);
+
+            // Apply snap correction if valid snap found
+            if (nearestSnapPoint && snapConfig.activeTypes?.has?.(nearestSnapPoint.type)) {
+              logger.info('🔧 BEFORE snap correction:', {
+                handleIndex,
+                finalPoints: JSON.stringify(finalPoints),
+                snapPos: JSON.stringify(nearestSnapPoint.position)
+              });
+
+              // CRITICAL FIX: For rectangles, apply snap to correct corner in 2-point format
+              if (resizingShape.type === 'rectangle' && finalPoints.length === 2) {
+                const snapPos = nearestSnapPoint.position;
+
+                // Create new point objects to avoid mutation issues
+                const newTopLeft = { ...finalPoints[0] };
+                const newBottomRight = { ...finalPoints[1] };
+
+                // Update the appropriate corner based on handle index
+                if (handleIndex === 0) {
+                  // Top-left handle
+                  newTopLeft.x = snapPos.x;
+                  newTopLeft.y = snapPos.y;
+                } else if (handleIndex === 1) {
+                  // Top-right handle
+                  newTopLeft.y = snapPos.y;
+                  newBottomRight.x = snapPos.x;
+                } else if (handleIndex === 2) {
+                  // Bottom-right handle
+                  newBottomRight.x = snapPos.x;
+                  newBottomRight.y = snapPos.y;
+                } else if (handleIndex === 3) {
+                  // Bottom-left handle
+                  newTopLeft.x = snapPos.x;
+                  newBottomRight.y = snapPos.y;
+                }
+
+                // Replace finalPoints with new objects
+                finalPoints[0] = newTopLeft;
+                finalPoints[1] = newBottomRight;
+              } else {
+                // For circles and polylines, direct update
+                finalPoints[handleIndex] = nearestSnapPoint.position;
+              }
+
+              logger.info('🔧 AFTER snap correction:', {
+                handleIndex,
+                finalPoints: JSON.stringify(finalPoints)
+              });
+
+              // VISUAL FEEDBACK: Trigger snap confirmation flash
+              useAppStore.setState((prevState) => ({
+                drawing: {
+                  ...prevState.drawing,
+                  snapConfirmation: {
+                    position: nearestSnapPoint.position,
+                    color: '#7C3AED',  // Purple for resize snap (different from drag)
+                    timestamp: performance.now()
+                  }
+                }
+              }), false, 'resizeSnapConfirmation');
+
+              // Clear snap confirmation after animation duration
+              setTimeout(() => {
+                useAppStore.setState((prevState) => ({
+                  drawing: {
+                    ...prevState.drawing,
+                    snapConfirmation: null
+                  }
+                }), false, 'clearSnapConfirmation');
+              }, 500);
+
+              logger.info('✨ Resize snap-on-release applied:', {
+                snapType: nearestSnapPoint.type,
+                handleIndex: handleIndex
+              });
+            }
+          }
+        } catch (error) {
+          logger.warn('⚠️ Resize snap-on-release error:', error);
+        }
+      }
+
       // Clean up drag state IMMEDIATELY to prevent duplicate calls
       dragState.current.isDragging = false;
       dragState.current.handleType = null;
@@ -892,8 +1281,14 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
 
       // ATOMIC COMMIT: Ensure the resize is committed atomically
       if (finalPoints && finalPoints.length >= 2) {
+        logger.info('💾 COMMITTING FINAL RESIZE:', {
+          shapeId: resizingShape.id,
+          finalPoints: JSON.stringify(finalPoints),
+          pointCount: finalPoints.length
+        });
         try {
           resizeShape(resizingShape.id, finalPoints);
+          logger.info('✅ Resize committed successfully');
         } catch (error) {
           logger.error('❌ Failed to commit final resize:', error);
         }
@@ -910,6 +1305,18 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
     // Reset cursor and other states
     setCursorOverride(null);
     setMaintainAspectRatio(false);
+
+    // CLEANUP: Clear snap indicators and cursor position
+    useAppStore.setState((prevState) => ({
+      drawing: {
+        ...prevState.drawing,
+        cursorPosition: null,
+        snapping: {
+          ...prevState.drawing.snapping,
+          activeSnapPoint: null
+        }
+      }
+    }), false, 'cleanupResizeSnap');
 
     // CRITICAL FIX: Exit resize mode after successful completion
     // This allows user to immediately switch to rotation mode
@@ -930,6 +1337,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
 
   // Hide resize handles when conditions aren't met
   if (!drawing.isResizeMode || !resizingShape || activeTool !== 'select' || isMultiSelection) {
+    return null;
+  }
+
+  // Hide controls during PDF export
+  const sceneContainer = document.getElementById('scene-container');
+  if (sceneContainer?.hasAttribute('data-exporting')) {
     return null;
   }
 
@@ -968,6 +1381,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     setResizeHandle('corner', index);
                   }}
                   onPointerDown={(event) => {
+                    logger.info('🔴 CORNER HANDLE CLICKED', {index, pointerId: event.nativeEvent.pointerId});
                     event.stopPropagation();
 
                     setResizeHandle('corner', index);
@@ -1006,6 +1420,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
                     dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
 
+                    // CRITICAL FIX: Force snap grid update at the start of resize to ensure fresh data
+                    // This prevents throttling issues when doing quick successive resizes
+                    const shapes = useAppStore.getState().shapes;
+                    const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+                    resizeSnapGrid.forceUpdate(otherShapes);
+
                     // Set cursor for the entire drag operation
                     setCursorOverride(cornerCursor);
 
@@ -1017,9 +1437,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     }
 
                     // Add global listeners with capture
+                    logger.info('🎧 ATTACHING EVENT LISTENERS FOR RESIZE', {isDragging: dragState.current.isDragging});
                     document.addEventListener('pointermove', handlePointerMove, true);
                     document.addEventListener('pointerup', handlePointerUp, true);
                     document.addEventListener('pointercancel', handlePointerUp, true);
+                    logger.info('✅ EVENT LISTENERS ATTACHED');
                   }}
                   onPointerEnter={() => {
                     setHoveredHandle({type: 'corner', index});
@@ -1053,7 +1475,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const isSelected = drawing.resizeHandleType === 'edge' && drawing.resizeHandleIndex === index;
             const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
 
-            // Calculate parallel direction for this edge handle
+            // Calculate edge parallel angle (angle the edge runs along)
             const baseRotation = resizingShape.rotation?.angle || 0;
 
             // Each edge has a base parallel direction relative to unrotated rectangle:
@@ -1064,28 +1486,18 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const baseParallels = [0, 90, 180, 270];
             const parallelAngle = baseRotation + baseParallels[index];
 
-            // Normalize angle to 0-360 range
-            const normalizedAngle = ((parallelAngle % 360) + 360) % 360;
+            // Normalize rotation to 0-180° range (bars look identical at θ and θ+180°)
+            const visualRotation = ((parallelAngle % 180) + 180) % 180;
 
-            // Determine handle orientation based on final parallel direction
-            // Vertical edges (running up/down): 45-135° and 225-315°
-            // Horizontal edges (running left/right): 135-225° and 315-45°
-            const isEdgeVertical = (normalizedAngle >= 45 && normalizedAngle < 135) ||
-                                  (normalizedAngle >= 225 && normalizedAngle < 315);
+            // Calculate perpendicular angle for cursor (90° from edge direction)
+            const perpAngle = ((parallelAngle + 90) % 360 + 360) % 360;
 
-            // Set handle dimensions to create thin bar parallel to edge direction
-            let handleArgs: [number, number, number];
-            let edgeCursor: string;
-
-            if (isEdgeVertical) {
-              // Edge runs vertically - create thin vertical handle bar
-              handleArgs = [0.3, 0.3, 1.5];
-              edgeCursor = 'ew-resize'; // Cursor for horizontal resize (perpendicular to vertical edge)
-            } else {
-              // Edge runs horizontally - create thin horizontal handle bar
-              handleArgs = [1.5, 0.3, 0.3];
-              edgeCursor = 'ns-resize'; // Cursor for vertical resize (perpendicular to horizontal edge)
-            }
+            // Determine cursor based on perpendicular direction
+            // Vertical perpendicular (45-135° and 225-315°) → horizontal resize cursor
+            // Horizontal perpendicular → vertical resize cursor
+            const isVerticalPerp = (perpAngle >= 45 && perpAngle < 135) ||
+                                  (perpAngle >= 225 && perpAngle < 315);
+            const edgeCursor = isVerticalPerp ? 'ew-resize' : 'ns-resize';
 
             const rotationRadians = parallelAngle * Math.PI / 180;
 
@@ -1148,6 +1560,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
                     dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
 
+                    // CRITICAL FIX: Force snap grid update at the start of resize to ensure fresh data
+                    // This prevents throttling issues when doing quick successive resizes
+                    const shapes = useAppStore.getState().shapes;
+                    const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+                    resizeSnapGrid.forceUpdate(otherShapes);
+
                     // Set cursor for the entire drag operation
                     setCursorOverride(edgeCursor);
 
@@ -1172,14 +1590,15 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   }
                 }}
                 style={{
-                  width: isEdgeVertical ? '6px' : '22px',
-                  height: isEdgeVertical ? '22px' : '6px',
+                  width: '22px', // Always horizontal bar
+                  height: '6px',
                   borderRadius: '3px',
                   backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
                   border: '1px solid #3B82F6',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                   cursor: edgeCursor,
                   transition: 'background-color 0.15s ease',
+                  transform: `rotate(${visualRotation}deg)`, // Rotate bar to align with edge direction
                 }}
               />
               </Html>
@@ -1222,6 +1641,7 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     setResizeHandle('corner', index);
                   }}
                   onPointerDown={(event) => {
+                    logger.info('🔴 CORNER HANDLE CLICKED', {index, pointerId: event.nativeEvent.pointerId});
                     event.stopPropagation();
 
                     setResizeHandle('corner', index);
@@ -1241,6 +1661,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     dragState.current.pointerId = event.nativeEvent.pointerId;
                     dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
 
+                    // CRITICAL FIX: Force snap grid update at the start of resize to ensure fresh data
+                    // This prevents throttling issues when doing quick successive resizes
+                    const shapes = useAppStore.getState().shapes;
+                    const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+                    resizeSnapGrid.forceUpdate(otherShapes);
+
                     // Set cursor for the entire drag operation
                     setCursorOverride(cornerCursor);
 
@@ -1248,9 +1674,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                     event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
 
                     // Add global listeners with capture
+                    logger.info('🎧 ATTACHING EVENT LISTENERS FOR RESIZE', {isDragging: dragState.current.isDragging});
                     document.addEventListener('pointermove', handlePointerMove, true);
                     document.addEventListener('pointerup', handlePointerUp, true);
                     document.addEventListener('pointercancel', handlePointerUp, true);
+                    logger.info('✅ EVENT LISTENERS ATTACHED');
                   }}
                   onPointerEnter={() => {
                     setHoveredHandle({type: 'corner', index});
@@ -1284,12 +1712,22 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const isSelected = drawing.resizeHandleType === 'edge' && drawing.resizeHandleIndex === index;
             const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
 
-            // Edge handles allow oval distortion by stretching in one direction
-            let edgeCursor = 'ns-resize'; // Top/Bottom handles (0, 2) - vertical stretch
-            if (index === 1 || index === 3) edgeCursor = 'ew-resize'; // Right/Left handles (1, 3) - horizontal stretch
+            // Calculate edge parallel angle (angle the edge runs along)
+            const baseRotation = resizingShape.rotation?.angle || 0;
+            // Circle edges: Top (0) = 0°, Right (1) = 90°, Bottom (2) = 180°, Left (3) = 270°
+            const baseAngles = [0, 90, 180, 270];
+            const parallelAngle = baseRotation + baseAngles[index];
 
-            // CSS dimensions for edge handles
-            const isVerticalHandle = index === 1 || index === 3; // Right and left handles
+            // Normalize rotation to 0-180° range (bars look identical at θ and θ+180°)
+            const visualRotation = ((parallelAngle % 180) + 180) % 180;
+
+            // Calculate perpendicular angle for cursor (90° from edge direction)
+            const perpAngle = ((parallelAngle + 90) % 360 + 360) % 360;
+
+            // Determine cursor based on perpendicular direction
+            const isVerticalPerp = (perpAngle >= 45 && perpAngle < 135) ||
+                                  (perpAngle >= 225 && perpAngle < 315);
+            const edgeCursor = isVerticalPerp ? 'ew-resize' : 'ns-resize';
 
             return (
               <Html
@@ -1349,12 +1787,18 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
                   dragState.current.isSingleSelection = isSingleSelection; // Store selection type for coordinate space handling
 
+                  // CRITICAL FIX: Force snap grid update at the start of resize to ensure fresh data
+                  // This prevents throttling issues when doing quick successive resizes
+                  const shapes = useAppStore.getState().shapes;
+                  const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+                  resizeSnapGrid.forceUpdate(otherShapes);
+
                   // Set cursor for the entire drag operation
                   setCursorOverride(edgeCursor);
 
                   // Capture pointer to ensure we get all events
                   event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
-                  
+
                   // Add global listeners with capture
                   document.addEventListener('pointermove', handlePointerMove, true);
                   document.addEventListener('pointerup', handlePointerUp, true);
@@ -1373,14 +1817,15 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                   }
                 }}
                 style={{
-                  width: isVerticalHandle ? '6px' : '22px',
-                  height: isVerticalHandle ? '22px' : '6px',
+                  width: '22px', // Always horizontal bar
+                  height: '6px',
                   borderRadius: '3px',
                   backgroundColor: isSelected ? '#DDDDDD' : isHovered ? '#CCCCCC' : '#FFFFFF',
                   border: '1px solid #3B82F6',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                   cursor: edgeCursor,
                   transition: 'background-color 0.15s ease',
+                  transform: `rotate(${visualRotation}deg)`, // Rotate bar to align with edge direction
                 }}
               />
               </Html>
@@ -1389,8 +1834,8 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
         </>
       )}
 
-      {/* For polylines, show corner handles only */}
-      {resizingShape.type === 'polyline' && resizeHandles.corners.map((point, index) => {
+      {/* For polylines and lines, show corner handles only */}
+      {(resizingShape.type === 'polyline' || resizingShape.type === 'line') && resizeHandles.corners.map((point, index) => {
         const isSelected = drawing.resizeHandleType === 'corner' && drawing.resizeHandleIndex === index;
         const isHovered = hoveredHandle?.type === 'corner' && hoveredHandle?.index === index;
         
@@ -1427,6 +1872,12 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
                 dragState.current.originalPoints = [...resizingShape.points];
                 dragState.current.pointerId = event.nativeEvent.pointerId;
                 dragState.current.shapeRotation = resizingShape.rotation || null; // Store rotation for coordinate transformation
+
+                // CRITICAL FIX: Force snap grid update at the start of resize to ensure fresh data
+                // This prevents throttling issues when doing quick successive resizes
+                const shapes = useAppStore.getState().shapes;
+                const otherShapes = shapes.filter(s => s.id !== resizingShape.id);
+                resizeSnapGrid.forceUpdate(otherShapes);
 
                 // Set cursor for the entire drag operation
                 setCursorOverride('move');

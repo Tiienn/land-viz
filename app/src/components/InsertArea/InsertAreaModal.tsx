@@ -3,6 +3,7 @@ import type { AreaUnit, AreaValidation } from '../../types';
 import { validateAreaInput, getUnitLabel, analyzeGridSnapImpact, type GridSnapImpact } from '../../utils/areaCalculations';
 import { useAppStore } from '../../store/useAppStore';
 import { logger } from '../../utils/logger';
+import Icon from '../Icon';
 
 interface InsertAreaModalProps {
   isOpen: boolean;
@@ -183,6 +184,12 @@ const InsertAreaModal: React.FC<InsertAreaModalProps> = ({ isOpen, onClose, onSu
                 type="number"
                 value={areaValue}
                 onChange={(e) => setAreaValue(e.target.value)}
+                onKeyDown={(e) => {
+                  // Prevent 'e', 'E', '+', '-' which are allowed in scientific notation
+                  if (['e', 'E', '+', '-'].includes(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
                 placeholder="Enter area..."
                 autoFocus
                 disabled={isSubmitting}

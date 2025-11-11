@@ -4,12 +4,32 @@
 
 ## Complete Features (Phase 1-3) ✅
 
+### Export System 📄
+- **PDF Export**: AutoCAD-style technical drawing reports with visual preview
+  - **Page 1**: Full-page drawing preview (current view, white background, dimension labels visible)
+  - **Page 2+**: Detailed data table with selective filtering
+  - Canva-inspired export modal with filter panel
+  - 5 filter categories: Basic Info, Dimensions, Position, Visual, Metadata
+  - 15 granular sub-filters for precise control
+  - Dynamic column generation based on selected filters
+  - Select All / Deselect All quick actions
+  - Collapsible category sections
+  - Keyboard shortcut: Ctrl+E
+  - **Scene Capture**: High-resolution snapshot (2x) captures WebGL canvas + HTML dimension overlays
+  - **Multi-page support**: Automatic pagination for large datasets (30+ rows per page)
+  - **Professional formatting**: Subtle borders, alternating row colors, improved spacing
+  - **Smart pagination**: Page numbers (e.g., "Page 2 of 5") in footer
+  - Professional PDF layout with brand styling (teal #00C4CC accents)
+  - Automatic area/perimeter calculations using shoelace formula
+  - Support for all shape types (rectangles, circles, polygons, polylines, lines)
+  - Graceful degradation: Falls back to table-only if scene capture fails
+
 ### Core Features (Phase 1)
 - Modern Canva-inspired UI with unified inline panel system
 - Professional ribbon with SVG icons and tool grouping
 - Full Three.js/React Three Fiber 3D scene
 - **Drawing Tools**: Rectangle, circle, polyline, line, measurement
-- **📝 Text Tool**: Canva-style inline editing with live formatting, shape labels, full CRUD with undo/redo
+- **📝 Text Tool**: Canva-style inline editing with live formatting, shape labels, full CRUD with undo/redo, cursor rotation support
 - **📐 Direct Dimension Input**: Pre-sized shapes (e.g., "10x15", "33ft x 50ft"), radius/diameter toggle
 - **Measurement Tool**: Point-to-point distance with precision
 - **Visual Comparison**: 16+ reference objects
@@ -77,7 +97,7 @@ npm run test:coverage       # Generate coverage report
 **Performance**: Real-time monitoring with budget enforcement
 
 **Key Components**: App.tsx, SceneManager, DrawingCanvas, ShapeRenderer, RotationControls, MeasurementRenderer
-**Stores**: useDrawingStore, useComparisonStore, useConversionStore, useLayerStore, useMeasurementStore
+**Stores**: useAppStore, useTextStore, useLayerStore, useComparisonStore, useConversionStore, useMeasurementStore
 
 ## Known Issues & Solutions
 - **CSS Compilation**: Use inline styles exclusively to avoid build issues
@@ -88,11 +108,20 @@ npm run test:coverage       # Generate coverage report
 ## Controls Reference
 **Camera:** Right-drag (orbit), middle-drag (pan), wheel (zoom)
 **Drawing:** Left-click to draw/select, ESC to cancel
+**Constrained Drawing:** Hold Shift while drawing for:
+  - **Rectangles** → Perfect squares
+  - **Circles** → Radius at 0°/45°/90° angles
+  - **Lines/Polylines** → 0°/45°/90° angle snapping
+**Constrained Dragging:** Hold Shift while dragging shapes/text for:
+  - **Axis-Lock** → Movement locked to horizontal or vertical only
 **Measuring:** Measure button → click two points for distance measurement
 **Editing:** Edit button → drag sphere corners, Add/Delete corners
 **Resize:** Click shape → drag handles (Shift for aspect ratio)
 **Rotate (Drag Mode):** Select shape → drag green handle (Shift for 45° snap)
-**Rotate (Cursor Mode):** Rotate button → move cursor to rotate → left-click to confirm (Shift for 45° snap, ESC to exit)
+**Rotate (Cursor Mode):** Rotate button → move cursor to rotate → left-click to confirm (Shift for 45° snap, ESC to cancel and restore)
+  - Works for both shapes and text objects
+  - Left-click: Confirms new rotation
+  - ESC: Cancels and restores original rotation
 **Panels:** Click to expand horizontally, triangle to collapse
 **Grid:** Toggle in Properties (shows "1m snap" or "Free move")
 
@@ -103,6 +132,20 @@ npm run test:coverage       # Generate coverage report
 - **Press ? anytime** to see full keyboard shortcut reference
 
 ## Recent Fixes (January 2025)
+
+**Shift-Constrained Drawing & Dragging** ⭐⭐⭐ (November 9, 2025):
+- **New Feature**: Professional CAD-style constrained drawing and dragging with Shift modifier
+- **Drawing Constraints**:
+  - **Rectangles** → Perfect squares (uses larger dimension, Figma-style)
+  - **Circles** → Radius line snaps to 0°/45°/90° angles (45° increments)
+  - **Lines/Polylines** → Angle snapping to 0°/45°/90° (maintains distance, constrains direction)
+- **Dragging Constraints**:
+  - **Axis-Lock** → Movement locked to horizontal or vertical (Canva/Figma behavior)
+  - Works for shapes and text objects
+  - Threshold: 5 world units (meters) before axis locks
+- **Implementation**: Pure utility functions (<1ms per call), real-time preview updates, 60 FPS maintained
+- **Testing**: 57 unit tests, 100% coverage for constraint logic, TypeScript strict mode
+- Docs: `specs/017-shift-constrained-drawing/` (spec.md, plan.md, CLARIFICATIONS_SUMMARY.md)
 
 **Z-Fighting / Flickering** ⭐⭐⭐ (January 31, 2025):
 - **Critical Fix**: Eliminated 100% of shape flickering in 3D mode at all camera angles
@@ -119,6 +162,19 @@ npm run test:coverage       # Generate coverage report
 - **Performance**: 98% reduction in re-renders (60/sec → 1/sec during zoom)
 - Docs: `docs/fixes/2D_CAMERA_COMPRESSION_FIX.md`
 
+**Text Cursor Rotation** ⭐⭐⭐ (January 2025):
+- **New Feature**: Full cursor rotation mode support for text objects (matching shape behavior)
+- **Confirm/Cancel Pattern**: Left-click confirms rotation, ESC cancels and restores original
+- **History Integration**: Extended history system to include text store state in snapshots
+- **Four Major Fixes**:
+  1. Rotate button now works for text objects (unified shape/text handling)
+  2. Eliminated duplicate rotation handles (conditional rendering)
+  3. Fixed immediate exit bug (200ms delay guard + selection validation)
+  4. ESC cancel now restores original text rotation (history includes text state)
+- **Architecture**: Text store delegates to app store history, undo/redo restores text via `setState()`
+- **Performance**: <1ms rotation updates, 60 FPS maintained, minimal history overhead (~1-5KB per snapshot)
+- Docs: `docs/fixes/TEXT_CURSOR_ROTATION_FIX.md`
+
 **Text System**:
 - **Bounds Estimation** 📋: Text resize/alignment uses estimation vs. DOM measurement. See `docs/known-issues/TEXT_BOUNDS_ESTIMATION_ISSUE.md`. Workaround: Use shapes for precision.
 - **Multi-Line Editing** ⭐⭐⭐: Fixed `\n`/`<br>` conversion, cursor position (RichTextEditor.tsx)
@@ -128,6 +184,14 @@ npm run test:coverage       # Generate coverage report
 **Multi-Selection Rotation** ⭐⭐⭐:
 - Fixed handle visibility, group center rotation (Canva-style), cursor modes
 - Docs: `docs/fixes/MULTI_SELECTION_ROTATION_FIX.md`
+
+**Project Organization** ⭐ (January 2025):
+- **Directory Restructure**: Organized test files and documentation into proper directories
+- **Cleanup**: Moved 93 files from root to organized structure (tests/, docs/fixes/)
+- **Categories**: 26 test scripts → `tests/playwright/`, 65 screenshots → `tests/screenshots/`, 2 logs → `tests/logs/`
+- **Protection**: Updated .gitignore to prevent future test artifact clutter at root level
+- **Result**: Root directory reduced from 98 files to 9 core files (professional appearance)
+- Docs: `docs/PROJECT_REORGANIZATION.md`
 
 **Context Menu**: Fixed drag detection with 5px/200ms threshold (DrawingCanvas.tsx)
 
@@ -143,8 +207,8 @@ npm run test:coverage       # Generate coverage report
 **Rating 9.8/10**: Comprehensive security headers (CSP, X-Frame-Options), environment-based logging, client-side only, zero information disclosure
 
 ## Key Files
-**Components**: App.tsx, SceneManager, DrawingCanvas, ShapeRenderer, RotationControls
-**Stores**: useDrawingStore, useComparisonStore, useConversionStore, useLayerStore, useMeasurementStore
+**Components**: App.tsx, SceneManager, DrawingCanvas, ShapeRenderer, RotationControls, TextTransformControls, TextRenderer
+**Stores**: useAppStore, useTextStore, useLayerStore, useComparisonStore, useConversionStore, useMeasurementStore
 **Utils**: GeometryLoader, PerformanceMonitor, ValidationService, logger, measurementUtils
 **Tests**: `__tests__/` - integration, performance, accessibility
 

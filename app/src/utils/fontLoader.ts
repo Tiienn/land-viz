@@ -70,7 +70,6 @@ export function isFontLoaded(fontFamily: string): boolean {
       fontLoadingCache.set(fontFamily, loaded);
       return loaded;
     } catch (error) {
-      logger.warn('[FontLoader] Error checking font', { fontFamily, error });
       return false;
     }
   }
@@ -89,14 +88,7 @@ export function getFontStack(fontFamily: string): string {
   const font = FONT_DEFINITIONS[fontFamily as keyof typeof FONT_DEFINITIONS];
 
   if (!font) {
-    logger.warn('[FontLoader] Unknown font family, using system default', { fontFamily });
     return 'system-ui, -apple-system, sans-serif';
-  }
-
-  const isLoaded = isFontLoaded(fontFamily);
-
-  if (!isLoaded) {
-    logger.info('[FontLoader] Font not loaded, using fallback', { fontFamily });
   }
 
   return `"${font.family}", ${font.fallback}`;
@@ -114,7 +106,6 @@ export async function waitForFonts(timeout: number = 3000): Promise<void> {
   }
 
   if (!('fonts' in document)) {
-    logger.info('[FontLoader] Font Loading API not available, skipping wait');
     fontsLoaded = true;
     return Promise.resolve();
   }
@@ -127,9 +118,7 @@ export async function waitForFonts(timeout: number = 3000): Promise<void> {
     ]);
 
     fontsLoaded = true;
-    logger.info('[FontLoader] Fonts loaded successfully');
   } catch (error) {
-    logger.warn('[FontLoader] Error waiting for fonts', { error });
     fontsLoaded = true; // Mark as loaded anyway to prevent blocking
   }
 }
@@ -148,14 +137,12 @@ export async function preloadFont(
   style: string = 'normal'
 ): Promise<boolean> {
   if (!('fonts' in document)) {
-    logger.info('[FontLoader] Font Loading API not available');
     return false;
   }
 
   const font = FONT_DEFINITIONS[fontFamily as keyof typeof FONT_DEFINITIONS];
 
   if (!font) {
-    logger.warn('[FontLoader] Unknown font family for preload', { fontFamily });
     return false;
   }
 
@@ -165,10 +152,8 @@ export async function preloadFont(
     await document.fonts.load(fontDescriptor);
 
     fontLoadingCache.set(fontFamily, true);
-    logger.info('[FontLoader] Font preloaded', { fontFamily, weight, style });
     return true;
   } catch (error) {
-    logger.warn('[FontLoader] Error preloading font', { fontFamily, error });
     return false;
   }
 }
@@ -203,7 +188,6 @@ export function validateFontFamily(fontFamily: string): string {
     return fontFamily;
   }
 
-  logger.warn('[FontLoader] Invalid font family, using default', { fontFamily });
   return 'Nunito Sans';
 }
 
@@ -216,7 +200,6 @@ export function initializeFontLoader(): void {
     // Listen for font loading events
     document.fonts.addEventListener('loadingdone', () => {
       fontsLoaded = true;
-      logger.info('[FontLoader] All fonts loaded');
 
       // Update cache
       Object.keys(FONT_DEFINITIONS).forEach(fontFamily => {
@@ -224,13 +207,13 @@ export function initializeFontLoader(): void {
       });
     });
 
-    document.fonts.addEventListener('loadingerror', (event) => {
-      logger.warn('[FontLoader] Font loading error', { event });
+    document.fonts.addEventListener('loadingerror', () => {
+      // Silent error handling
     });
   }
 
   // Start loading fonts
-  waitForFonts().catch((error) => {
-    logger.warn('[FontLoader] Error during initialization', { error });
+  waitForFonts().catch(() => {
+    // Silent error handling
   });
 }

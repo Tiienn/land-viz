@@ -133,7 +133,12 @@
       "Bash(claude mcp add playwright \"npx @playwright/mcp@latest\")",
       "Bash(npx @playwright/mcp@latest:*)",
       "Bash(nul)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Skill(document-skills:pdf)",
+      "Bash(chcp 65001)",
+      "Bash(start http://localhost:5173)",
+      "Bash(tee:*)",
+      "Bash(start http://localhost:5177)"
     ],
     "deny": [],
     "ask": []

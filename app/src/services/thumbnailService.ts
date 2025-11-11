@@ -331,8 +331,11 @@ class ThumbnailCache {
         break;
     }
 
-    // Fill for closed shapes
-    if (element.shapeType === 'rectangle' || element.shapeType === 'circle' || element.shapeType === 'polygon') {
+    // Fill for closed shapes (including polylines with 3+ points)
+    if (element.shapeType === 'rectangle' ||
+        element.shapeType === 'circle' ||
+        element.shapeType === 'polygon' ||
+        (element.shapeType === 'polyline' && element.points.length >= 3)) {
       ctx.globalAlpha = 0.3; // Semi-transparent fill
       ctx.fill();
     }

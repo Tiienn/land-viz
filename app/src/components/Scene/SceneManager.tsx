@@ -13,6 +13,8 @@ import InfiniteGrid from './GridBackground';
 import BackgroundManager from './BackgroundManager';
 import { SnapIndicator } from './SnapIndicator';
 import { ActiveSnapIndicator } from './ActiveSnapIndicator';
+import { SnapConfirmationFlash } from './SnapConfirmationFlash';
+import { SnapDistanceIndicator } from './SnapDistanceIndicator';
 import { useAppStore } from '@/store/useAppStore';
 // import AlignmentGuides from './AlignmentGuides';
 import SimpleAlignmentGuides from './SimpleAlignmentGuides';
@@ -227,6 +229,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Snap Indicators - Dynamic distance based on view mode */}
       <SnapIndicator maxDistance={snapIndicatorDistance} />
       {/* <ActiveSnapIndicator /> */} {/* Disabled - large pulsing indicator is too distracting */}
+      {/* Snap Confirmation Flash - Brief visual feedback when snap-on-release occurs */}
+      <SnapConfirmationFlash />
+      {/* Snap Distance Indicator - Shows distance to active snap point */}
+      <SnapDistanceIndicator />
 
       {/* Professional Alignment Guides - New Smart System */}
       {/* <AlignmentGuides /> */}
@@ -272,7 +278,7 @@ export const SceneManager = React.forwardRef<SceneManagerRef, SceneManagerProps>
   }));
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div id="scene-container" style={{ width: '100%', height: '100%' }}>
       <Canvas
         camera={{
           position: [
@@ -286,10 +292,11 @@ export const SceneManager = React.forwardRef<SceneManagerRef, SceneManagerProps>
         }}
         shadows
         style={{ width: '100%', height: '100%', display: 'block' }}
-        gl={{ 
-          antialias: true, 
+        gl={{
+          antialias: true,
           alpha: true,
           premultipliedAlpha: false,
+          preserveDrawingBuffer: true, // Required for scene export/capture
         }}
         dpr={[1, 2]}
       >

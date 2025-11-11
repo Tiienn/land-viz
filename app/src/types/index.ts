@@ -335,6 +335,12 @@ export interface DrawingState {
     /** Snap preview position */
     snapPreviewPosition: Point2D | null;
   };
+  /** Visual snap confirmation flash (triggered on snap-on-release) */
+  snapConfirmation: {
+    position: Point2D;
+    color: string;
+    timestamp: number;
+  } | null;
   /** Current cursor position for proximity-based filtering */
   cursorPosition: Point2D | null;
   guides: {
@@ -624,6 +630,9 @@ export interface DragState {
   currentPosition: Point2D | null;
   originalShapePoints: Point2D[] | null; // Legacy: for single shape
   originalShapesData?: Map<string, { points: Point2D[]; rotation?: { angle: number; center: Point2D } }>; // Canva-style grouping: for multiple shapes
+
+  // Feature 017: Shift-constrained dragging - axis-lock state
+  lockedAxis?: 'horizontal' | 'vertical' | null; // Locked axis for Shift-constrained dragging (determined once at start)
 
   // Phase 4: Element-aware drag support
   draggedElementId?: string | null; // Unified element ID (primary element)

@@ -86,7 +86,7 @@ export const DistanceInput: React.FC<DistanceInputProps> = ({
         borderRadius: '8px',
         padding: '8px 12px',
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-        zIndex: 1000,
+        zIndex: 15000, // Above inline panels (10000)
         fontFamily: 'Nunito Sans, sans-serif',
         minWidth: '120px',
       }}

@@ -18,6 +18,7 @@ import { useTextStore } from '../../store/useTextStore';
 import { useAppStore } from '../../store/useAppStore';
 import type { TextObject, Point2D } from '../../types';
 import { useThree } from '@react-three/fiber';
+import { applyAxisLockConstraint } from '../../utils/shapeConstraints';
 import * as THREE from 'three';
 import { logger } from '../../utils/logger';
 import { tokens } from '../../styles/tokens';
@@ -114,21 +115,48 @@ function calculateTextBounds(text: TextObject, is2DMode: boolean, isSelected: bo
 }
 
 // Calculate handle positions
-function calculateHandlePositions(bounds: ReturnType<typeof calculateTextBounds>) {
+function calculateHandlePositions(bounds: ReturnType<typeof calculateTextBounds>, rotationDegrees: number = 0) {
   const { minX, maxX, minY, maxY } = bounds;
 
+  // Calculate center point for rotation
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  // Helper function to rotate a point around the center
+  const rotatePoint = (x: number, y: number): Point2D => {
+    if (rotationDegrees === 0) return { x, y };
+
+    const angleRad = (rotationDegrees * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    // Translate to origin
+    const dx = x - centerX;
+    const dy = y - centerY;
+
+    // Rotate
+    const rotatedX = dx * cos - dy * sin;
+    const rotatedY = dx * sin + dy * cos;
+
+    // Translate back
+    return {
+      x: rotatedX + centerX,
+      y: rotatedY + centerY,
+    };
+  };
+
   const corners = [
-    { x: minX, y: minY }, // Top-left
-    { x: maxX, y: minY }, // Top-right
-    { x: maxX, y: maxY }, // Bottom-right
-    { x: minX, y: maxY }, // Bottom-left
+    rotatePoint(minX, minY), // Top-left
+    rotatePoint(maxX, minY), // Top-right
+    rotatePoint(maxX, maxY), // Bottom-right
+    rotatePoint(minX, maxY), // Bottom-left
   ];
 
   const edges = [
-    { x: (minX + maxX) / 2, y: minY }, // Top
-    { x: maxX, y: (minY + maxY) / 2 }, // Right
-    { x: (minX + maxX) / 2, y: maxY }, // Bottom
-    { x: minX, y: (minY + maxY) / 2 }, // Left
+    rotatePoint((minX + maxX) / 2, minY), // Top
+    rotatePoint(maxX, (minY + maxY) / 2), // Right
+    rotatePoint((minX + maxX) / 2, maxY), // Bottom
+    rotatePoint(minX, (minY + maxY) / 2), // Left
   ];
 
   return { corners, edges };
@@ -146,6 +174,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   const activeTool = useAppStore(state => state.drawing.activeTool);
   const saveToHistory = useAppStore(state => state.saveToHistory);
   const is2DMode = useAppStore(state => state.viewState?.is2DMode || false);
+  const cursorRotationMode = useAppStore(state => state.drawing.cursorRotationMode);
 
   // Local state
   const [hoveredHandle, setHoveredHandle] = useState<{ type: 'corner' | 'edge' | 'rotate' | 'drag'; index?: number } | null>(null);
@@ -176,6 +205,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     originalBounds: null as ReturnType<typeof calculateTextBounds> | null,
     startMouseAngle: 0,
     pointerId: null as number | null,
+    lockedAxis: null as 'horizontal' | 'vertical' | null, // Feature 017: Shift axis-lock
   });
 
   const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
@@ -213,18 +243,45 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     is2DMode
   ]);
 
-  // Calculate handle positions
-  const handles = useMemo(() => calculateHandlePositions(textBounds), [textBounds]);
+  // Calculate handle positions (rotated based on text rotation)
+  const handles = useMemo(() => calculateHandlePositions(textBounds, text.rotation || 0), [textBounds, text.rotation]);
 
-  // Calculate rotation handle position
+  // Calculate rotation handle position (below textbox bounds, accounting for rotation)
   const rotationHandlePosition = useMemo(() => {
-    const handleOffset = 4.0;
+    const handleOffset = 4.0; // Distance below textbox bottom edge
+    const centerX = (textBounds.minX + textBounds.maxX) / 2;
+    const centerY = (textBounds.minY + textBounds.maxY) / 2;
+    const bottomY = textBounds.maxY; // Bottom edge of textbox (unrotated)
+
+    // Rotate the handle position to follow the text rotation
+    const rotation = text.rotation || 0;
+    if (rotation !== 0) {
+      const angleRad = (rotation * Math.PI) / 180;
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+
+      // Point below center (unrotated)
+      const dx = 0; // Directly below center horizontally
+      const dy = (bottomY - centerY) + handleOffset; // Distance from center to below bottom edge
+
+      // Rotate around center
+      const rotatedX = dx * cos - dy * sin;
+      const rotatedY = dx * sin + dy * cos;
+
+      return {
+        x: centerX + rotatedX,
+        y: centerY + rotatedY,
+        center: { x: centerX, y: centerY },
+      };
+    }
+
+    // No rotation - simple positioning
     return {
-      x: text.position.x,
-      y: text.position.z - handleOffset,
-      center: { x: text.position.x, y: text.position.z },
+      x: centerX,
+      y: bottomY + handleOffset,
+      center: { x: centerX, y: centerY },
     };
-  }, [text.position]);
+  }, [textBounds, text.rotation]);
 
   /**
    * Pointer move handler for all transforms
@@ -258,11 +315,38 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
       // Handle different drag types
       if (dragState.current.dragType === 'move') {
         // Drag-to-move
+        let targetX = worldPoint.x;
+        let targetZ = worldPoint.y;  // worldPoint.y is Three.js Z (vertical on screen)
+
+        // Feature 017: Apply axis-lock constraint if Shift is held
+        if (dragState.current.startPosition && shiftPressedRef.current) {
+          const offsetX = worldPoint.x - dragState.current.startPosition.x;
+          const offsetY = worldPoint.y - dragState.current.startPosition.y;
+          const absX = Math.abs(offsetX);
+          const absY = Math.abs(offsetY);
+
+          // Determine locked axis ONCE when movement exceeds threshold
+          const threshold = 5; // 5 world units (meters)
+          if (dragState.current.lockedAxis === null && (absX >= threshold || absY >= threshold)) {
+            // First time exceeding threshold - determine which axis to lock
+            dragState.current.lockedAxis = absX >= absY ? 'horizontal' : 'vertical';
+          }
+
+          // Apply axis-lock based on stored locked axis
+          if (dragState.current.lockedAxis === 'horizontal') {
+            // Horizontal movement - lock vertical axis
+            targetZ = dragState.current.startPosition.y;
+          } else if (dragState.current.lockedAxis === 'vertical') {
+            // Vertical movement - lock horizontal axis
+            targetX = dragState.current.startPosition.x;
+          }
+        }
+
         updateText(text.id, {
           position: {
             ...text.position,
-            x: worldPoint.x,
-            z: worldPoint.y,  // worldPoint.y is Three.js Z (vertical on screen)
+            x: targetX,
+            z: targetZ,
           }
         });
       } else if (dragState.current.dragType === 'resize-corner' && dragState.current.originalBounds) {
@@ -357,6 +441,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     dragState.current.handleIndex = null;
     dragState.current.originalBounds = null;
     dragState.current.pointerId = null;
+    dragState.current.lockedAxis = null; // Feature 017: Reset axis-lock
     hasDraggedRef.current = false;
 
     setIsRotating(false);
@@ -404,6 +489,13 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   // Check overlap with panels on every frame
   useEffect(() => {
     const checkOverlap = () => {
+      // TEMPORARY FIX: Disable overlap check in 2D mode
+      // The aggressive buffer (470px each side) was hiding controls for most text positions
+      if (is2DMode) {
+        setShouldHideControls(false);
+        return;
+      }
+
       // Project 3D position to 2D screen coordinates
       const vector = new THREE.Vector3(text.position.x, text.position.y, text.position.z);
       vector.project(camera);
@@ -435,7 +527,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     const interval = setInterval(checkOverlap, 100); // Check every 100ms
 
     return () => clearInterval(interval);
-  }, [text.position, camera, size.width]);
+  }, [text.position, camera, size.width, is2DMode]);
 
   // Don't render if text is not selected, tool is not select, or would overlap panels
   if (!isActive || text.locked || shouldHideControls) {
@@ -448,19 +540,38 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   const startDrag = (event: any) => {
     event.stopPropagation();
 
+    // For React events, access native event if available, otherwise use event directly
+    const clientX = event.nativeEvent?.clientX ?? event.clientX;
+    const clientY = event.nativeEvent?.clientY ?? event.clientY;
+    const pointerId = event.nativeEvent?.pointerId ?? event.pointerId;
+
     logger.info('[TextTransformControls] Starting drag', { textId: text.id });
+
+    // Capture start position in world coordinates for axis-lock calculation
+    const rect = gl.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2();
+    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersection = new THREE.Vector3();
+
+    if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+      dragState.current.startPosition = { x: intersection.x, y: intersection.z };
+    }
 
     saveToHistory();
 
     dragState.current.isDragging = true;
     dragState.current.dragType = 'move';
-    dragState.current.pointerId = event.nativeEvent.pointerId;
+    dragState.current.pointerId = pointerId;
+    dragState.current.lockedAxis = null; // Feature 017: Reset axis-lock for new drag
     hasDraggedRef.current = false;
 
     setCursorOverride('grabbing');
 
     try {
-      event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+      event.currentTarget.setPointerCapture(pointerId);
     } catch (error) {
       logger.warn('[TextTransformControls] Failed to capture pointer:', error);
     }
@@ -476,6 +587,9 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   const startCornerResize = (index: number) => (event: any) => {
     event.stopPropagation();
 
+    // For React events, access native event if available, otherwise use event directly
+    const pointerId = event.nativeEvent?.pointerId ?? event.pointerId;
+
     logger.info('[TextTransformControls] Starting corner resize', {
       textId: text.id,
       handleIndex: index,
@@ -488,14 +602,14 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     dragState.current.handleIndex = index;
     dragState.current.originalFontSize = text.fontSize;
     dragState.current.originalBounds = textBounds;
-    dragState.current.pointerId = event.nativeEvent.pointerId;
+    dragState.current.pointerId = pointerId;
     hasDraggedRef.current = false;
 
     const cornerCursors = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize'];
     setCursorOverride(cornerCursors[index]);
 
     try {
-      event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+      event.currentTarget.setPointerCapture(pointerId);
     } catch (error) {
       logger.warn('[TextTransformControls] Failed to capture pointer:', error);
     }
@@ -511,6 +625,9 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   const startEdgeResize = (index: number) => (event: any) => {
     event.stopPropagation();
 
+    // For React events, access native event if available, otherwise use event directly
+    const pointerId = event.nativeEvent?.pointerId ?? event.pointerId;
+
     logger.info('[TextTransformControls] Starting edge resize', {
       textId: text.id,
       handleIndex: index,
@@ -523,14 +640,14 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     dragState.current.handleIndex = index;
     dragState.current.originalFontSize = text.fontSize;
     dragState.current.originalBounds = textBounds;
-    dragState.current.pointerId = event.nativeEvent.pointerId;
+    dragState.current.pointerId = pointerId;
     hasDraggedRef.current = false;
 
     const edgeCursor = (index === 1 || index === 3) ? 'ew-resize' : 'ns-resize';
     setCursorOverride(edgeCursor);
 
     try {
-      event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+      event.currentTarget.setPointerCapture(pointerId);
     } catch (error) {
       logger.warn('[TextTransformControls] Failed to capture pointer:', error);
     }
@@ -547,6 +664,11 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     event.stopPropagation();
     event.preventDefault();
 
+    // For React events, access native event if available, otherwise use event directly
+    const clientX = event.nativeEvent?.clientX ?? event.clientX;
+    const clientY = event.nativeEvent?.clientY ?? event.clientY;
+    const pointerId = event.nativeEvent?.pointerId ?? event.pointerId;
+
     logger.info('[TextTransformControls] Starting rotation', {
       textId: text.id,
       currentRotation: text.rotation,
@@ -556,8 +678,8 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
 
     const rect = gl.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2();
-    mouse.x = ((event.nativeEvent.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.nativeEvent.clientY - rect.top) / rect.height) * 2 + 1;
+    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
     const intersection = new THREE.Vector3();
@@ -571,13 +693,13 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
       dragState.current.isDragging = true;
       dragState.current.dragType = 'rotate';
       dragState.current.startMouseAngle = mouseAngle;
-      dragState.current.pointerId = event.nativeEvent.pointerId;
+      dragState.current.pointerId = pointerId;
       hasDraggedRef.current = false;
 
       setCursorOverride('grab');
 
       try {
-        event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
+        event.currentTarget.setPointerCapture(pointerId);
       } catch (error) {
         logger.warn('[TextTransformControls] Failed to capture pointer:', error);
       }
@@ -590,16 +712,32 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
 
   return (
     <group name="text-transform-controls">
-      {/* Drag area - invisible box over text */}
-      <mesh
-        position={[text.position.x, elevation + 0.1, text.position.z]}
-        onPointerDown={startDrag}
-        onPointerEnter={() => !dragState.current.isDragging && setCursorOverride('grab')}
-        onPointerLeave={() => !dragState.current.isDragging && setCursorOverride(null)}
+      {/* Drag area - Html overlay for text dragging (Html renders on top of meshes) */}
+      <Html
+        position={[text.position.x, elevation + 0.3, text.position.z]}
+        center
+        occlude={false}
+        distanceFactor={is2DMode ? 2.5 : 20}
+        style={{
+          pointerEvents: 'auto',
+          userSelect: 'none',
+          zIndex: tokens.zIndex.scene,
+        }}
       >
-        <boxGeometry args={[textBounds.width, 0.1, textBounds.height]} />
-        <meshBasicMaterial transparent opacity={0} />
-      </mesh>
+        <div
+          onPointerDown={startDrag}
+          onPointerEnter={() => !dragState.current.isDragging && setCursorOverride('grab')}
+          onPointerLeave={() => !dragState.current.isDragging && setCursorOverride(null)}
+          style={{
+            width: `${textBounds.width * (is2DMode ? 2.5 : 20)}px`,
+            height: `${textBounds.height * (is2DMode ? 2.5 : 20)}px`,
+            cursor: dragState.current.isDragging ? 'grabbing' : 'grab',
+            // Invisible drag area
+            backgroundColor: 'transparent',
+            border: 'none',
+          }}
+        />
+      </Html>
 
       {/* Corner Handles - Proportional Scaling (Html for consistent sizing) */}
       {handles.corners.map((point, index) => {
@@ -651,8 +789,23 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
       {/* Edge Handles - Dimensional Scaling (Html for consistent sizing) */}
       {handles.edges.map((point, index) => {
         const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
-        const edgeCursor = (index === 1 || index === 3) ? 'ew-resize' : 'ns-resize';
-        const isVertical = index === 1 || index === 3; // Right/Left edges
+
+        // Calculate edge parallel angle (angle the edge runs along)
+        const rotation = text.rotation || 0;
+        // Edge directions: Top (0) = 0°, Right (1) = 90°, Bottom (2) = 180°, Left (3) = 270°
+        const baseAngles = [0, 90, 180, 270];
+        const parallelAngle = rotation + baseAngles[index];
+
+        // Normalize rotation to 0-180° range (bars look identical at θ and θ+180°)
+        const visualRotation = ((parallelAngle % 180) + 180) % 180;
+
+        // Calculate perpendicular angle for cursor (90° from edge direction)
+        const perpAngle = ((parallelAngle + 90) % 360 + 360) % 360;
+
+        // Determine cursor based on perpendicular direction
+        const isVerticalPerp = (perpAngle >= 45 && perpAngle < 135) ||
+                              (perpAngle >= 225 && perpAngle < 315);
+        const edgeCursor = isVerticalPerp ? 'ew-resize' : 'ns-resize';
 
         return (
           <Html
@@ -682,58 +835,61 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
                 }
               }}
               style={{
-                width: isVertical ? '4px' : '16px',
-                height: isVertical ? '16px' : '4px',
+                width: '16px', // Always horizontal bar
+                height: '4px',
                 borderRadius: '2px',
                 backgroundColor: isHovered ? '#CCCCCC' : '#FFFFFF',
                 border: '1px solid #3B82F6',
                 boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
                 cursor: edgeCursor,
                 transition: 'background-color 0.15s ease',
+                transform: `rotate(${visualRotation}deg)`, // Rotate bar to align with edge direction
               }}
             />
           </Html>
         );
       })}
 
-      {/* Rotation Handle */}
-      <Html
-        position={[rotationHandlePosition.x, elevation + 0.3, rotationHandlePosition.y]}
-        center // Always use center for handles (not sprite) for correct positioning
-        occlude={false}
-        distanceFactor={is2DMode ? 2.5 : 20}
-        style={{
-          pointerEvents: 'auto',
-          userSelect: 'none',
-          zIndex: tokens.zIndex.scene,
-        }}
-      >
-        <div
-          onPointerDown={startRotation}
-          onPointerEnter={() => setCursorOverride('grab')}
-          onPointerLeave={() => !isRotating && setCursorOverride(null)}
+      {/* Rotation Handle - Hide when cursor rotation mode is active (RotationControls handles it) */}
+      {!cursorRotationMode && (
+        <Html
+          position={[rotationHandlePosition.x, elevation + 0.3, rotationHandlePosition.y]}
+          center // Always use center for handles (not sprite) for correct positioning
+          occlude={false}
+          distanceFactor={is2DMode ? 2.5 : 20}
           style={{
-            width: '12px',
-            height: '12px',
-            borderRadius: '50%',
-            backgroundColor: isRotating ? 'rgba(29, 78, 216, 0.95)' : 'rgba(34, 197, 94, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.9)',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
-            cursor: 'grab',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontSize: '8px',
-            fontWeight: 'bold',
-            transition: 'all 0.2s ease',
-            transform: isRotating ? 'scale(1.1)' : 'scale(1)',
+            pointerEvents: 'auto',
+            userSelect: 'none',
+            zIndex: tokens.zIndex.scene,
           }}
-          title="Drag to rotate text"
         >
-          ↻
-        </div>
-      </Html>
+          <div
+            onPointerDown={startRotation}
+            onPointerEnter={() => setCursorOverride('grab')}
+            onPointerLeave={() => !isRotating && setCursorOverride(null)}
+            style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: isRotating ? 'rgba(29, 78, 216, 0.95)' : 'rgba(34, 197, 94, 0.95)',
+              border: '1px solid rgba(255, 255, 255, 0.9)',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+              cursor: 'grab',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontSize: '8px',
+              fontWeight: 'bold',
+              transition: 'all 0.2s ease',
+              transform: isRotating ? 'scale(1.1)' : 'scale(1)',
+            }}
+            title="Drag to rotate text"
+          >
+            ↻
+          </div>
+        </Html>
+      )}
 
       {/* Angle Display - Show during rotation */}
       {isRotating && (

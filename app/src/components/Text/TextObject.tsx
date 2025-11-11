@@ -113,7 +113,8 @@ export const TextObject: React.FC<TextObjectProps> = ({ text, isSelected, onClic
             ...textStyle,
             whiteSpace: 'nowrap', // CRITICAL: Prevent text wrapping in 2D mode
             maxWidth: 'none', // Remove width constraint
-            writingMode: 'horizontal-tb' as const // Force horizontal text rendering in 2D mode
+            writingMode: 'horizontal-tb' as const, // Force horizontal text rendering in 2D mode
+            transform: `rotate(${text.rotation || 0}deg)`, // Apply text rotation in 2D mode
           }}
           dangerouslySetInnerHTML={{ __html: contentWith2DBreaks }}
         />

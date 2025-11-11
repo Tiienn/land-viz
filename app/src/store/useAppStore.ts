@@ -16,6 +16,7 @@ import { SimpleAlignment, type SpacingMeasurement } from '../services/simpleAlig
 import { SnapGrid } from '../utils/SnapGrid';
 import { MeasurementUtils, MEASUREMENT_CONSTANTS } from '../utils/measurementUtils';
 import { calculateDirection, applyDistance, parseDistance } from '../utils/precisionMath';
+import { applySquareConstraint, applyAngleConstraint, applyAxisLockConstraint } from '../utils/shapeConstraints';
 import { defaultAreaPresets } from '../data/areaPresets';
 import { loadCustomPresets, saveCustomPresets } from '../utils/presetStorage';
 import type { AppState, Shape, Layer, DrawingTool, Point2D, ShapeType, DrawingState, SnapPoint, SnapType, AlignmentGuide, AreaUnit, AddAreaConfig, Measurement, MeasurementPoint, MeasurementState, LineSegment } from '../types';
@@ -57,6 +58,7 @@ interface AppStore extends AppState {
   removeLastPoint: () => void;
   finishDrawing: () => void;
   cancelDrawing: () => void;
+  setShiftKey: (pressed: boolean) => void;
 
   // Shape actions
   addShape: (shape: Omit<Shape, 'id' | 'created' | 'modified'>) => void;
@@ -97,6 +99,11 @@ interface AppStore extends AppState {
   updateDragPosition: (currentPosition: Point2D) => void;
   finishDragging: () => void;
   cancelDragging: () => void;
+
+  // Element drag actions (Phase 4A: Element-aware dragging)
+  startElementDrag: (elementId: string, elementType: 'shape' | 'text', startPosition: Point2D) => void;
+  updateElementDragPosition: (currentPosition: Point2D) => void;
+  finishElementDrag: () => void;
 
   // Point manipulation
   addPoint: (point: Point2D) => void;
@@ -150,7 +157,7 @@ interface AppStore extends AppState {
 
   // Cursor rotation mode actions (hover-to-rotate mode)
   enterCursorRotationMode: (shapeId: string) => void;
-  exitCursorRotationMode: () => void;
+  exitCursorRotationMode: (cancel?: boolean) => void;
   applyCursorRotation: (shapeId: string, angle: number, center: Point2D) => void;
 
   // Flip actions (available in 'select' mode)
@@ -258,9 +265,6 @@ interface AppStore extends AppState {
   saveCurrentView: () => void;
   restorePerspectiveView: () => void;
 
-  // Task 4.2: Shift key override for snapping
-  setShiftKey: (pressed: boolean) => void;
-
   // Context menu actions
   openContextMenu: (
     type: ContextMenuType,
@@ -350,10 +354,10 @@ const getDefaultDrawingState = () => ({
   snapping: {
     config: {
       enabled: true,
-      snapRadius: 15,
+      snapRadius: 25,  // ENHANCED: Increased from 15 to 25 for more magnetic feel
       mode: 'adaptive',  // Default to adaptive mode for better UX
       screenSpacePixels: 75,  // Default screen-space distance (75px)
-      activeTypes: new Set(['grid']),
+      activeTypes: new Set(['grid', 'endpoint', 'midpoint', 'center', 'edge', 'perpendicular']),  // ENHANCED: Added edge and perpendicular
       visual: {
         showIndicators: true,
         showSnapLines: true,
@@ -370,6 +374,7 @@ const getDefaultDrawingState = () => ({
     activeSnapPoint: null,
     snapPreviewPosition: null
   },
+  snapConfirmation: null,  // Visual snap confirmation flash
   cursorPosition: null,
   guides: {
     staticGuides: [],
@@ -478,7 +483,9 @@ const getDefaultDrawingState = () => ({
     inputPosition: { x: 0, y: 0 },
     showInput: false,
     isMultiSegment: false
-  }
+  },
+  // Shift-key constraint mode (Feature 017)
+  isShiftKeyPressed: false
 });
 
 const createDefaultLayer = (): Layer => {
@@ -1304,6 +1311,7 @@ export const useAppStore = create<AppStore>()(
                 ...state.drawing,
                 isDrawing: true,
                 currentShape: {
+                  id: generateId(),  // CRITICAL FIX: Add ID for snap point generation during drawing
                   points: [],
                   type: shapeType,
                   color: getPreviewColor(shapeType),
@@ -1361,7 +1369,8 @@ export const useAppStore = create<AppStore>()(
               layerName += ` (${measurements.dimensions.width}×${measurements.dimensions.height}m, ${measurements.area.squareMeters}m²)`;
             } else if (shapeType === 'circle' && measurements.radius) {
               layerName += ` (r=${measurements.radius.meters}m, ${measurements.area.squareMeters}m²)`;
-            } else if (measurements.area) {
+            } else if (measurements.area && shapeType !== 'polyline') {
+              // Don't add area for polylines - they show path length instead
               layerName += ` (${measurements.area.squareMeters}m²)`;
             }
           }
@@ -1473,14 +1482,24 @@ export const useAppStore = create<AppStore>()(
 
         get().saveToHistory(); // Save state before adding shape
 
+        // Auto-create a new layer for each shape (Figma/Canva style)
+        // Use the shape's name as the layer name
+        const layerName = shape.name || 'Layer';
+        get().createLayer(layerName);
+
+        // Use the newly created layer
+        const currentLayerId = get().activeLayerId;
+
         const newShape: Shape = {
           id: generateId(),
           created: new Date(),
           modified: new Date(),
           ...shape,
+          layerId: currentLayerId, // Use the new layer
         };
 
         logger.info('[useAppStore] Created new shape with ID:', newShape.id);
+        logger.info('[useAppStore] Created new layer:', layerName);
         logger.info('[useAppStore] Total shapes before add:', get().shapes.length);
 
         set(
@@ -1523,106 +1542,55 @@ export const useAppStore = create<AppStore>()(
           { x: center.x - width/2, y: center.y + height/2 }
         ];
 
-        // Find the default land area shape (main square)
-        const defaultShapeId = 'default-land-area';
-        const defaultShapeExists = state.shapes.some(shape => shape.id === defaultShapeId);
+        // Always create a new layer for each Insert Area shape
+        // Count how many layers are named "Layer X" to determine next number
+        const layerNumbers = state.layers
+          .map(l => l.name.match(/^Layer (\d+)$/))
+          .filter(match => match !== null)
+          .map(match => parseInt(match![1]));
+        const nextLayerNumber = layerNumbers.length > 0 ? Math.max(...layerNumbers) + 1 : 1;
+        const newLayerName = `Layer ${nextLayerNumber}`;
 
-        if (defaultShapeExists) {
-          // Replace the default main square
-          set(
-            state => ({
-              shapes: state.shapes.map(shape =>
-                shape.id === defaultShapeId
-                  ? {
-                      ...shape,
-                      name: `Land Area ${area} ${getUnitLabel(unit)}`,
-                      points: finalPoints,
-                      modified: new Date()
-                    }
-                  : shape
-              ),
-              selectedShapeId: defaultShapeId,
-              drawing: {
-                ...state.drawing,
-                activeTool: 'select'
-              }
-            }),
-            false,
-            'createShapeFromArea',
-          );
+        // Create the layer first
+        get().createLayer(newLayerName);
 
-          // Invalidate geometry cache for visual update
-          const updatedShape = get().shapes.find(shape => shape.id === defaultShapeId);
-          if (updatedShape) {
-            GeometryCache.invalidateShape(updatedShape);
-            get().triggerRender(); // Force immediate re-render
-          }
-        } else {
-          // If default shape doesn't exist, replace the first shape or create a new one
-          if (state.shapes.length > 0) {
-            // Replace the first shape
-            const firstShapeId = state.shapes[0].id;
-            set(
-              state => ({
-                shapes: state.shapes.map((shape, index) =>
-                  index === 0
-                    ? {
-                        ...shape,
-                        name: `Land Area ${area} ${getUnitLabel(unit)}`,
-                        points: finalPoints,
-                        type: 'rectangle' as const,
-                        modified: new Date()
-                      }
-                    : shape
-                ),
-                selectedShapeId: firstShapeId,
-                drawing: {
-                  ...state.drawing,
-                  activeTool: 'select'
-                }
-              }),
-              false,
-              'createShapeFromArea',
-            );
+        // Get the newly created layer ID (it's now the active layer)
+        const newLayerId = get().activeLayerId;
 
-            // Invalidate geometry cache for visual update
-            const updatedShape = get().shapes.find(shape => shape.id === firstShapeId);
-            if (updatedShape) {
-              GeometryCache.invalidateShape(updatedShape);
-              get().triggerRender(); // Force immediate re-render
+        // Create a new shape on the new layer
+        const newShapeId = `land-area-${Date.now()}`;
+        const newShape: Shape = {
+          id: newShapeId,
+          name: `Land Area ${area} ${getUnitLabel(unit)}`,
+          points: finalPoints,
+          type: 'rectangle',
+          color: '#3B82F6',
+          visible: true,
+          layerId: newLayerId, // Use the newly created layer
+          created: new Date(),
+          modified: new Date()
+        };
+
+        set(
+          state => ({
+            shapes: [...state.shapes, newShape],
+            selectedShapeId: newShapeId,
+            selectedShapeIds: [newShapeId], // Clear multi-selection, select only new shape
+            drawing: {
+              ...state.drawing,
+              activeTool: 'select'
             }
-          } else {
-            // No shapes exist, create a new one
-            const newShape: Shape = {
-              id: 'default-land-area',
-              name: `Land Area ${area} ${getUnitLabel(unit)}`,
-              points: finalPoints,
-              type: 'rectangle',
-              color: '#3B82F6',
-              visible: true,
-              layerId: state.activeLayerId,
-              created: new Date(),
-              modified: new Date()
-            };
+          }),
+          false,
+          'createShapeFromArea',
+        );
 
-            set(
-              state => ({
-                shapes: [newShape],
-                selectedShapeId: newShape.id,
-                drawing: {
-                  ...state.drawing,
-                  activeTool: 'select'
-                }
-              }),
-              false,
-              'createShapeFromArea',
-            );
+        // Invalidate geometry cache for visual update
+        GeometryCache.invalidateShape(newShape);
+        get().triggerRender(); // Force immediate re-render
 
-            // Invalidate geometry cache for visual update
-            GeometryCache.invalidateShape(newShape);
-            get().triggerRender(); // Force immediate re-render
-          }
-        }
+        // Invalidate layer thumbnail so it updates in the layer panel
+        invalidateLayerThumbnail(newShape.layerId);
       },
 
       // Add Area Modal Actions
@@ -1690,6 +1658,7 @@ export const useAppStore = create<AppStore>()(
             shapes: [...state.shapes, newShape],
             activeLayerId: newLayer.id,
             selectedShapeId: newShape.id,
+            selectedShapeIds: [newShape.id], // Clear multi-selection, select only new shape
             addAreaModalOpen: false
           }), false, 'createAreaShapeAdvanced');
 
@@ -2138,6 +2107,10 @@ export const useAppStore = create<AppStore>()(
       },
 
       clearSelection: () => {
+        // CRITICAL FIX: Exit resize mode when clearing selection
+        // This prevents resize handles from staying visible after deselection
+        get().exitResizeMode();
+
         set({
           selectedShapeId: null,
           selectedShapeIds: [],
@@ -2196,6 +2169,7 @@ export const useAppStore = create<AppStore>()(
             currentPosition: startPosition,
             originalShapePoints: currentPoints, // Legacy: keep for backward compatibility
             originalShapesData, // Canva-style grouping: store all selected shapes
+            lockedAxis: null, // Feature 017: Initialize axis-lock state (will be determined during drag)
           }
         }, false, 'startDragging');
       },
@@ -2212,11 +2186,48 @@ export const useAppStore = create<AppStore>()(
         // PERFORMANCE FIX: Update position immediately, do heavy computation async
         // This prevents blocking the UI thread and eliminates drag lag
 
+        // Feature 017: Apply axis-lock constraint BEFORE immediate update
+        let effectivePosition = currentPosition;
+        let lockedAxis = state.dragState.lockedAxis; // Preserve existing locked axis
+
+        if (state.drawing.isShiftKeyPressed) {
+          const offsetX = currentPosition.x - state.dragState.startPosition.x;
+          const offsetY = currentPosition.y - state.dragState.startPosition.y;
+          const absX = Math.abs(offsetX);
+          const absY = Math.abs(offsetY);
+
+          // Determine locked axis ONCE when movement exceeds threshold
+          // After that, use the stored axis for the entire drag operation (Canva/Figma behavior)
+          const threshold = 5; // 5 world units (meters)
+          if (lockedAxis === null && (absX >= threshold || absY >= threshold)) {
+            // First time exceeding threshold - determine which axis to lock
+            lockedAxis = absX >= absY ? 'horizontal' : 'vertical';
+          }
+
+          // Apply axis-lock based on the stored locked axis
+          let constrainedOffsetX = offsetX;
+          let constrainedOffsetY = offsetY;
+
+          if (lockedAxis === 'horizontal') {
+            // Horizontal movement - lock vertical axis
+            constrainedOffsetY = 0;
+          } else if (lockedAxis === 'vertical') {
+            // Vertical movement - lock horizontal axis
+            constrainedOffsetX = 0;
+          }
+
+          effectivePosition = {
+            x: state.dragState.startPosition.x + constrainedOffsetX,
+            y: state.dragState.startPosition.y + constrainedOffsetY
+          };
+        }
+
         // Step 1: Immediately update drag position (smooth cursor tracking)
         set({
           dragState: {
             ...state.dragState,
-            currentPosition: currentPosition,
+            currentPosition: effectivePosition,
+            lockedAxis, // Feature 017: Store locked axis for entire drag operation
           }
         }, false, 'updateDragPosition_immediate');
 
@@ -2244,8 +2255,26 @@ export const useAppStore = create<AppStore>()(
               const latestPosition = currentState.dragState.currentPosition || currentPosition;
 
               // Create temporary shape with current position for snap detection
-              const offsetX = latestPosition.x - currentState.dragState.startPosition.x;
-              const offsetY = latestPosition.y - currentState.dragState.startPosition.y;
+              let offsetX = latestPosition.x - currentState.dragState.startPosition.x;
+              let offsetY = latestPosition.y - currentState.dragState.startPosition.y;
+
+              // Feature 017: Apply axis-lock constraint if Shift is held
+              // Use the stored locked axis from dragState (determined once at start)
+              if (currentState.drawing.isShiftKeyPressed && currentState.dragState.lockedAxis) {
+                if (currentState.dragState.lockedAxis === 'horizontal') {
+                  // Horizontal movement - lock vertical axis
+                  offsetY = 0;
+                } else if (currentState.dragState.lockedAxis === 'vertical') {
+                  // Vertical movement - lock horizontal axis
+                  offsetX = 0;
+                }
+              }
+
+              // Calculate constrained position (before magnetic snap)
+              const constrainedPosition = {
+                x: currentState.dragState.startPosition.x + offsetX,
+                y: currentState.dragState.startPosition.y + offsetY
+              };
 
               const tempShape = {
                 ...draggedShape,
@@ -2257,28 +2286,79 @@ export const useAppStore = create<AppStore>()(
 
               const otherShapes = currentState.shapes.filter(s => s.id !== currentState.dragState.draggedShapeId);
 
-              // Edge Snap Detection (visual indicators only, no position correction during drag)
+              // MAGNETIC SNAP: Apply real-time snap correction during drag
               const snapConfig = currentState.drawing.snapping?.config;
               const snapActive = snapConfig?.enabled && !currentState.shiftKeyPressed;
               let snapDetectionResults = null;
+              let magneticSnapOffset = { x: 0, y: 0 }; // Track snap correction to apply to drag position
 
               if (snapActive) {
-                const dragSnapRadius = 2;
+                const dragSnapRadius = snapConfig?.snapRadius || 25;
                 dragSnapGrid.setSnapDistance(dragSnapRadius);
 
-                // FIX: Use tempShape center for snap detection, not just cursor position
-                // Calculate center of the dragged shape at current position
+                // Update snap grid with other shapes
+                dragSnapGrid.updateSnapPoints(otherShapes, undefined);
+
+                // IMPROVED: Find closest snap point pair (dragged shape feature → target shape feature)
+                // This enables edge-to-edge and corner-to-corner snapping
+                let bestSnapMatch: { draggedPoint: Point2D; targetPoint: Point2D; distance: number } | null = null;
+
+                // Generate snap points from the dragged shape
+                const draggedShapePoints: Point2D[] = [];
+
+                // Add corners (endpoints)
+                tempShape.points.forEach(p => draggedShapePoints.push({ x: p.x, y: p.y }));
+
+                // Add midpoints
+                for (let i = 0; i < tempShape.points.length; i++) {
+                  const p1 = tempShape.points[i];
+                  const p2 = tempShape.points[(i + 1) % tempShape.points.length];
+                  draggedShapePoints.push({
+                    x: (p1.x + p2.x) / 2,
+                    y: (p1.y + p2.y) / 2
+                  });
+                }
+
+                // Add center
                 const bounds = SimpleAlignment.getShapeBounds(tempShape);
+                draggedShapePoints.push({ x: bounds.centerX, y: bounds.centerY });
+
+                // Find the closest snap point pair
+                for (const draggedPoint of draggedShapePoints) {
+                  const nearestTargetSnap = dragSnapGrid.findNearestSnapPoint(draggedPoint, dragSnapRadius);
+
+                  if (nearestTargetSnap && snapConfig.activeTypes?.has?.(nearestTargetSnap.type)) {
+                    const distance = Math.sqrt(
+                      Math.pow(nearestTargetSnap.position.x - draggedPoint.x, 2) +
+                      Math.pow(nearestTargetSnap.position.y - draggedPoint.y, 2)
+                    );
+
+                    if (!bestSnapMatch || distance < bestSnapMatch.distance) {
+                      bestSnapMatch = {
+                        draggedPoint,
+                        targetPoint: nearestTargetSnap.position,
+                        distance
+                      };
+                    }
+                  }
+                }
+
+                // Apply magnetic snap if we found a good match
+                if (bestSnapMatch) {
+                  magneticSnapOffset = {
+                    x: bestSnapMatch.targetPoint.x - bestSnapMatch.draggedPoint.x,
+                    y: bestSnapMatch.targetPoint.y - bestSnapMatch.draggedPoint.y
+                  };
+                }
+
+                // Update snap points for visual indicators
                 const shapeCenter = { x: bounds.centerX, y: bounds.centerY };
-
-                dragSnapGrid.updateSnapPoints(otherShapes, shapeCenter);
-
                 const nearbySnapPoints = dragSnapGrid.findSnapPointsInRadius(shapeCenter, dragSnapRadius);
                 const filteredSnapPoints = nearbySnapPoints.filter(snap =>
                   snapConfig.activeTypes?.has?.(snap.type)
                 );
 
-                const nearestSnapPoint = dragSnapGrid.findNearestSnapPoint(shapeCenter, dragSnapRadius);
+                const nearestSnapPoint = bestSnapMatch ? { position: bestSnapMatch.targetPoint, type: 'endpoint' as const, id: 'snap', strength: 1.0, shapeId: 'target' } : null;
 
                 snapDetectionResults = {
                   filteredSnapPoints,
@@ -2360,9 +2440,31 @@ export const useAppStore = create<AppStore>()(
               // Phase 6: Use element-based alignment detection to include text
               const result = SimpleAlignment.detectElementAlignments(draggedShapeElement, otherElements);
 
-              // PERFORMANCE FIX: DO NOT apply snap corrections during drag
-              // This prevents jumping/jittering between snap points
-              // Snap corrections will be applied on finishDragging() instead
+              // MAGNETIC SNAP: Apply snap correction to drag position in real-time
+              // This creates the "magnetic pull" feeling users expect from Figma/Canva
+              // Feature 017: Use constrainedPosition (not latestPosition) so axis-lock is preserved
+              if (magneticSnapOffset.x !== 0 || magneticSnapOffset.y !== 0) {
+                const correctedPosition = {
+                  x: constrainedPosition.x + magneticSnapOffset.x,
+                  y: constrainedPosition.y + magneticSnapOffset.y
+                };
+
+                // Update drag state with snapped position
+                set({
+                  dragState: {
+                    ...currentState.dragState,
+                    currentPosition: correctedPosition,
+                  }
+                }, false, 'applyMagneticSnap');
+              } else if (currentState.drawing.isShiftKeyPressed) {
+                // Feature 017: Even without snap, update position if constrained by Shift
+                set({
+                  dragState: {
+                    ...currentState.dragState,
+                    currentPosition: constrainedPosition,
+                  }
+                }, false, 'applyAxisLockConstraint');
+              }
 
               // Update visual indicators
               currentState.updateAlignmentGuides(result.guides, currentState.dragState.draggedShapeId);
@@ -2481,8 +2583,39 @@ export const useAppStore = create<AppStore>()(
 
         if (state.dragState.isDragging && state.dragState.currentPosition && state.dragState.startPosition) {
           // Apply final transformation to shape points
-          const offsetX = state.dragState.currentPosition.x - state.dragState.startPosition.x;
-          const offsetY = state.dragState.currentPosition.y - state.dragState.startPosition.y;
+          // Note: Snap corrections are now applied in real-time during drag (updateDragPosition)
+          // so currentPosition already includes magnetic snap offsets
+          let offsetX = state.dragState.currentPosition.x - state.dragState.startPosition.x;
+          let offsetY = state.dragState.currentPosition.y - state.dragState.startPosition.y;
+
+          // VISUAL FEEDBACK: Show snap confirmation flash if snapped
+          const activeSnapPoint = state.drawing.snapping?.activeSnapPoint;
+          if (activeSnapPoint) {
+            set((prevState) => ({
+              drawing: {
+                ...prevState.drawing,
+                snapConfirmation: {
+                  position: activeSnapPoint.position,
+                  color: '#00C4CC',  // Brand teal color
+                  timestamp: performance.now()
+                }
+              }
+            }), false, 'snapConfirmationFlash');
+
+            // Clear snap confirmation after animation duration
+            setTimeout(() => {
+              set((prevState) => ({
+                drawing: {
+                  ...prevState.drawing,
+                  snapConfirmation: null
+                }
+              }), false, 'clearSnapConfirmation');
+            }, 500);  // 500ms = 0.5s animation
+
+            logger.info('✨ Magnetic snap applied:', {
+              snapType: activeSnapPoint.type
+            });
+          }
 
           // Canva-style grouping: Move ALL selected shapes if originalShapesData exists
           const originalShapesData = state.dragState.originalShapesData;
@@ -2543,6 +2676,7 @@ export const useAppStore = create<AppStore>()(
               currentPosition: null,
               originalShapePoints: null,
               originalShapesData: undefined,
+              lockedAxis: null, // Feature 017: Reset axis-lock state
             }
           }, false, 'finishDragging');
 
@@ -2558,6 +2692,7 @@ export const useAppStore = create<AppStore>()(
               currentPosition: null,
               originalShapePoints: null,
               originalShapesData: undefined,
+              lockedAxis: null, // Feature 017: Reset axis-lock state
             }
           }, false, 'finishDragging');
         }
@@ -2591,8 +2726,173 @@ export const useAppStore = create<AppStore>()(
             currentPosition: null,
             originalShapePoints: null,
             originalShapesData: undefined,
+            lockedAxis: null, // Feature 017: Reset axis-lock state
           }
         }, false, 'cancelDragging');
+      },
+
+      // ====================
+      // ELEMENT DRAG ACTIONS (Phase 4A)
+      // ====================
+
+      startElementDrag: (elementId: string, elementType: 'shape' | 'text', startPosition: Point2D) => {
+        const state = get();
+
+        // Find the element
+        const element = state.elements.find(e => e.id === elementId);
+        if (!element || element.locked) {
+          return;
+        }
+
+        // Store original element data
+        const originalElementData = elementType === 'text'
+          ? { position: (element as any).position } // TextElement position
+          : {
+              points: (element as any).points, // ShapeElement points
+              rotation: (element as any).rotation // ShapeElement rotation (if any)
+            };
+
+        set({
+          dragState: {
+            isDragging: true,
+            draggedShapeId: null, // Legacy: not using for element drag
+            draggedElementId: elementId, // New: element ID
+            draggedElementIds: undefined, // Single element drag (no multi-select support yet)
+            elementType, // 'shape' or 'text'
+            startPosition,
+            currentPosition: startPosition,
+            originalShapePoints: null, // Legacy: not using for element drag
+            originalShapesData: undefined, // Legacy: not using for element drag
+            originalElementData, // New: element data
+            lockedAxis: null, // Feature 017: Initialize axis-lock state
+          }
+        }, false, 'startElementDrag');
+      },
+
+      updateElementDragPosition: (currentPosition: Point2D) => {
+        const state = get();
+
+        if (!state.dragState.isDragging || !state.dragState.draggedElementId) {
+          return;
+        }
+
+        // Feature 017: Apply axis-lock constraint BEFORE immediate update
+        let effectivePosition = currentPosition;
+        let lockedAxis = state.dragState.lockedAxis; // Preserve existing locked axis
+
+        if (state.drawing.isShiftKeyPressed) {
+          const offsetX = currentPosition.x - state.dragState.startPosition!.x;
+          const offsetY = currentPosition.y - state.dragState.startPosition!.y;
+          const absX = Math.abs(offsetX);
+          const absY = Math.abs(offsetY);
+
+          // Determine locked axis ONCE when movement exceeds threshold
+          const threshold = 5; // 5 world units (meters)
+          if (lockedAxis === null && (absX >= threshold || absY >= threshold)) {
+            // First time exceeding threshold - determine which axis to lock
+            lockedAxis = absX >= absY ? 'horizontal' : 'vertical';
+          }
+
+          // Apply axis-lock based on the stored locked axis
+          let constrainedOffsetX = offsetX;
+          let constrainedOffsetY = offsetY;
+
+          if (lockedAxis === 'horizontal') {
+            // Horizontal movement - lock vertical axis
+            constrainedOffsetY = 0;
+          } else if (lockedAxis === 'vertical') {
+            // Vertical movement - lock horizontal axis
+            constrainedOffsetX = 0;
+          }
+
+          effectivePosition = {
+            x: state.dragState.startPosition!.x + constrainedOffsetX,
+            y: state.dragState.startPosition!.y + constrainedOffsetY
+          };
+        }
+
+        set({
+          dragState: {
+            ...state.dragState,
+            currentPosition: effectivePosition,
+            lockedAxis, // Feature 017: Store locked axis for entire drag operation
+          }
+        }, false, 'updateElementDragPosition');
+      },
+
+      finishElementDrag: () => {
+        const state = get();
+
+        if (!state.dragState.isDragging || !state.dragState.currentPosition || !state.dragState.startPosition) {
+          return;
+        }
+
+        const offsetX = state.dragState.currentPosition.x - state.dragState.startPosition.x;
+        const offsetY = state.dragState.currentPosition.y - state.dragState.startPosition.y;
+
+        // Update the element
+        const elementId = state.dragState.draggedElementId;
+        if (elementId && state.dragState.elementType === 'text') {
+          // Update text element position
+          const originalPosition = state.dragState.originalElementData?.position;
+          if (originalPosition) {
+            get().updateElement(elementId, {
+              position: {
+                x: originalPosition.x + offsetX,
+                y: originalPosition.y + offsetY,
+                z: originalPosition.z, // Preserve elevation
+              }
+            });
+          }
+        } else if (elementId && state.dragState.elementType === 'shape') {
+          // Update shape element points
+          const originalPoints = state.dragState.originalElementData?.points;
+          const originalRotation = state.dragState.originalElementData?.rotation;
+
+          if (originalPoints) {
+            const newPoints = originalPoints.map((point: Point2D) => ({
+              x: point.x + offsetX,
+              y: point.y + offsetY,
+            }));
+
+            // Also update rotation center if shape is rotated
+            let newRotation = originalRotation;
+            if (originalRotation) {
+              newRotation = {
+                ...originalRotation,
+                center: {
+                  x: originalRotation.center.x + offsetX,
+                  y: originalRotation.center.y + offsetY,
+                }
+              };
+            }
+
+            get().updateElement(elementId, {
+              points: newPoints,
+              rotation: newRotation,
+            });
+          }
+        }
+
+        // Clear drag state
+        set({
+          dragState: {
+            isDragging: false,
+            draggedShapeId: null,
+            draggedElementId: null,
+            draggedElementIds: undefined,
+            elementType: undefined,
+            startPosition: null,
+            currentPosition: null,
+            originalShapePoints: null,
+            originalShapesData: undefined,
+            originalElementData: undefined,
+            lockedAxis: null, // Feature 017: Reset axis-lock state
+          }
+        }, false, 'finishElementDrag');
+
+        // Save to history
+        get().saveToHistory();
       },
 
       duplicateShape: (id: string) => {
@@ -2671,13 +2971,29 @@ export const useAppStore = create<AppStore>()(
       addPoint: (point: Point2D) => {
         const state = get();
         if (state.drawing.currentShape) {
+          let constrainedPoint = point;
+
+          // Feature 017: Apply constraints if Shift is held
+          // Note: Rectangle and Circle constraints are handled in DrawingCanvas.tsx
+          // because those tools don't use addPoint() for the final geometry
+          if (state.drawing.isShiftKeyPressed) {
+            const currentPoints = state.drawing.currentShape.points || [];
+            const shapeType = state.drawing.currentShape.type;
+
+            if ((shapeType === 'polyline' || shapeType === 'polygon') && currentPoints.length > 0) {
+              // Polyline/Polygon: Apply angle constraint to each segment
+              const lastPoint = currentPoints[currentPoints.length - 1];
+              constrainedPoint = applyAngleConstraint(lastPoint, point);
+            }
+          }
+
           set(
             prevState => ({
               drawing: {
                 ...prevState.drawing,
                 currentShape: {
                   ...prevState.drawing.currentShape!,
-                  points: [...(prevState.drawing.currentShape!.points || []), point],
+                  points: [...(prevState.drawing.currentShape!.points || []), constrainedPoint],
                 },
               },
             }),
@@ -2771,7 +3087,15 @@ export const useAppStore = create<AppStore>()(
           const currentActiveTool = state.drawing.activeTool;
           const currentSnappingConfig = state.drawing.snapping; // Preserve entire snapping config (includes Grid)
           const currentDimensionsState = state.drawing.showDimensions;
-          
+
+          // Restore text store state if it exists in the previous state
+          if (previousState.texts !== undefined) {
+            useTextStore.setState({
+              texts: previousState.texts,
+              selectedTextId: previousState.selectedTextId || null,
+            });
+          }
+
           set(
             {
               ...previousState,
@@ -2836,7 +3160,15 @@ export const useAppStore = create<AppStore>()(
           const currentActiveTool = state.drawing.activeTool;
           const currentSnappingConfig = state.drawing.snapping; // Preserve entire snapping config (includes Grid)
           const currentDimensionsState = state.drawing.showDimensions;
-          
+
+          // Restore text store state if it exists in the next state
+          if (nextState.texts !== undefined) {
+            useTextStore.setState({
+              texts: nextState.texts,
+              selectedTextId: nextState.selectedTextId || null,
+            });
+          }
+
           set(
             {
               ...nextState,
@@ -2951,6 +3283,9 @@ export const useAppStore = create<AppStore>()(
             } : state.drawing.snapping
           },
           measurements: state.measurements,
+          // Include text store state in history
+          texts: useTextStore.getState().texts,
+          selectedTextId: useTextStore.getState().selectedTextId,
         };
 
         const stateString = JSON.stringify(currentStateToSave);
@@ -3900,12 +4235,8 @@ export const useAppStore = create<AppStore>()(
       enterCursorRotationMode: (shapeId: string) => {
         const state = get();
 
-        // Validate shape exists
+        // Validate shape exists (skip validation for text objects - they're in useTextStore)
         const shape = state.shapes.find(s => s.id === shapeId);
-        if (!shape) {
-          logger.warn(`Cannot enter cursor rotation mode: shape ${shapeId} not found`);
-          return;
-        }
 
         // Save current state to history before entering mode
         state.saveToHistory();
@@ -3914,17 +4245,20 @@ export const useAppStore = create<AppStore>()(
         // Priority: 1) Existing multi-selection 2) Group members 3) Single shape
         let shapesToRotate: string[] = [shapeId];
 
-        // Check if there's already a multi-selection active
-        const existingSelection = state.selectedShapeIds || [];
+        if (shape) {
+          // Only apply shape-specific logic if it's actually a shape
+          // Check if there's already a multi-selection active
+          const existingSelection = state.selectedShapeIds || [];
 
-        if (existingSelection.length > 1 && existingSelection.includes(shapeId)) {
-          // Preserve the existing multi-selection
-          shapesToRotate = existingSelection;
-        } else if (shape.groupId) {
-          // Canva-style grouping: If shape is part of a group, select ALL group members
-          const groupMembers = state.shapes.filter(s => s.groupId === shape.groupId);
-          shapesToRotate = groupMembers.map(s => s.id);
-          logger.info(`Entering cursor rotation mode for group: ${shape.groupId} (${shapesToRotate.length} shapes)`);
+          if (existingSelection.length > 1 && existingSelection.includes(shapeId)) {
+            // Preserve the existing multi-selection
+            shapesToRotate = existingSelection;
+          } else if (shape.groupId) {
+            // Canva-style grouping: If shape is part of a group, select ALL group members
+            const groupMembers = state.shapes.filter(s => s.groupId === shape.groupId);
+            shapesToRotate = groupMembers.map(s => s.id);
+            logger.info(`Entering cursor rotation mode for group: ${shape.groupId} (${shapesToRotate.length} shapes)`);
+          }
         }
 
         // Enter cursor rotation mode (keep current tool as 'select')
@@ -3935,21 +4269,29 @@ export const useAppStore = create<AppStore>()(
               cursorRotationMode: true,
               cursorRotationShapeId: shapeId,
             },
-            selectedShapeIds: shapesToRotate, // Preserve multi-selection, group, or single shape
+            // Only update selectedShapeIds if it's a shape (not text)
+            ...(shape ? { selectedShapeIds: shapesToRotate } : {}),
           }),
           false,
           'enterCursorRotationMode'
         );
 
-        logger.info(`Entered cursor rotation mode for shape ${shapeId}`);
+        logger.info(`Entered cursor rotation mode for ${shape ? 'shape' : 'text'} ${shapeId}`);
       },
 
-      exitCursorRotationMode: () => {
+      exitCursorRotationMode: (cancel: boolean = false) => {
         const state = get();
 
-        // Save final state if a shape was being rotated
-        if (state.drawing.cursorRotationShapeId) {
-          state.saveToHistory();
+        if (cancel) {
+          // Cancel: Undo to restore original rotation (before entering mode)
+          state.undo();
+          logger.info('Canceled cursor rotation mode - restored original rotation');
+        } else {
+          // Confirm: Save final state
+          if (state.drawing.cursorRotationShapeId) {
+            state.saveToHistory();
+          }
+          logger.info('Exited cursor rotation mode');
         }
 
         set(
@@ -3963,8 +4305,6 @@ export const useAppStore = create<AppStore>()(
           false,
           'exitCursorRotationMode'
         );
-
-        logger.info('Exited cursor rotation mode');
       },
 
       applyCursorRotation: (shapeId: string, angle: number, center: Point2D) => {
@@ -4457,8 +4797,14 @@ export const useAppStore = create<AppStore>()(
         const { lineTool } = state.drawing;
 
         if (lineTool.startPoint && lineTool.currentDistance && lineTool.currentDistance > 0 && lineTool.previewEndPoint) {
+          // Feature 017: Apply angle constraint if Shift is held
+          let effectivePreviewPoint = lineTool.previewEndPoint;
+          if (state.drawing.isShiftKeyPressed) {
+            effectivePreviewPoint = applyAngleConstraint(lineTool.startPoint, lineTool.previewEndPoint);
+          }
+
           // Calculate precise end point using direction and distance
-          const direction = calculateDirection(lineTool.startPoint, lineTool.previewEndPoint);
+          const direction = calculateDirection(lineTool.startPoint, effectivePreviewPoint);
           const preciseEndPoint = applyDistance(lineTool.startPoint, direction, lineTool.currentDistance);
 
           if (lineTool.isMultiSegment) {
@@ -4483,18 +4829,20 @@ export const useAppStore = create<AppStore>()(
               // Close the shape - create a polyline from all segments
               const allPoints: Point2D[] = [];
 
-              // Add all segment points
+              // Add all segment points (don't add preciseEndPoint - it creates a gap)
+              // Just use the existing segments to create a proper closed loop
               if (lineTool.segments.length > 0) {
                 allPoints.push(lineTool.segments[0].startPoint);
                 lineTool.segments.forEach(seg => {
                   allPoints.push(seg.endPoint);
                 });
               }
-              allPoints.push(preciseEndPoint);
+              // Close the loop by adding the first point at the end
+              allPoints.push(firstPoint);
 
               // Create polyline shape (closed)
               const polylineShape: Omit<Shape, 'id' | 'created' | 'modified'> = {
-                name: `Multi-Line ${state.shapes.length + 1}`,
+                name: `Line Shape ${state.shapes.length + 1}`,
                 points: allPoints,
                 type: 'polyline',
                 color: '#3b82f6',
@@ -4623,24 +4971,28 @@ export const useAppStore = create<AppStore>()(
           const allPoints: Point2D[] = [];
 
           // Add start point of first segment
-          allPoints.push(lineTool.segments[0].startPoint);
+          const firstPoint = lineTool.segments[0].startPoint;
+          allPoints.push(firstPoint);
 
           // Add end point of each segment
           lineTool.segments.forEach(segment => {
             allPoints.push(segment.endPoint);
           });
 
-          // Create polyline shape from segments
-          const polylineShape: Omit<Shape, 'id' | 'created' | 'modified'> = {
-            name: `Multi-Line ${state.shapes.length + 1}`,
+          // Close the loop by adding the first point at the end
+          allPoints.push(firstPoint);
+
+          // Create line shape from segments (use 'polyline' type for closed shapes with 3+ segments)
+          const lineShape: Omit<Shape, 'id' | 'created' | 'modified'> = {
+            name: `Line Shape ${state.shapes.length + 1}`,
             points: allPoints,
-            type: 'polyline',
+            type: lineTool.segments.length >= 2 ? 'polyline' : 'line',
             color: '#3b82f6',
             visible: true,
             layerId: state.activeLayerId
           };
 
-          get().addShape(polylineShape);
+          get().addShape(lineShape);
 
           // Clear line tool state
           set(
@@ -5492,9 +5844,18 @@ export const useAppStore = create<AppStore>()(
         );
       },
 
-      // Task 4.2: Shift key override for snapping
+      // Feature 017: Shift-key constraint mode
       setShiftKey: (pressed: boolean) => {
-        set({ shiftKeyPressed: pressed }, false, 'setShiftKey');
+        set(
+          state => ({
+            drawing: {
+              ...state.drawing,
+              isShiftKeyPressed: pressed
+            }
+          }),
+          false,
+          'setShiftKey'
+        );
       },
 
       // Context menu actions
@@ -6231,14 +6592,19 @@ sendShapeBackward: (shapeId: string) => {
 
         // Dual-write to legacy stores
         const element = id ? get().elements.find(el => el.id === id) : null;
+
         if (element?.elementType === 'shape') {
           get().selectShape(id);
         } else if (element?.elementType === 'text') {
-          import('../store/useTextStore').useTextStore.getState().selectText(id);
+          import('../store/useTextStore').then(module => {
+            module.useTextStore.getState().selectText(id);
+          });
         } else {
           // Clearing selection
           get().selectShape(null);
-          import('../store/useTextStore').useTextStore.getState().selectText(null);
+          import('../store/useTextStore').then(module => {
+            module.useTextStore.getState().selectText(null);
+          });
         }
       },
 

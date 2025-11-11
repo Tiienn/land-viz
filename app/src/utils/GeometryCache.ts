@@ -12,7 +12,6 @@ export class GeometryCache {
    */
   static getLiveResizeGeometry(shape: Shape, liveResizePoints: Point2D[], elevation = 0): BufferGeometry {
     if (!liveResizePoints || liveResizePoints.length < 2) {
-      logger.warn('⚠️ GeometryCache: Invalid liveResizePoints, falling back to shape points');
       return this.getGeometry(shape, elevation);
     }
 
@@ -26,7 +25,6 @@ export class GeometryCache {
     );
 
     if (validPoints.length < 2) {
-      logger.error('❌ No valid points in live resize');
       return this.createFallbackGeometry(elevation);
     }
 
@@ -45,7 +43,6 @@ export class GeometryCache {
    */
   static getGeometry(shape: Shape, elevation = 0): BufferGeometry {
     if (!shape.points || shape.points.length < 2) {
-      logger.warn('⚠️ GeometryCache: Invalid points for shape', shape.id);
       return this.createFallbackGeometry(elevation);
     }
 
@@ -252,17 +249,12 @@ export class GeometryCache {
 
     if (points.length < 2) return geometry;
 
-    logger.info(`[GeometryCache] Creating polygon geometry with ${points.length} points`);
-    logger.info(`[GeometryCache] Points:`, JSON.stringify(points));
-
     const vertices: number[] = [];
 
     // Add vertices for rendering (3D with elevation)
     points.forEach(point => {
       vertices.push(point.x, elevation, point.y);
     });
-
-    logger.info(`[GeometryCache] Created ${vertices.length / 3} vertices`);
 
     // Create triangles for 3+ points
     let indices: number[] = [];
@@ -271,7 +263,6 @@ export class GeometryCache {
       if (points.length === 3) {
         // Triangle - simple case
         indices.push(0, 1, 2);
-        logger.info(`[GeometryCache] Triangle: using direct indices`);
       } else {
         // 4+ points: Use Earcut for robust triangulation
         // Earcut requires flat array of [x, y, x, y, ...]
@@ -280,17 +271,11 @@ export class GeometryCache {
           flatCoords.push(point.x, point.y);
         });
 
-        logger.info(`[GeometryCache] Using Earcut triangulation for ${points.length}-point polygon`);
-
         try {
           // Earcut returns indices for the triangulation
           indices = earcut(flatCoords);
-          logger.info(`[GeometryCache] Earcut created ${indices.length / 3} triangles`);
         } catch (error) {
-          logger.error(`[GeometryCache] Earcut triangulation failed:`, error);
-
           // Fallback to simple fan triangulation
-          logger.warn(`[GeometryCache] Falling back to fan triangulation`);
           for (let i = 1; i < points.length - 1; i++) {
             indices.push(0, i, i + 1);
           }
@@ -308,8 +293,6 @@ export class GeometryCache {
 
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
-
-    logger.info(`[GeometryCache] Polygon geometry created successfully with ${indices.length / 3} triangles`);
 
     return geometry;
   }

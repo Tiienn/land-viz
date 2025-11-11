@@ -265,6 +265,21 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             area: `${area.toFixed(1)} m²`
           };
         }
+      } else if (shape.type === 'line') {
+        // For line shapes, calculate total length
+        const points = shape.points;
+        if (points.length >= 2) {
+          let totalLength = 0;
+          for (let i = 0; i < points.length - 1; i++) {
+            const dx = points[i + 1].x - points[i].x;
+            const dy = points[i + 1].y - points[i].y;
+            totalLength += Math.sqrt(dx * dx + dy * dy);
+          }
+          return {
+            dimensions: `${totalLength.toFixed(1)} m`,
+            area: points.length === 2 ? 'single line' : `${points.length - 1} segments`
+          };
+        }
       } else {
         // For polylines and other shapes, calculate area using shoelace formula
         const points = shape.points;
@@ -673,7 +688,30 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
             <button
               onClick={() => {
                 const folderCount = layers.filter(l => l.type === 'folder').length;
-                createFolder(`Folder ${folderCount + 1}`);
+                const newFolderName = `Folder ${folderCount + 1}`;
+
+                // Create the folder
+                createFolder(newFolderName);
+
+                // If layers are selected, move them into the new folder
+                if (selectedLayerIds.length > 0) {
+                  // Get the newly created folder (it will be the last one)
+                  setTimeout(() => {
+                    const folders = useAppStore.getState().layers.filter(l => l.type === 'folder');
+                    const newFolder = folders[folders.length - 1];
+
+                    if (newFolder) {
+                      // Move all selected layers into the folder
+                      selectedLayerIds.forEach(layerId => {
+                        moveToFolder(layerId, newFolder.id);
+                      });
+
+                      // Clear selection after moving
+                      useAppStore.setState({ selectedLayerIds: [] });
+                      setCheckboxMode(false);
+                    }
+                  }, 10);
+                }
               }}
               style={{
                 background: 'transparent',
@@ -699,7 +737,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ isOpen, onClose, inline = false
                 e.currentTarget.style.borderColor = '#d1d5db';
                 e.currentTarget.style.color = '#6b7280';
               }}
-              title="Create new folder"
+              title={selectedLayerIds.length > 0 ? `Move ${selectedLayerIds.length} selected layers to new folder` : "Create new folder"}
             >
               <Icon name="folder" size={16} />
             </button>

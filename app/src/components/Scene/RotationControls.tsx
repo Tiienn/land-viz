@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { Html, Line } from '@react-three/drei';
 import { useAppStore } from '@/store/useAppStore';
+import { useTextStore } from '@/store/useTextStore';
 import type { Point2D } from '@/types';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -128,6 +129,12 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   // CRITICAL FIX: Get layers from useAppStore, not useLayerStore
   // useAppStore.layers is the source of truth (where finishDrawing() adds layers)
   const layers = useAppStore(state => state.layers);
+
+  // Get text store for text rotation support
+  const texts = useTextStore(state => state.texts);
+  const selectedTextId = useTextStore(state => state.selectedTextId);
+  const updateText = useTextStore(state => state.updateText);
+  const updateTextLive = useTextStore(state => state.updateTextLive);
   
   // Local state for rotation interaction
   const [isRotating, setIsRotating] = React.useState(false);
@@ -150,6 +157,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
   const [cursorAngle, setCursorAngle] = React.useState(0);
   const cursorPositionRef = useRef<THREE.Vector2 | null>(null);
   const cursorAngleRef = useRef(0); // For immediate access in callbacks
+  const modeEnteredTimeRef = useRef(0); // Track when cursor rotation mode was entered
 
   // Dragging state
   const dragState = useRef({
@@ -192,11 +200,11 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     return true;
   }, [layers]);
 
-  // Find the shape being rotated or show rotation handle for selected shape
+  // Find the shape/text being rotated or show rotation handle for selected shape/text
   const targetShape = useMemo(() => {
     let shape = null;
 
-    // CRITICAL FIX: Combine shapes and elements arrays to find shapes
+    // CRITICAL FIX: Combine shapes, elements, and texts arrays to find shapes and text
     // During migration, new shapes are in elements array as ShapeElements
     // Safe fallback: elements might be undefined if migration hasn't run yet
     const allShapes = [
@@ -212,10 +220,25 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
         rotation: el.rotation,
         created: el.created,
         modified: el.modified
+      })),
+      // Add text objects as shape-like objects for rotation
+      ...(texts || []).map(text => ({
+        id: text.id,
+        type: 'text' as const,
+        points: [{ x: text.position.x, y: text.position.z }], // Convert text position to points format
+        color: text.color,
+        visible: text.visible !== false,
+        locked: text.locked || false,
+        layerId: text.layerId,
+        rotation: { angle: text.rotation || 0, center: { x: text.position.x, y: text.position.z } },
+        created: text.created,
+        modified: text.modified,
+        // Store original text object for updates
+        _textObject: text
       }))
     ];
 
-    // Cursor rotation mode: show handle for the shape being rotated
+    // Cursor rotation mode: show handle for the shape/text being rotated
     if (cursorRotationMode && cursorRotationShapeId) {
       shape = allShapes.find(s => s.id === cursorRotationShapeId) || null;
     }
@@ -223,6 +246,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       shape = allShapes.find(s => s.id === drawing.rotatingShapeId) || null;
     }
     // Show rotation handle for selected shape OR multi-selection (when not in edit mode)
+    // NOTE: Don't show for text in normal mode - TextTransformControls handles text rotation
     // Allow rotation handles to show even if just finished drawing or in resize mode
     else if (activeTool === 'select' && !drawing.isEditMode) {
       // MULTI-SELECTION FIX: Show handle for multi-selection or single selection
@@ -234,6 +258,8 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
         // Single selection: use primary selected shape
         shape = allShapes.find(s => s.id === selectedShapeId) || null;
       }
+      // NOTE: Removed selectedTextId check here - text rotation handled by TextTransformControls
+      // RotationControls only handles text during cursor rotation mode (checked above)
     }
 
     // Don't show rotation controls for locked shapes
@@ -247,7 +273,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     }
 
     return shape;
-  }, [shapes, elements, cursorRotationMode, cursorRotationShapeId, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, activeTool, drawing.isEditMode, isLayerVisible]);
+  }, [shapes, elements, texts, cursorRotationMode, cursorRotationShapeId, drawing.isRotateMode, drawing.rotatingShapeId, selectedShapeId, selectedTextId, selectedShapeIds, activeTool, drawing.isEditMode, isLayerVisible]);
 
   // Calculate rotation handle position and rotation center
   const rotationHandlePosition = useMemo(() => {
@@ -588,7 +614,15 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       cursorAngleRef.current = angleDegrees;
 
       // Apply live rotation in DEGREES (store expects degrees, not radians)
-      rotateShapeLive(targetShape.id, angleDegrees, shapeCenter);
+      // Check if target is text or shape
+      if (targetShape.type === 'text' && (targetShape as any)._textObject) {
+        // Text rotation: update text object for live preview (without saving to history)
+        const textObj = (targetShape as any)._textObject;
+        updateTextLive(textObj.id, { rotation: angleDegrees });
+      } else {
+        // Shape rotation: use existing rotateShapeLive
+        rotateShapeLive(targetShape.id, angleDegrees, shapeCenter);
+      }
     };
 
     // Throttle to 60 FPS (16ms)
@@ -614,9 +648,19 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     gl.domElement,
     rotationHandlePosition,
     rotateShapeLive,
+    updateTextLive,
     shiftPressedRef,
     raycaster
   ]);
+
+  /**
+   * Cursor rotation mode: Track when mode was entered to prevent immediate exit
+   */
+  useEffect(() => {
+    if (cursorRotationMode) {
+      modeEnteredTimeRef.current = Date.now();
+    }
+  }, [cursorRotationMode]);
 
   /**
    * Cursor rotation mode: Handle clicks to confirm rotation
@@ -653,6 +697,13 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       // Must have a valid pointerdown first
       if (!isValidClick) return;
 
+      // Ignore clicks that happen too soon after entering mode (prevent button click from triggering exit)
+      const timeSinceEnter = Date.now() - modeEnteredTimeRef.current;
+      if (timeSinceEnter < 200) {
+        isValidClick = false;
+        return;
+      }
+
       // Check if this was a quick click (not a drag)
       const timeDiff = Date.now() - pointerDownTime;
       const posDiff = Math.sqrt(
@@ -667,14 +718,23 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
         event.stopPropagation();
 
         // Apply rotation with history save (in DEGREES)
-        applyCursorRotation(
-          targetShape.id,
-          cursorAngleRef.current,
-          rotationHandlePosition.center
-        );
+        // Check if target is a text object or shape
+        if (targetShape.type === 'text' && (targetShape as any)._textObject) {
+          // Text rotation: update text object directly
+          const textObj = (targetShape as any)._textObject;
+          updateText(textObj.id, { rotation: cursorAngleRef.current });
+          logger.info(`Text rotation applied: ${Math.round(cursorAngleRef.current)}°`);
+        } else {
+          // Shape rotation: use existing applyCursorRotation
+          applyCursorRotation(
+            targetShape.id,
+            cursorAngleRef.current,
+            rotationHandlePosition.center
+          );
+        }
 
-        // Exit cursor rotation mode
-        exitCursorRotationMode();
+        // Exit cursor rotation mode (confirm rotation)
+        exitCursorRotationMode(false);
       }
 
       // Reset flag
@@ -689,7 +749,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
       canvas.removeEventListener('pointerdown', handlePointerDown, true);
       canvas.removeEventListener('pointerup', handlePointerUp, true);
     };
-  }, [cursorRotationMode, targetShape, rotationHandlePosition, applyCursorRotation, gl.domElement]);
+  }, [cursorRotationMode, targetShape, rotationHandlePosition, applyCursorRotation, updateText, updateTextLive, gl.domElement]);
 
   /**
    * Cursor rotation mode: Handle ESC key to exit
@@ -699,7 +759,7 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        exitCursorRotationMode();
+        exitCursorRotationMode(true); // Cancel = true, restore original rotation
       }
     };
 
@@ -717,18 +777,20 @@ const RotationControls: React.FC<RotationControlsProps> = ({ elevation = 0.01 })
     // Only check if currently in cursor rotation mode
     if (!cursorRotationMode) return;
 
-    // Exit if tool changed away from select
+    // Exit if tool changed away from select (confirm current rotation)
     if (activeTool !== 'select') {
-      exitCursorRotationMode();
+      exitCursorRotationMode(false);
       return;
     }
 
-    // Exit if shape selection changed
-    if (!selectedShapeId || selectedShapeId !== cursorRotationShapeId) {
-      exitCursorRotationMode();
+    // Exit if selection changed (shape or text) (confirm current rotation)
+    // Check both selectedShapeId (for shapes) and selectedTextId (for text)
+    const currentSelectionId = selectedShapeId || selectedTextId;
+    if (!currentSelectionId || currentSelectionId !== cursorRotationShapeId) {
+      exitCursorRotationMode(false);
       return;
     }
-  }, [cursorRotationMode, activeTool, selectedShapeId, cursorRotationShapeId, exitCursorRotationMode]);
+  }, [cursorRotationMode, activeTool, selectedShapeId, selectedTextId, cursorRotationShapeId, exitCursorRotationMode]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -151,6 +151,14 @@ export const TextRenderer: React.FC = () => {
               // Phase 4: Select text for grouping
               selectText(text.id);
 
+              // Sync to new element selection system (for future migration)
+              const selectElement = useAppStore.getState().selectElement;
+              // Check if this text exists in elements array
+              const element = useAppStore.getState().elements.find(el => el.id === text.id);
+              if (element) {
+                selectElement(text.id);
+              }
+
               // IMPORTANT: For now, just select the text
               // Multi-selection with shapes will be handled in a future update
             }}

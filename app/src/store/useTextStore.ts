@@ -25,6 +25,7 @@ interface TextStore {
   // Actions - CRUD operations
   addText: (text: TextObject) => void;
   updateText: (id: string, updates: Partial<TextObject>) => void;
+  updateTextLive: (id: string, updates: Partial<TextObject>) => void; // Update without history save
   deleteText: (id: string) => void;
   clearTexts: () => void;
 
@@ -83,6 +84,17 @@ export const useTextStore = create<TextStore>((set, get) => ({
       useAppStore.getState().saveToHistory();
     }
 
+    set((state) => ({
+      texts: state.texts.map((text) =>
+        text.id === id
+          ? { ...text, ...updates, updatedAt: Date.now() }
+          : text
+      )
+    }));
+  },
+
+  // Update text without saving to history (for live previews like rotation)
+  updateTextLive: (id: string, updates: Partial<TextObject>) => {
     set((state) => ({
       texts: state.texts.map((text) =>
         text.id === id

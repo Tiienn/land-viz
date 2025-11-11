@@ -25,8 +25,13 @@ import AlignmentControls from './components/UI/AlignmentControls';
 import { View2DToggleButton } from './components/UI/View2DToggleButton';
 import { ShortcutsHelpButton } from './components/UI/ShortcutsHelpButton';
 import { FlipButton } from './components/UI/FlipButton';
+import { ExportButton } from './components/UI/ExportButton';
+import { ExportModal } from './components/Modals/ExportModal';
 import Icon from './components/Icon';
 import logger from './utils/logger';
+import { exportToPDF as exportToPDFBlob } from './services/pdfExportService';
+import { downloadFile, generateFilename } from './utils/exportUtils';
+import { captureSceneSnapshot, getSceneContainerElement, validateSceneContainer } from './utils/sceneExport';
 import type { Point2D, AreaUnit } from './types';
 import { useKeyboardShortcuts, useKeyboardShortcutListener } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutHelp } from './components/KeyboardShortcutHelp';
@@ -143,6 +148,9 @@ function App(): React.JSX.Element {
     addAreaModalOpen,
     openAddAreaModal,
     closeAddAreaModal,
+    isExportModalOpen,
+    openExportModal,
+    closeExportModal,
     presets,
     openPresetsModal,
     closePresetsModal,
@@ -196,6 +204,35 @@ function App(): React.JSX.Element {
     // runMigration, // Phase 2: Auto-migration (TODO: Implement this function in useAppStore)
   } = useAppStore();
 
+  // Migration: Ensure 'perpendicular', 'edge', and 'midpoint' snap types are enabled (fixes localStorage from older versions)
+  useEffect(() => {
+    const currentState = useAppStore.getState();
+    const activeTypes = currentState.drawing.snapping.config.activeTypes;
+
+    // Check if perpendicular, edge, or midpoint are missing
+    const hasPerpendicular = activeTypes.has('perpendicular');
+    const hasEdge = activeTypes.has('edge');
+    const hasMidpoint = activeTypes.has('midpoint');
+    const needsMigration = !hasPerpendicular || !hasEdge || !hasMidpoint;
+
+    if (needsMigration) {
+      // Update the store state
+      useAppStore.setState(state => ({
+        ...state,
+        drawing: {
+          ...state.drawing,
+          snapping: {
+            ...state.drawing.snapping,
+            config: {
+              ...state.drawing.snapping.config,
+              activeTypes: new Set(['grid', 'endpoint', 'midpoint', 'center', 'edge', 'perpendicular'])
+            }
+          }
+        }
+      }));
+    }
+  }, []); // Run once on mount
+
   // Line tool state
   const lineToolState = useAppStore(state => state.drawing.lineTool);
 
@@ -203,6 +240,7 @@ function App(): React.JSX.Element {
   const isInlineEditing = useTextStore(state => state.isInlineEditing);
   const inlineEditingTextId = useTextStore(state => state.inlineEditingTextId);
   const inlineEditScreenPosition = useTextStore(state => state.inlineEditScreenPosition);
+  const selectedTextId = useTextStore(state => state.selectedTextId);
 
   // Calculate left panel offset for modals (smart positioning to avoid overlap)
   const leftPanelOffset = useMemo(() => {
@@ -463,6 +501,18 @@ function App(): React.JSX.Element {
       category: 'view',
       action: () => {
         useTemplateStore.getState().openGallery();
+      },
+    },
+    {
+      id: 'export-pdf',
+      key: 'e',
+      ctrl: true,
+      description: 'Export to PDF',
+      category: 'view',
+      action: () => {
+        if (shapes.length > 0) {
+          openExportModal();
+        }
       },
     },
     {
@@ -970,6 +1020,59 @@ function App(): React.JSX.Element {
     triggerRender();
   };
 
+  // PDF Export handler
+  const handlePDFExport = async (filters: import('./types/export').ExportFilters) => {
+    try {
+      // Step 1: Capture scene snapshot
+      showToast('info', 'Generating preview...');
+      let sceneImageDataURL: string | undefined;
+
+      try {
+        const sceneContainer = getSceneContainerElement();
+        if (sceneContainer && validateSceneContainer(sceneContainer)) {
+          // Mark scene as exporting to hide controls
+          sceneContainer.setAttribute('data-exporting', 'true');
+
+          // Small delay to ensure controls are hidden before capture
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          sceneImageDataURL = await captureSceneSnapshot(sceneContainer, 2); // 2x resolution
+          logger.info('Scene snapshot captured successfully');
+
+          // Remove exporting flag
+          sceneContainer.removeAttribute('data-exporting');
+        } else {
+          logger.warn('Scene container not found or invalid, exporting without preview');
+        }
+      } catch (captureError) {
+        logger.error('Scene capture failed, continuing without image:', captureError);
+
+        // Ensure flag is removed even if capture fails
+        const sceneContainer = getSceneContainerElement();
+        if (sceneContainer) {
+          sceneContainer.removeAttribute('data-exporting');
+        }
+        // Continue without image - graceful degradation
+      }
+
+      // Step 2: Generate PDF with scene image
+      showToast('info', 'Generating PDF...');
+      const blob = await exportToPDFBlob(shapes, filters, sceneImageDataURL);
+
+      if (!blob || !(blob instanceof Blob)) {
+        throw new Error('Invalid blob returned from exportToPDFBlob');
+      }
+
+      // Step 3: Download
+      const filename = generateFilename();
+      downloadFile(blob, filename);
+      showToast('success', 'PDF exported successfully!');
+    } catch (error) {
+      logger.error('PDF export failed:', error);
+      showToast('error', 'Export failed. Please try again.');
+    }
+  };
+
   // Export handlers
   const handleQuickExport = async (format: 'excel' | 'dxf' | 'geojson' | 'pdf') => {
     setIsExporting(true);
@@ -1078,6 +1181,19 @@ function App(): React.JSX.Element {
   React.useEffect(() => {
     initializeFontLoader();
   }, []);
+
+  // Listen for quickExport custom events from ExportButton
+  useEffect(() => {
+    const handleQuickExportEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ format: 'excel' | 'dxf' }>;
+      if (customEvent.detail?.format) {
+        handleQuickExport(customEvent.detail.format);
+      }
+    };
+
+    window.addEventListener('quickExport', handleQuickExportEvent);
+    return () => window.removeEventListener('quickExport', handleQuickExportEvent);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Remove scroll bars and ensure proper viewport handling
   React.useEffect(() => {
@@ -1213,12 +1329,13 @@ function App(): React.JSX.Element {
       <div style={{
         background: `linear-gradient(135deg, ${tokens.colors.background.primary} 0%, ${tokens.colors.neutral[50]} 100%)`,
         borderBottom: `1px solid ${tokens.colors.neutral[200]}`,
-        boxShadow: tokens.shadows.md
+        boxShadow: tokens.shadows.md,
+        overflow: 'visible'
       }}>
         <div style={{
           padding: `${tokens.spacing[2]} ${tokens.spacing[3]}`,
           overflowX: 'hidden',
-          overflowY: 'hidden'
+          overflowY: 'visible'
         }}>
           <div style={{ display: 'flex', gap: tokens.spacing[1], alignItems: 'flex-start', flexWrap: 'nowrap', minWidth: 'fit-content' }}>
             {/* Drawing */}
@@ -1455,7 +1572,7 @@ function App(): React.JSX.Element {
             }}></div>
 
             {/* Display */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'visible', position: 'relative' }}>
               <div style={{
                 fontSize: tokens.typography.caption.size,
                 fontWeight: tokens.typography.label.weight,
@@ -1463,7 +1580,7 @@ function App(): React.JSX.Element {
                 marginBottom: tokens.spacing[1],
                 textAlign: 'center'
               }}>Display</div>
-              <div style={{ display: 'flex', gap: tokens.spacing[0.5] /* TODO: Consider adding tokens.spacing[0] = '2px' */ }}>
+              <div style={{ display: 'flex', gap: tokens.spacing[0.5] /* TODO: Consider adding tokens.spacing[0] = '2px' */, overflow: 'visible', position: 'relative' }}>
                 <button
                   onClick={toggleShowDimensions}
                   style={{
@@ -1494,24 +1611,24 @@ function App(): React.JSX.Element {
                   onClick={() => {
                     // Toggle cursor rotation mode on/off
                     if (drawing.cursorRotationMode) {
-                      // Exit cursor rotation mode
-                      exitCursorRotationMode();
+                      // Exit cursor rotation mode (confirm rotation)
+                      exitCursorRotationMode(false);
                     } else {
-                      // MULTI-SELECTION FIX: Support rotation for multi-selection
-                      const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0);
+                      // MULTI-SELECTION FIX: Support rotation for multi-selection and text
+                      const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0) || selectedTextId;
                       if (hasSelection && activeTool === 'select' && !drawing.isEditMode) {
                         // Exit resize mode if active
                         if (drawing.isResizeMode) {
                           exitResizeMode();
                         }
-                        // Enter cursor rotation mode with primary shape or first selected shape
-                        const targetShapeId = selectedShapeId || (selectedShapeIds && selectedShapeIds[0]) || '';
+                        // Enter cursor rotation mode with primary shape, first selected shape, or selected text
+                        const targetShapeId = selectedShapeId || (selectedShapeIds && selectedShapeIds[0]) || selectedTextId || '';
                         enterCursorRotationMode(targetShapeId);
                       }
                     }
                   }}
                   disabled={
-                    (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                    (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0) && !selectedTextId) ||
                     activeTool !== 'select' ||
                     drawing.isEditMode ||
                     drawing.isDrawing
@@ -1526,7 +1643,7 @@ function App(): React.JSX.Element {
                     height: tokens.sizing.buttonHeight,
                     border: `1px solid ${tokens.colors.neutral[200]}`,
                     cursor: (
-                      (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                      (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0) && !selectedTextId) ||
                       activeTool !== 'select' ||
                       drawing.isEditMode ||
                       drawing.isDrawing
@@ -1536,7 +1653,7 @@ function App(): React.JSX.Element {
                     background: drawing.cursorRotationMode ? tokens.colors.brand.purple : tokens.colors.background.primary,
                     color: drawing.cursorRotationMode ? tokens.colors.background.primary :
                            (
-                             (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                             (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0) && !selectedTextId) ||
                              activeTool !== 'select' ||
                              drawing.isEditMode ||
                              drawing.isDrawing
@@ -1547,7 +1664,7 @@ function App(): React.JSX.Element {
                     fontSize: tokens.typography.caption.size,
                     fontWeight: tokens.typography.label.weight,
                     opacity: (
-                      (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0)) ||
+                      (!selectedShapeId && (!selectedShapeIds || selectedShapeIds.length === 0) && !selectedTextId) ||
                       activeTool !== 'select' ||
                       drawing.isEditMode ||
                       drawing.isDrawing
@@ -1556,7 +1673,7 @@ function App(): React.JSX.Element {
                       : 1
                   }}
                   onMouseEnter={(e) => {
-                    const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0);
+                    const hasSelection = selectedShapeId || (selectedShapeIds && selectedShapeIds.length > 0) || selectedTextId;
                     if (hasSelection && activeTool === 'select' && !drawing.isEditMode && !drawing.isDrawing && !drawing.cursorRotationMode) {
                       e.currentTarget.style.background = tokens.colors.neutral[100];
                       e.currentTarget.style.borderColor = tokens.colors.neutral[300];
@@ -1580,6 +1697,9 @@ function App(): React.JSX.Element {
                     disabled={selectedShapeIds.length === 0 || drawing.isEditMode}
                     onFlip={(direction) => flipSelectedShapes(direction)}
                   />
+                </div>
+                <div style={{ marginLeft: tokens.spacing[2] }}>
+                  <ExportButton />
                 </div>
                 <button
                   onClick={() => {
@@ -1940,141 +2060,6 @@ function App(): React.JSX.Element {
                   </svg>
                   <span style={{ marginTop: tokens.spacing[1] }}>Delete Corner</span>
                 </button>
-              </div>
-            </div>
-
-            {/* Vertical Separator */}
-            <div style={{
-              width: tokens.sizing.separator,
-              height: tokens.sizing.separatorHeight,
-              background: tokens.colors.neutral[200],
-              margin: '0 2px' /* 2px - consider adding tokens.spacing[0] = '2px' */
-            }}></div>
-
-
-            {/* Export */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{
-                fontSize: tokens.typography.caption.size,
-                fontWeight: tokens.typography.label.weight,
-                color: tokens.colors.neutral[500],
-                marginBottom: tokens.spacing[1],
-                textAlign: 'center'
-              }}>Export</div>
-              <div style={{ display: 'flex', gap: tokens.spacing[0.5] }}>
-                <div style={{ position: 'relative' }}>
-                  <button 
-                    onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
-                    style={{ 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`, 
-                      borderRadius: tokens.radius.sm, 
-                      minWidth: tokens.sizing.buttonMinWidth, 
-                      height: tokens.sizing.buttonHeight, 
-                      border: `1px solid ${tokens.colors.neutral[200]}`,
-                      cursor: 'pointer',
-                      background: exportDropdownOpen ? `${tokens.colors.semantic.info}20` : tokens.colors.background.primary,
-                      color: exportDropdownOpen ? tokens.colors.semantic.info : tokens.colors.neutral[900],
-                      transition: `all ${tokens.animation.timing.smooth} ease`,
-                      fontSize: tokens.typography.caption.size,
-                      fontWeight: tokens.typography.label.weight
-                    }}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14,2 14,8 20,8"></polyline>
-                      <line x1="16" y1="13" x2="8" y2="13"></line>
-                      <line x1="16" y1="17" x2="8" y2="17"></line>
-                      <polyline points="10,9 9,9 8,9"></polyline>
-                    </svg>
-                    <span style={{ marginTop: tokens.spacing[1] }}>Excel Export</span>
-                  </button>
-
-                  {/* Simplified Export Dropdown */}
-                  {exportDropdownOpen && (
-                    <div 
-                      style={{ 
-                        position: 'absolute', 
-                        top: tokens.spacing[16], 
-                        left: '0', 
-                        background: tokens.colors.background.primary, 
-                        border: `1px solid ${tokens.colors.neutral[200]}`, 
-                        borderRadius: tokens.radius.md, 
-                        boxShadow: tokens.shadows.lg,
-                        zIndex: 1000,
-                        minWidth: tokens.sizing.elementLarge
-                      }}
-                    >
-                      <button
-                        onClick={() => handleQuickExport('excel')}
-                        style={{
-                          width: '100%',
-                          padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          fontSize: tokens.typography.bodySmall.size,
-                          color: tokens.colors.neutral[700],
-                          textAlign: 'left',
-                          borderRadius: '6px 6px 0 0'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = tokens.colors.neutral[100]}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <span style={{display: 'flex', alignItems: 'center', gap: tokens.spacing[2]}}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14,2 14,8 20,8"/>
-                            <line x1="16" y1="13" x2="8" y2="21"/>
-                            <line x1="8" y1="13" x2="16" y2="21"/>
-                          </svg>
-                          Excel (.xlsx)
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => handleQuickExport('dxf')}
-                        style={{
-                          width: '100%',
-                          padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
-                          border: 'none',
-                          borderTop: `1px solid ${tokens.colors.neutral[100]}`,
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          fontSize: tokens.typography.bodySmall.size,
-                          color: tokens.colors.neutral[700],
-                          textAlign: 'left'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = tokens.colors.neutral[100]}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <Icon name="file" size={16} style={{ marginRight: tokens.spacing[1] }} />
-                        DXF (.dxf)
-                      </button>
-                      <button
-                        onClick={() => handleQuickExport('pdf')}
-                        style={{
-                          width: '100%',
-                          padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
-                          border: 'none',
-                          borderTop: `1px solid ${tokens.colors.neutral[100]}`,
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          fontSize: tokens.typography.bodySmall.size,
-                          color: tokens.colors.neutral[700],
-                          textAlign: 'left',
-                          borderRadius: '0 0 6px 6px'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = tokens.colors.neutral[100]}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <Icon name="file" size={16} style={{ marginRight: tokens.spacing[1] }} />
-                        PDF (.pdf)
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -3473,6 +3458,13 @@ function App(): React.JSX.Element {
       <AddAreaModal
         isOpen={addAreaModalOpen}
         onClose={closeAddAreaModal}
+      />
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={closeExportModal}
+        onExport={handlePDFExport}
       />
 
       <PresetsModal

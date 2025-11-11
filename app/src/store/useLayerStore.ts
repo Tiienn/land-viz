@@ -40,25 +40,14 @@ const createDefaultLayer = (name: string): Layer => ({
   modified: new Date(),
 });
 
-const getInitialLayers = (): Layer[] => [
-  {
-    id: 'main',
-    name: 'Main Layer',
-    visible: true,
-    locked: false,
-    color: '#3b82f6',
-    opacity: 1,
-    created: new Date(),
-    modified: new Date(),
-  },
-];
+const getInitialLayers = (): Layer[] => [];
 
 export const useLayerStore = create<LayerStore>()(
   devtools(
     (set, get) => ({
       // Initial state
       layers: getInitialLayers(),
-      activeLayerId: 'main',
+      activeLayerId: '', // No default layer
 
       // Layer actions
       createLayer: (name: string) => {
@@ -101,12 +90,6 @@ export const useLayerStore = create<LayerStore>()(
 
       deleteLayer: (id: string) => {
         set((state) => {
-          // Prevent deletion of the main layer
-          if (id === 'main') {
-            logger.warn('Cannot delete main layer');
-            return state;
-          }
-
           // Prevent deletion if it's the only layer
           if (state.layers.length <= 1) {
             logger.warn('Cannot delete the only remaining layer');
@@ -123,9 +106,10 @@ export const useLayerStore = create<LayerStore>()(
 
           let newActiveLayerId = state.activeLayerId;
 
-          // If deleting the active layer, switch to the main layer
+          // If deleting the active layer, switch to the first remaining layer
           if (state.activeLayerId === id) {
-            newActiveLayerId = 'main';
+            const remainingLayers = state.layers.filter((l) => l.id !== id);
+            newActiveLayerId = remainingLayers.length > 0 ? remainingLayers[0].id : '';
           }
 
           return {
