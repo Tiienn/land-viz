@@ -574,9 +574,13 @@ export interface Measurements {
   units: 'metric' | 'imperial' | 'toise';
 }
 
+// View modes: 2D, 3D Orbit, and 3D Walkthrough
+export type ViewMode = '2d' | '3d-orbit' | '3d-walkthrough';
+
 // View state for 2D/3D modes
 export interface ViewState {
-  is2DMode: boolean;
+  is2DMode: boolean; // LEGACY: Keep for backward compatibility
+  viewMode: ViewMode; // NEW: Primary view mode (2d, 3d-orbit, 3d-walkthrough)
   cameraType: 'perspective' | 'orthographic';
   viewAngle: 'top' | '3d';
   zoom2D: number;
@@ -586,6 +590,16 @@ export interface ViewState {
     isAnimating: boolean;
     startTime: number;
     duration: number;
+  };
+
+  // Walkthrough mode state
+  walkthroughState?: {
+    position: Point3D;
+    rotation: { x: number; y: number }; // Pitch and yaw
+    velocity: Point3D;
+    isMoving: boolean;
+    isJumping: boolean;
+    perspectiveMode: 'first-person' | 'third-person'; // Camera perspective
   };
 }
 
@@ -614,6 +628,7 @@ export interface AppState {
   drawing: DrawingState;
   measurements: Record<string, Measurements>;
   history: HistoryState;
+  migrations: MigrationsState; // Data migration tracking
   renderTrigger: number; // Forces immediate re-renders for geometry updates
   presets: import('./presets').PresetsState; // Area presets state
   comparison: import('./referenceObjects').ComparisonState; // Visual comparison tool state
@@ -654,6 +669,15 @@ export interface HistoryState {
   past: string[]; // JSON strings of past states
   present: string; // JSON string of current state
   future: string[]; // JSON strings of future states
+}
+
+/**
+ * Migrations tracking state
+ * Tracks which data migrations have been applied to prevent duplicate runs
+ */
+export interface MigrationsState {
+  /** Migration: Added perpendicular, edge, and midpoint snap types (v1.0) */
+  snappingTypesV1: boolean;
 }
 
 export interface CameraSettings {

@@ -138,7 +138,19 @@
       "Bash(chcp 65001)",
       "Bash(start http://localhost:5173)",
       "Bash(tee:*)",
-      "Bash(start http://localhost:5177)"
+      "Bash(start http://localhost:5177)",
+      "Bash(.gitignore.tmp)",
+      "Bash(start http://localhost:5175)",
+      "Bash(start http://localhost:5176)",
+      "WebFetch(domain:greatx3.github.io)",
+      "WebFetch(domain:www.xugj520.cn)",
+      "WebFetch(domain:www.theneuron.ai)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:code.claude.com)",
+      "Bash(claude plugin list:*)",
+      "Bash(claude mcp restart playwright)",
+      "Bash(start http://localhost:5174)",
+      "Bash(python3 -c:*)"
     ],
     "deny": [],
     "ask": []

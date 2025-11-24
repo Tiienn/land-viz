@@ -60,6 +60,32 @@ export async function exportToPDF(
         ? sceneImageDataURL.split(',')[1]
         : sceneImageDataURL;
 
+      // Validate base64 data before embedding
+      if (!base64Data || base64Data.length === 0) {
+        throw new Error('Base64 data is empty');
+      }
+
+      // Check if base64 data contains only valid characters
+      // Valid base64: A-Z, a-z, 0-9, +, /, = (padding)
+      const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+      if (!base64Regex.test(base64Data)) {
+        throw new Error('Invalid base64 format: contains invalid characters');
+      }
+
+      // Check minimum length (PNG header is ~100 bytes base64-encoded)
+      // A 1x1 PNG is ~68 bytes raw, ~92 bytes base64
+      if (base64Data.length < 80) {
+        throw new Error(`Base64 data too short (${base64Data.length} chars), likely corrupted`);
+      }
+
+      // Check for PNG signature in decoded data (optional but recommended)
+      // PNG files start with: 89 50 4E 47 0D 0A 1A 0A (hex)
+      // In base64, this starts with: iVBORw0KGgo
+      if (!base64Data.startsWith('iVBORw0KGgo')) {
+        console.warn('[PDF Export] Warning: Base64 data does not start with PNG signature, may not be a valid PNG');
+        // Don't throw - pdf-lib will handle invalid format gracefully
+      }
+
       pngImage = await pdfDoc.embedPng(base64Data);
 
       // Calculate dimensions to fit full page (maximize size while maintaining aspect ratio)

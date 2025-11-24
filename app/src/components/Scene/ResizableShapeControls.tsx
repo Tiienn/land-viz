@@ -1493,11 +1493,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const perpAngle = ((parallelAngle + 90) % 360 + 360) % 360;
 
             // Determine cursor based on perpendicular direction
-            // Vertical perpendicular (45-135° and 225-315°) → horizontal resize cursor
-            // Horizontal perpendicular → vertical resize cursor
+            // Vertical perpendicular (45-135° and 225-315°) → edge is horizontal → need vertical cursor
+            // Horizontal perpendicular → edge is vertical → need horizontal cursor
             const isVerticalPerp = (perpAngle >= 45 && perpAngle < 135) ||
                                   (perpAngle >= 225 && perpAngle < 315);
-            const edgeCursor = isVerticalPerp ? 'ew-resize' : 'ns-resize';
+            const edgeCursor = isVerticalPerp ? 'ns-resize' : 'ew-resize';
 
             const rotationRadians = parallelAngle * Math.PI / 180;
 
@@ -1725,9 +1725,11 @@ const ResizableShapeControls: React.FC<ResizableShapeControlsProps> = ({ elevati
             const perpAngle = ((parallelAngle + 90) % 360 + 360) % 360;
 
             // Determine cursor based on perpendicular direction
+            // Vertical perpendicular → edge is horizontal → need vertical cursor
+            // Horizontal perpendicular → edge is vertical → need horizontal cursor
             const isVerticalPerp = (perpAngle >= 45 && perpAngle < 135) ||
                                   (perpAngle >= 225 && perpAngle < 315);
-            const edgeCursor = isVerticalPerp ? 'ew-resize' : 'ns-resize';
+            const edgeCursor = isVerticalPerp ? 'ns-resize' : 'ew-resize';
 
             return (
               <Html

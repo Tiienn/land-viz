@@ -49,54 +49,76 @@ const normalizeAngle = (angle: number): number => {
   return angle;
 };
 
+// Helper function to measure actual text box dimensions INCLUDING padding (matches TextObject.tsx rendering)
+function measureTextDimensions(text: TextObject, is2DMode: boolean, isSelected: boolean): { width: number; height: number } {
+  // Create temporary DOM element with EXACT same styles as rendered text
+  const measureDiv = document.createElement('div');
+  measureDiv.style.position = 'absolute';
+  measureDiv.style.visibility = 'hidden';
+  measureDiv.style.pointerEvents = 'none';
+  measureDiv.style.left = '-9999px';
+  measureDiv.style.top = '-9999px';
+
+  // Apply exact text styles from TextObject.tsx
+  measureDiv.style.fontFamily = text.fontFamily || 'Nunito Sans, sans-serif';
+  measureDiv.style.fontSize = `${text.fontSize}px`;
+  measureDiv.style.fontWeight = text.bold ? 'bold' : 'normal';
+  measureDiv.style.fontStyle = text.italic ? 'italic' : 'normal';
+  measureDiv.style.textDecoration = text.underline ? 'underline' : 'none';
+  measureDiv.style.textTransform = text.uppercase ? 'uppercase' : 'none';
+  measureDiv.style.letterSpacing = `${text.letterSpacing / 100}em`;
+  measureDiv.style.lineHeight = `${text.lineHeight}`;
+  measureDiv.style.textAlign = text.alignment as 'left' | 'center' | 'right';
+  measureDiv.style.margin = '0';
+
+  // CRITICAL: Apply padding BEFORE measuring (matches TextObject.tsx)
+  measureDiv.style.padding = text.backgroundColor ? '8px 12px' : '0';
+
+  // CRITICAL: Apply border BEFORE measuring if selected
+  measureDiv.style.border = isSelected ? '2px solid #3B82F6' : 'none';
+  measureDiv.style.boxSizing = 'content-box'; // Match default browser behavior
+
+  // CRITICAL: Different wrapping behavior for 2D vs 3D mode (matches TextObject.tsx)
+  if (is2DMode) {
+    measureDiv.style.whiteSpace = 'nowrap';  // 2D mode: no wrapping
+    measureDiv.style.maxWidth = 'none';      // 2D mode: no width limit
+    measureDiv.style.writingMode = 'horizontal-tb'; // 2D mode: horizontal text
+  } else {
+    measureDiv.style.whiteSpace = 'pre-wrap'; // 3D mode: wrapping allowed
+    measureDiv.style.wordWrap = 'break-word';
+    measureDiv.style.maxWidth = '400px';     // 3D mode: width limit
+    measureDiv.style.overflowWrap = 'break-word';
+    measureDiv.style.wordBreak = 'break-word';
+  }
+
+  measureDiv.textContent = text.content;
+
+  // Add to DOM, measure, then remove
+  document.body.appendChild(measureDiv);
+  const width = measureDiv.offsetWidth;  // With border-box, this includes padding + border
+  const height = measureDiv.offsetHeight; // With border-box, this includes padding + border
+  document.body.removeChild(measureDiv);
+
+  return { width, height };
+}
+
 // Calculate text bounding box accounting for distanceFactor and multi-line content
 function calculateTextBounds(text: TextObject, is2DMode: boolean, isSelected: boolean = true) {
   // distanceFactor controls CSS pixel → world unit conversion
   // 2D mode: 2.5 (smaller scaling), 3D mode: 20 (larger scaling)
   const distanceFactor = is2DMode ? 2.5 : 20;
 
-  // Split into lines for accurate multi-line measurement
-  const lines = text.content.split('\n').filter(line => line.length > 0);
-  const lineCount = Math.max(lines.length, 1);
-  const maxLineLength = Math.max(...lines.map(line => line.length), 1);
-
-  // Character width factor - tuned to 0.5 for accurate alignment with rendered text
-  // Browser text rendering with whiteSpace: nowrap and no maxWidth uses natural character width
-  // This accounts for: letter spacing, font rendering, CSS box model, and browser text layout
-  const charWidthFactor = 0.5;
-
-  // Calculate CSS pixel dimensions (what the browser renders)
-  const cssFontSize = text.fontSize;
-  const cssWidth = cssFontSize * maxLineLength * charWidthFactor;
-  const cssHeight = cssFontSize * text.lineHeight * lineCount;
+  // Measure actual text box dimensions INCLUDING padding and border
+  // This gives us the EXACT rendered box size in CSS pixels
+  const measured = measureTextDimensions(text, is2DMode, isSelected);
+  let cssWidth = measured.width;
+  let cssHeight = measured.height;
 
   // Convert CSS pixels to world units using distanceFactor
   // World units = CSS pixels / distanceFactor
+  // No need to add padding/border - already included in measurement!
   let worldWidth = cssWidth / distanceFactor;
   let worldHeight = cssHeight / distanceFactor;
-
-  // Account for padding if background color is present
-  // Padding: 8px top/bottom, 12px left/right (from TextObject style)
-  if (text.backgroundColor) {
-    const paddingHorizontalPx = 12 * 2; // 12px each side = 24px total
-    const paddingVerticalPx = 8 * 2;    // 8px each side = 16px total
-    const paddingWidthWorld = paddingHorizontalPx / distanceFactor;
-    const paddingHeightWorld = paddingVerticalPx / distanceFactor;
-
-    worldWidth += paddingWidthWorld;
-    worldHeight += paddingHeightWorld;
-  }
-
-  // Account for selection border (2px on all sides = 4px to width/height)
-  // This makes handles align with the visible blue border
-  if (isSelected) {
-    const borderPx = 2 * 2; // 2px border on each side = 4px total
-    const borderWidthWorld = borderPx / distanceFactor;
-    const borderHeightWorld = borderPx / distanceFactor;
-
-    worldWidth += borderWidthWorld;
-    worldHeight += borderHeightWorld;
-  }
 
   const left = text.position.x - worldWidth / 2;
   const top = text.position.z - worldHeight / 2;
@@ -121,6 +143,9 @@ function calculateHandlePositions(bounds: ReturnType<typeof calculateTextBounds>
   // Calculate center point for rotation
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
+
+  // Handles are positioned exactly at the bounds corners (no offset)
+  // Bounds include text dimensions + background padding + selection border
 
   // Helper function to rotate a point around the center
   const rotatePoint = (x: number, y: number): Point2D => {
@@ -152,14 +177,7 @@ function calculateHandlePositions(bounds: ReturnType<typeof calculateTextBounds>
     rotatePoint(minX, maxY), // Bottom-left
   ];
 
-  const edges = [
-    rotatePoint((minX + maxX) / 2, minY), // Top
-    rotatePoint(maxX, (minY + maxY) / 2), // Right
-    rotatePoint((minX + maxX) / 2, maxY), // Bottom
-    rotatePoint(minX, (minY + maxY) / 2), // Left
-  ];
-
-  return { corners, edges };
+  return { corners };
 }
 
 export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
@@ -177,7 +195,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   const cursorRotationMode = useAppStore(state => state.drawing.cursorRotationMode);
 
   // Local state
-  const [hoveredHandle, setHoveredHandle] = useState<{ type: 'corner' | 'edge' | 'rotate' | 'drag'; index?: number } | null>(null);
+  const [hoveredHandle, setHoveredHandle] = useState<{ type: 'corner' | 'rotate' | 'drag'; index?: number } | null>(null);
   const [cursorOverride, setCursorOverride] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
   const [currentAngle, setCurrentAngle] = useState(text.rotation || 0);
@@ -198,7 +216,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
 
   const dragState = useRef({
     isDragging: false,
-    dragType: null as 'move' | 'resize-corner' | 'resize-edge' | 'rotate' | null,
+    dragType: null as 'move' | 'resize-corner' | 'rotate' | null,
     handleIndex: null as number | null,
     startPosition: null as Point2D | null,
     originalFontSize: text.fontSize,
@@ -248,10 +266,10 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
 
   // Calculate rotation handle position (below textbox bounds, accounting for rotation)
   const rotationHandlePosition = useMemo(() => {
-    const handleOffset = 4.0; // Distance below textbox bottom edge
+    const rotationHandleGap = 4.0; // Distance below bottom edge handle
     const centerX = (textBounds.minX + textBounds.maxX) / 2;
     const centerY = (textBounds.minY + textBounds.maxY) / 2;
-    const bottomY = textBounds.maxY; // Bottom edge of textbox (unrotated)
+    const bottomY = textBounds.maxY; // Bottom edge of text box
 
     // Rotate the handle position to follow the text rotation
     const rotation = text.rotation || 0;
@@ -262,7 +280,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
 
       // Point below center (unrotated)
       const dx = 0; // Directly below center horizontally
-      const dy = (bottomY - centerY) + handleOffset; // Distance from center to below bottom edge
+      const dy = (bottomY - centerY) + rotationHandleGap; // Distance from center to below bottom edge
 
       // Rotate around center
       const rotatedX = dx * cos - dy * sin;
@@ -278,7 +296,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     // No rotation - simple positioning
     return {
       x: centerX,
-      y: bottomY + handleOffset,
+      y: bottomY + rotationHandleGap,
       center: { x: centerX, y: centerY },
     };
   }, [textBounds, text.rotation]);
@@ -360,27 +378,6 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
           Math.pow(dragState.current.originalBounds.height / 2, 2)
         );
         const scaleFactor = dragDiagonal / originalDiagonal;
-        const newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, dragState.current.originalFontSize * scaleFactor));
-        updateText(text.id, { fontSize: newFontSize });
-      } else if (dragState.current.dragType === 'resize-edge' && dragState.current.originalBounds && dragState.current.handleIndex !== null) {
-        // Edge resize - dimensional scaling
-        const handleIndex = dragState.current.handleIndex;
-        let scaleFactor: number;
-
-        if (handleIndex === 0 || handleIndex === 2) {
-          // North/South handles
-          const newHeight = handleIndex === 0
-            ? dragState.current.originalBounds.height + (dragState.current.originalBounds.top - worldPoint.y)
-            : worldPoint.y - dragState.current.originalBounds.top;
-          scaleFactor = newHeight / dragState.current.originalBounds.height;
-        } else {
-          // East/West handles
-          const newWidth = handleIndex === 1
-            ? worldPoint.x - dragState.current.originalBounds.left
-            : dragState.current.originalBounds.width + (dragState.current.originalBounds.left - worldPoint.x);
-          scaleFactor = newWidth / dragState.current.originalBounds.width;
-        }
-
         const newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, dragState.current.originalFontSize * scaleFactor));
         updateText(text.id, { fontSize: newFontSize });
       } else if (dragState.current.dragType === 'rotate') {
@@ -620,44 +617,6 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
   };
 
   /**
-   * Start edge resize
-   */
-  const startEdgeResize = (index: number) => (event: any) => {
-    event.stopPropagation();
-
-    // For React events, access native event if available, otherwise use event directly
-    const pointerId = event.nativeEvent?.pointerId ?? event.pointerId;
-
-    logger.info('[TextTransformControls] Starting edge resize', {
-      textId: text.id,
-      handleIndex: index,
-    });
-
-    saveToHistory();
-
-    dragState.current.isDragging = true;
-    dragState.current.dragType = 'resize-edge';
-    dragState.current.handleIndex = index;
-    dragState.current.originalFontSize = text.fontSize;
-    dragState.current.originalBounds = textBounds;
-    dragState.current.pointerId = pointerId;
-    hasDraggedRef.current = false;
-
-    const edgeCursor = (index === 1 || index === 3) ? 'ew-resize' : 'ns-resize';
-    setCursorOverride(edgeCursor);
-
-    try {
-      event.currentTarget.setPointerCapture(pointerId);
-    } catch (error) {
-      logger.warn('[TextTransformControls] Failed to capture pointer:', error);
-    }
-
-    document.addEventListener('pointermove', handlePointerMove, true);
-    document.addEventListener('pointerup', handlePointerUp, true);
-    document.addEventListener('pointercancel', handlePointerUp, true);
-  };
-
-  /**
    * Start rotation
    */
   const startRotation = (event: any) => {
@@ -714,29 +673,50 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
     <group name="text-transform-controls">
       {/* Drag area - Html overlay for text dragging (Html renders on top of meshes) */}
       <Html
-        position={[text.position.x, elevation + 0.3, text.position.z]}
+        position={[text.position.x, elevation + 0.1, text.position.z]}
         center
         occlude={false}
         distanceFactor={is2DMode ? 2.5 : 20}
         style={{
           pointerEvents: 'auto',
           userSelect: 'none',
-          zIndex: tokens.zIndex.scene,
+          zIndex: tokens.zIndex.scene - 10, // Lower than handles
         }}
       >
-        <div
-          onPointerDown={startDrag}
-          onPointerEnter={() => !dragState.current.isDragging && setCursorOverride('grab')}
-          onPointerLeave={() => !dragState.current.isDragging && setCursorOverride(null)}
-          style={{
-            width: `${textBounds.width * (is2DMode ? 2.5 : 20)}px`,
-            height: `${textBounds.height * (is2DMode ? 2.5 : 20)}px`,
-            cursor: dragState.current.isDragging ? 'grabbing' : 'grab',
-            // Invisible drag area
-            backgroundColor: 'transparent',
-            border: 'none',
-          }}
-        />
+        {(() => {
+          // Calculate drag area dimensions (shrink slightly to avoid handle overlap)
+          const distanceFactor = is2DMode ? 2.5 : 20;
+          const handleSizePx = 4 + 1 + 1; // 4px diameter + 1px border on each side = 6px
+          const shrinkPx = handleSizePx * 2; // Shrink by handle size on each side
+          const dragWidth = Math.max(10, textBounds.width * distanceFactor - shrinkPx);
+          const dragHeight = Math.max(10, textBounds.height * distanceFactor - shrinkPx);
+
+          return (
+            <div
+              onPointerDown={startDrag}
+              onPointerEnter={() => {
+                // Only show grab cursor if not hovering over a handle
+                if (!dragState.current.isDragging && !hoveredHandle) {
+                  setCursorOverride('grab');
+                }
+              }}
+              onPointerLeave={() => {
+                if (!dragState.current.isDragging && !hoveredHandle) {
+                  setCursorOverride(null);
+                }
+              }}
+              style={{
+                width: `${dragWidth}px`,
+                height: `${dragHeight}px`,
+                cursor: dragState.current.isDragging ? 'grabbing' : 'grab',
+                // Invisible drag area
+                backgroundColor: 'transparent',
+                border: 'none',
+                zIndex: 1, // Base layer
+              }}
+            />
+          );
+        })()}
       </Html>
 
       {/* Corner Handles - Proportional Scaling (Html for consistent sizing) */}
@@ -747,8 +727,8 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
         return (
           <Html
             key={`text-resize-corner-${index}`}
-            position={[point.x, elevation + 0.3, point.y]}
-            center // Always use center for handles (not sprite) for correct positioning
+            position={[point.x, elevation + 0.35, point.y]}
+            center // Center the HTML element at the position
             occlude={false}
             distanceFactor={is2DMode ? 2.5 : 20}
             style={{
@@ -772,78 +752,15 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
                 }
               }}
               style={{
-                width: '4px',
-                height: '4px',
+                width: '8px',
+                height: '8px',
                 borderRadius: '50%',
                 backgroundColor: isHovered ? '#CCCCCC' : '#FFFFFF',
-                border: '1px solid #3B82F6',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                border: '2px solid #3B82F6',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                 cursor: cornerCursors[index],
                 transition: 'background-color 0.15s ease',
-              }}
-            />
-          </Html>
-        );
-      })}
-
-      {/* Edge Handles - Dimensional Scaling (Html for consistent sizing) */}
-      {handles.edges.map((point, index) => {
-        const isHovered = hoveredHandle?.type === 'edge' && hoveredHandle?.index === index;
-
-        // Calculate edge parallel angle (angle the edge runs along)
-        const rotation = text.rotation || 0;
-        // Edge directions: Top (0) = 0°, Right (1) = 90°, Bottom (2) = 180°, Left (3) = 270°
-        const baseAngles = [0, 90, 180, 270];
-        const parallelAngle = rotation + baseAngles[index];
-
-        // Normalize rotation to 0-180° range (bars look identical at θ and θ+180°)
-        const visualRotation = ((parallelAngle % 180) + 180) % 180;
-
-        // Calculate perpendicular angle for cursor (90° from edge direction)
-        const perpAngle = ((parallelAngle + 90) % 360 + 360) % 360;
-
-        // Determine cursor based on perpendicular direction
-        const isVerticalPerp = (perpAngle >= 45 && perpAngle < 135) ||
-                              (perpAngle >= 225 && perpAngle < 315);
-        const edgeCursor = isVerticalPerp ? 'ew-resize' : 'ns-resize';
-
-        return (
-          <Html
-            key={`text-resize-edge-${index}`}
-            position={[point.x, elevation + 0.15, point.y]}
-            center // Always use center for handles (not sprite) for correct positioning
-            occlude={false}
-            distanceFactor={is2DMode ? 2.5 : 20}
-            style={{
-              pointerEvents: 'auto',
-              userSelect: 'none',
-              zIndex: tokens.zIndex.scene,
-            }}
-          >
-            <div
-              onPointerDown={startEdgeResize(index)}
-              onPointerEnter={() => {
-                setHoveredHandle({ type: 'edge', index });
-                if (!dragState.current.isDragging) {
-                  setCursorOverride(edgeCursor);
-                }
-              }}
-              onPointerLeave={() => {
-                setHoveredHandle(null);
-                if (!dragState.current.isDragging) {
-                  setCursorOverride(null);
-                }
-              }}
-              style={{
-                width: '16px', // Always horizontal bar
-                height: '4px',
-                borderRadius: '2px',
-                backgroundColor: isHovered ? '#CCCCCC' : '#FFFFFF',
-                border: '1px solid #3B82F6',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                cursor: edgeCursor,
-                transition: 'background-color 0.15s ease',
-                transform: `rotate(${visualRotation}deg)`, // Rotate bar to align with edge direction
+                zIndex: 10, // Above drag area
               }}
             />
           </Html>
@@ -853,7 +770,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
       {/* Rotation Handle - Hide when cursor rotation mode is active (RotationControls handles it) */}
       {!cursorRotationMode && (
         <Html
-          position={[rotationHandlePosition.x, elevation + 0.3, rotationHandlePosition.y]}
+          position={[rotationHandlePosition.x, elevation + 0.4, rotationHandlePosition.y]}
           center // Always use center for handles (not sprite) for correct positioning
           occlude={false}
           distanceFactor={is2DMode ? 2.5 : 20}
@@ -883,6 +800,7 @@ export const TextTransformControls: React.FC<TextTransformControlsProps> = ({
               fontWeight: 'bold',
               transition: 'all 0.2s ease',
               transform: isRotating ? 'scale(1.1)' : 'scale(1)',
+              zIndex: 10, // Above drag area
             }}
             title="Drag to rotate text"
           >

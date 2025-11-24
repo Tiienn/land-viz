@@ -173,6 +173,16 @@ For security concerns, review the code directly or create issues in the project 
 
 ---
 
-**Last Updated:** September 2025  
+**Last Updated:** January 2025  
 **Security Review:** Complete ✅  
 **Next Review:** With major feature updates
+
+---
+
+## Notes on External Dependencies
+
+### OpenCV.js (Boundary Detection)
+- Loaded from CDN only when AI Boundary Detection modal is opened
+- Lazy loading prevents unnecessary network requests
+- WebAssembly-based, runs entirely client-side
+- No data transmitted to external servers

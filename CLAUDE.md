@@ -42,6 +42,42 @@
 - Custom camera controls (right-orbit, middle-pan), green grass grid
 - Nunito Sans typography, production security headers
 
+### 🚶 Walkthrough Mode (January 2025) ✅
+**First-person 3D site exploration** - Walk through your land as a character to experience scale:
+- **WASD Movement**: Walk at 1.5 m/s, Sprint (Shift) at 3.0 m/s
+- **Physics System**: Realistic jump (5.0 m/s), gravity (9.8 m/s²), ground collision
+- **Boundary Detection**: Auto-calculates walkable area, prevents walking beyond site edges
+- **3D Environment**:
+  - 3D walkable shapes (2.5m tall buildings, extruded polygons, cylindrical circles)
+  - Procedural terrain textures (grass, concrete, dirt, gravel with seamless tiling)
+  - Billboard dimension labels (always face camera, distance-based scaling)
+  - Canvas-based minimap (150x150px, real-time position/direction, 60 FPS)
+- **Accessibility**: Customizable speed (0.5x-2.0x), jump height, motion reduction
+- **Controls Overlay**: Auto-display with smart hide, toggle with H key
+- **View Toggle**: V key cycles 2D → 3D Orbit → Walkthrough → 2D
+- **Keyboard Shortcut**: ESC to exit walkthrough mode
+- See `docs/features/WALKTHROUGH_MODE.md` for comprehensive documentation
+
+### 🔍 AI Boundary Detection (January 2025) ✅
+**Automatic property boundary detection from site plan images** using computer vision (OpenCV.js):
+- **Upload**: Drag-and-drop PNG/JPG/PDF site plans (max 10MB)
+- **AI Detection**: OpenCV.js computer vision engine detects boundaries (<3s for typical images)
+  - Preprocessing pipeline: Grayscale → Gaussian Blur → Adaptive Threshold → Morphological operations
+  - Contour extraction with Douglas-Peucker polygon approximation
+  - Confidence scoring (0-1) based on shape simplicity and area
+- **Interactive Preview**: Canvas overlay with color-coded confidence (🟢 High ≥70%, 🟡 Medium 50-69%, 🔴 Low <50%)
+  - Individual boundary selection (Select All / Deselect All)
+  - Metadata display (area, perimeter, point count)
+- **Scale Calibration**: Click two points on known dimension, enter real-world distance
+  - Unit support: meters, feet, yards, inches, centimeters, kilometers, miles
+  - Real-time pixels-per-meter calculation
+- **Smart Import**: Boundaries become drawable shapes with automatic type detection
+  - Rectangles (4 corners, ~90° angles), Polygons (closed shapes), Circles (future: Hough Transform)
+  - Coordinate transformation from pixel space to world space (meters)
+- **Performance**: <250ms detection time for 2000x2000px images (target: <3000ms)
+- **"Auto-Detect" button** in ribbon next to "Import Plan"
+- See `docs/features/BOUNDARY_DETECTION.md` for comprehensive documentation
+
 ### Design System (Phase 3) 🎨
 **Week 1-2: Brand Identity**
 - ✅ Comprehensive design token system (colors, spacing, typography, shadows)
@@ -96,7 +132,7 @@ npm run test:coverage       # Generate coverage report
 **Testing**: Vitest + React Testing Library + jest-axe
 **Performance**: Real-time monitoring with budget enforcement
 
-**Key Components**: App.tsx, SceneManager, DrawingCanvas, ShapeRenderer, RotationControls, MeasurementRenderer
+**Key Components**: App.tsx, SceneManager, DrawingCanvas, ShapeRenderer, RotationControls, MeasurementRenderer, WalkthroughCamera, Shape3DRenderer, TerrainRenderer, Minimap
 **Stores**: useAppStore, useTextStore, useLayerStore, useComparisonStore, useConversionStore, useMeasurementStore
 
 ## Known Issues & Solutions
@@ -104,6 +140,7 @@ npm run test:coverage       # Generate coverage report
 - **Hot Reload**: Kill all node processes if changes don't reflect: `taskkill /f /im node.exe`
 - **Multiple Servers**: Only run one dev server at a time to avoid port conflicts
 - **Text Bounds Estimation**: Text resize handles, group boundaries, and alignment use estimated dimensions (not actual DOM measurement). Affects Phase 5 (text resize handles), Phase 6 (text alignment), and grouping (purple boundaries). See `docs/known-issues/TEXT_BOUNDS_ESTIMATION_ISSUE.md` for technical details and proper solution.
+- **Text Resize Handle Corner Alignment**: Corner handles for text objects don't perfectly align on 45° corners for longer text (10+ characters) in 2D mode. Cosmetic only - doesn't affect functionality. See `docs/known-issues/TEXT_RESIZE_HANDLE_CORNER_ALIGNMENT.md`.
 
 ## Controls Reference
 **Camera:** Right-drag (orbit), middle-drag (pan), wheel (zoom)
@@ -125,10 +162,18 @@ npm run test:coverage       # Generate coverage report
 **Panels:** Click to expand horizontally, triangle to collapse
 **Grid:** Toggle in Properties (shows "1m snap" or "Free move")
 
+**Walkthrough Mode (First-Person):**
+- **WASD:** Move forward/left/backward/right
+- **Mouse:** Look around (click to activate pointer lock)
+- **Space:** Jump
+- **Shift:** Sprint (2x speed)
+- **ESC:** Exit walkthrough mode
+- **H:** Toggle controls overlay
+
 **Keyboard Shortcuts:**
 - **Tools:** S (select), R (rectangle), C (circle), P (polyline), L (line), M (measure), E (edit)
 - **Editing:** Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+D (duplicate), Delete/Backspace (delete), Shift+H (flip horizontal), Shift+V (flip vertical)
-- **View:** V (toggle 2D/3D), ? (show shortcuts help), ESC (cancel)
+- **View:** V (toggle 2D/3D/Walkthrough), ? (show shortcuts help), ESC (cancel)
 - **Press ? anytime** to see full keyboard shortcut reference
 
 ## Recent Fixes (January 2025)
@@ -201,6 +246,13 @@ npm run test:coverage       # Generate coverage report
 
 **Import Plan**: Boundary detection (adaptive epsilon), shape reconstruction API fix
 
+**Export System Optimizations** ⭐⭐ (January 2025):
+- **Spatial Grid Algorithm**: O(n²) → O(1) duplicate detection (~100x faster for large scenes)
+- **Canvas Size Limits**: 4096×4096 max prevents memory issues (532MB → 38MB for 4K at 4x)
+- **10s Timeout**: Scene capture timeout with graceful degradation
+- **Base64 Validation**: Comprehensive validation before PDF embedding
+- Docs: `docs/fixes/MEDIUM_PRIORITY_OPTIMIZATIONS.md`
+
 **Other**: Production logging cleanup (7+ files), circle dimension bug fix, grouping system cleanup
 
 ## Security
@@ -208,14 +260,19 @@ npm run test:coverage       # Generate coverage report
 
 ## Key Files
 **Components**: App.tsx, SceneManager, DrawingCanvas, ShapeRenderer, RotationControls, TextTransformControls, TextRenderer
+**Walkthrough**: WalkthroughCamera, Shape3DRenderer, TerrainRenderer, BillboardDimensionLabel, Minimap, WalkthroughControlsOverlay, WalkthroughAccessibilityPanel
+**Boundary Detection**: BoundaryDetectionModal, ImageUploadStep, DetectionPreviewStep, ScaleCalibrationStep, BoundaryDetectionService
 **Stores**: useAppStore, useTextStore, useLayerStore, useComparisonStore, useConversionStore, useMeasurementStore
-**Utils**: GeometryLoader, PerformanceMonitor, ValidationService, logger, measurementUtils
+**Utils**: GeometryLoader, PerformanceMonitor, ValidationService, logger, measurementUtils, opencvLoader
+**Services**: pdfExportService, boundaryDetection/, aiTextureService
 **Tests**: `__tests__/` - integration, performance, accessibility
 
 ## Next Development
-- Advanced measurement (angle, area)
-- Export (Excel, DXF, CSV)
-- Layer management UI
-- Property boundary import/export
-- Terrain elevation tools
+- Advanced measurement (angle, area calculation tools)
+- Export formats (Excel, DXF, CSV)
+- Layer management UI enhancements
+- Terrain elevation tools (hills, contours)
+- Circle detection via Hough Transform for boundary detection
+- VR/AR walkthrough mode support
+- Collision detection with 3D shapes in walkthrough mode
 

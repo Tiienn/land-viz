@@ -22,9 +22,16 @@ const ToolsPanel = lazy(() => import('./components/ToolsPanel').then(m => ({ def
 import ReferenceObjectRenderer from './components/Scene/ReferenceObjectRenderer';
 import { ObjectPositioner } from './utils/objectPositioning';
 import AlignmentControls from './components/UI/AlignmentControls';
-import { View2DToggleButton } from './components/UI/View2DToggleButton';
+import { View2DToggleButton, Generate3DWorldButton } from './components/UI/View2DToggleButton';
 import { ShortcutsHelpButton } from './components/UI/ShortcutsHelpButton';
 import { FlipButton } from './components/UI/FlipButton';
+import Minimap from './components/UI/Minimap';
+import WalkthroughControlsOverlay from './components/UI/WalkthroughControlsOverlay';
+import WalkthroughAccessibilityPanel from './components/UI/WalkthroughAccessibilityPanel';
+import WalkthroughClickPrompt from './components/UI/WalkthroughClickPrompt';
+import BoundaryCollisionFeedback from './components/UI/BoundaryCollisionFeedback';
+import WalkthroughTexturePanel from './components/UI/WalkthroughTexturePanel';
+import WalkthroughSkyPanel from './components/UI/WalkthroughSkyPanel';
 import { ExportButton } from './components/UI/ExportButton';
 import { ExportModal } from './components/Modals/ExportModal';
 import Icon from './components/Icon';
@@ -41,9 +48,10 @@ import LiveDistanceLabel from './components/DimensionInput/LiveDistanceLabel';
 import { SaveTemplateDialog } from './components/TemplateGallery';
 import { useTemplateStore } from './store/useTemplateStore';
 
-// Performance optimization: Lazy load template gallery and image importer
+// Performance optimization: Lazy load template gallery, image importer, and boundary detection
 const TemplateGalleryModal = lazy(() => import('./components/TemplateGallery').then(m => ({ default: m.TemplateGalleryModal })));
 const ImageImporterModal = lazy(() => import('./components/ImageImport').then(m => ({ default: m.ImageImporterModal })));
+const BoundaryDetectionModal = lazy(() => import('./components/BoundaryDetection/BoundaryDetectionModal').then(m => ({ default: m.default })));
 import { TextModal } from './components/Text/TextModal';
 import { InlineTextOverlay } from './components/Text/InlineTextOverlay';
 import { useTextStore } from './store/useTextStore';
@@ -79,6 +87,7 @@ function App(): React.JSX.Element {
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
   const [exportSettingsFormat] = useState<ExportSettings['format']>('excel');
   const [imageImportOpen, setImageImportOpen] = useState(false);
+  const [boundaryDetectionOpen, setBoundaryDetectionOpen] = useState(false);
   const [isProfessionalMode, setIsProfessionalMode] = useState(false);
   const [mousePosition, setMousePosition] = useState<Point2D>({ x: 0, y: 0 });
   const [isMouseOver3D, setIsMouseOver3D] = useState(false);
@@ -204,9 +213,15 @@ function App(): React.JSX.Element {
     // runMigration, // Phase 2: Auto-migration (TODO: Implement this function in useAppStore)
   } = useAppStore();
 
-  // Migration: Ensure 'perpendicular', 'edge', and 'midpoint' snap types are enabled (fixes localStorage from older versions)
+  // Migration v1.0: Ensure 'perpendicular', 'edge', and 'midpoint' snap types are enabled (fixes localStorage from older versions)
   useEffect(() => {
     const currentState = useAppStore.getState();
+
+    // Check if this migration has already been applied
+    if (currentState.migrations?.snappingTypesV1) {
+      return; // Already migrated, skip
+    }
+
     const activeTypes = currentState.drawing.snapping.config.activeTypes;
 
     // Check if perpendicular, edge, or midpoint are missing
@@ -216,6 +231,8 @@ function App(): React.JSX.Element {
     const needsMigration = !hasPerpendicular || !hasEdge || !hasMidpoint;
 
     if (needsMigration) {
+      logger.info('[Migration v1.0] Applying snapping types migration (adding perpendicular, edge, midpoint)');
+
       // Update the store state
       useAppStore.setState(state => ({
         ...state,
@@ -228,6 +245,21 @@ function App(): React.JSX.Element {
               activeTypes: new Set(['grid', 'endpoint', 'midpoint', 'center', 'edge', 'perpendicular'])
             }
           }
+        },
+        migrations: {
+          ...state.migrations,
+          snappingTypesV1: true, // Mark migration as complete
+        }
+      }));
+
+      logger.info('[Migration v1.0] Snapping types migration completed');
+    } else {
+      // No migration needed, but mark as complete to prevent future checks
+      useAppStore.setState(state => ({
+        ...state,
+        migrations: {
+          ...state.migrations,
+          snappingTypesV1: true,
         }
       }));
     }
@@ -287,6 +319,8 @@ function App(): React.JSX.Element {
       description: 'Select tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         setActiveTool('select');
         setStoreActiveTool('select');
       },
@@ -297,6 +331,8 @@ function App(): React.JSX.Element {
       description: 'Rectangle tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         setActiveTool('rectangle');
         setStoreActiveTool('rectangle');
       },
@@ -307,6 +343,8 @@ function App(): React.JSX.Element {
       description: 'Circle tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         setActiveTool('circle');
         setStoreActiveTool('circle');
       },
@@ -317,6 +355,8 @@ function App(): React.JSX.Element {
       description: 'Polyline tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         setActiveTool('polyline');
         setStoreActiveTool('polyline');
       },
@@ -327,6 +367,8 @@ function App(): React.JSX.Element {
       description: 'Line tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         setActiveTool('line');
         setStoreActiveTool('line');
       },
@@ -337,6 +379,8 @@ function App(): React.JSX.Element {
       description: 'Measurement tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         if (drawing.measurement?.isActive) {
           deactivateMeasurementTool();
         } else {
@@ -350,6 +394,8 @@ function App(): React.JSX.Element {
       description: 'Text tool',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode (T is used for texture panel)
+        if (viewState?.viewMode === '3d-walkthrough') return;
         setActiveTool('text');
         setStoreActiveTool('text');
       },
@@ -360,6 +406,8 @@ function App(): React.JSX.Element {
       description: 'Toggle edit mode',
       category: 'tools',
       action: () => {
+        // Don't activate tools in walkthrough mode
+        if (viewState?.viewMode === '3d-walkthrough') return;
         if (selectedShapeId) {
           if (drawing.isEditMode) {
             exitEditMode();
@@ -1036,7 +1084,14 @@ function App(): React.JSX.Element {
           // Small delay to ensure controls are hidden before capture
           await new Promise(resolve => setTimeout(resolve, 100));
 
-          sceneImageDataURL = await captureSceneSnapshot(sceneContainer, 2); // 2x resolution
+          // Capture scene with 10s timeout to prevent hanging
+          const CAPTURE_TIMEOUT = 10000; // 10 seconds
+          const capturePromise = captureSceneSnapshot(sceneContainer, 2); // 2x resolution
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Scene capture timeout (10s)')), CAPTURE_TIMEOUT)
+          );
+
+          sceneImageDataURL = await Promise.race([capturePromise, timeoutPromise]);
           logger.info('Scene snapshot captured successfully');
 
           // Remove exporting flag
@@ -2113,6 +2168,40 @@ function App(): React.JSX.Element {
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                   </svg>
                   <span style={{ marginTop: tokens.spacing[1] }}>Import Plan</span>
+                </button>
+                <button
+                  onClick={() => setBoundaryDetectionOpen(true)}
+                  title="Auto-Detect Boundaries"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                    borderRadius: tokens.radius.sm,
+                    minWidth: tokens.sizing.buttonMinWidth,
+                    height: tokens.sizing.buttonHeight,
+                    border: `1px solid ${tokens.colors.neutral[200]}`,
+                    cursor: 'pointer',
+                    background: tokens.colors.background.primary,
+                    color: tokens.colors.neutral[900],
+                    transition: `all ${tokens.animation.timing.smooth} ease`,
+                    fontSize: tokens.typography.caption.size,
+                    fontWeight: tokens.typography.label.weight
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = tokens.colors.neutral[100];
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = tokens.colors.background.primary;
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="M21 21l-4.35-4.35"></path>
+                    <path d="M11 8v6"></path>
+                    <path d="M8 11h6"></path>
+                  </svg>
+                  <span style={{ marginTop: tokens.spacing[1] }}>Auto-Detect</span>
                 </button>
               </div>
             </div>
@@ -3502,6 +3591,32 @@ function App(): React.JSX.Element {
       {/* Floating 2D/3D Toggle Button */}
       <View2DToggleButton />
 
+      {/* Generate 3D World Button - Test fence rendering with drawn shapes */}
+      <Generate3DWorldButton />
+
+      {/* Minimap - Only shown in walkthrough mode */}
+      {viewState?.viewMode === '3d-walkthrough' && <Minimap />}
+
+      {/* Walkthrough Click Prompt - Shows when entering walkthrough but pointer not locked */}
+      {viewState?.viewMode === '3d-walkthrough' && !viewState.walkthroughState?.pointerLocked && (
+        <WalkthroughClickPrompt />
+      )}
+
+      {/* Walkthrough Controls Overlay - Shows instructions in walkthrough mode */}
+      <WalkthroughControlsOverlay />
+
+      {/* Phase 2: Boundary collision visual feedback */}
+      {viewState?.viewMode === '3d-walkthrough' && <BoundaryCollisionFeedback />}
+
+      {/* Phase 3: AI Texture panel in walkthrough mode */}
+      {viewState?.viewMode === '3d-walkthrough' && <WalkthroughTexturePanel />}
+
+      {/* Walkthrough Sky Settings Panel */}
+      {viewState?.viewMode === '3d-walkthrough' && <WalkthroughSkyPanel />}
+
+      {/* Walkthrough Accessibility Settings - Comfort and speed controls */}
+      <WalkthroughAccessibilityPanel />
+
       {/* Floating Help Button */}
       <ShortcutsHelpButton onClick={() => setShortcutHelpOpen(true)} />
 
@@ -3527,6 +3642,117 @@ function App(): React.JSX.Element {
         <ImageImporterModal
           isOpen={imageImportOpen}
           onClose={() => setImageImportOpen(false)}
+        />
+      </Suspense>
+
+      {/* Boundary Detection Modal */}
+      <Suspense fallback={null}>
+        <BoundaryDetectionModal
+          isOpen={boundaryDetectionOpen}
+          onClose={() => setBoundaryDetectionOpen(false)}
+          onImport={async (boundaries, scale) => {
+            // Import detected boundaries as shapes
+            const { boundariesToShapes } = await import('./services/boundaryDetection/coordinateUtils');
+
+            // Get detection result metadata (image dimensions)
+            const imageWidth = boundaries[0]?.originalPoints?.[0]?.[0] ?
+              Math.max(...boundaries.flatMap(b => b.points.map(p => p[0]))) : 2000;
+            const imageHeight = boundaries[0]?.originalPoints?.[0]?.[1] ?
+              Math.max(...boundaries.flatMap(b => b.points.map(p => p[1]))) : 2000;
+
+            // Convert boundaries to shapes
+            const newShapes = boundariesToShapes(boundaries, imageWidth, imageHeight, scale);
+
+            // Add shapes to scene
+            useAppStore.setState(state => ({
+              shapes: [...state.shapes, ...newShapes]
+            }));
+
+            // Save to history
+            useAppStore.getState().saveToHistory();
+
+            // Show success toast
+            showToast('success', `Imported ${newShapes.length} boundaries successfully!`);
+
+            // Close modal
+            setBoundaryDetectionOpen(false);
+          }}
+          onGenerate3DWorld={async (boundaries, scale, config) => {
+            // Phase 1: Generate 3D walkable world from detected boundaries
+            const { boundariesToShapes } = await import('./services/boundaryDetection/coordinateUtils');
+
+            // Get detection result metadata (image dimensions)
+            const imageWidth = boundaries[0]?.originalPoints?.[0]?.[0] ?
+              Math.max(...boundaries.flatMap(b => b.points.map(p => p[0]))) : 2000;
+            const imageHeight = boundaries[0]?.originalPoints?.[0]?.[1] ?
+              Math.max(...boundaries.flatMap(b => b.points.map(p => p[1]))) : 2000;
+
+            // Convert boundaries to shapes first (for 2D/3D orbit view)
+            const newShapes = boundariesToShapes(boundaries, imageWidth, imageHeight, scale);
+
+            // Add shapes to scene
+            useAppStore.setState(state => ({
+              shapes: [...state.shapes, ...newShapes]
+            }));
+
+            // Calculate perimeter for each boundary
+            const calculatePerimeter = (points: Array<{ x: number; y: number }>) => {
+              let perimeter = 0;
+              for (let i = 0; i < points.length; i++) {
+                const p1 = points[i];
+                const p2 = points[(i + 1) % points.length];
+                perimeter += Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+              }
+              return perimeter;
+            };
+
+            // Create walkable boundaries from the detected boundaries
+            const store = useAppStore.getState();
+            const addWalkableBoundary = store.addWalkableBoundary;
+
+            // Convert each boundary to a walkable area
+            newShapes.forEach((shape, index) => {
+              const points = shape.points.map(p => ({ x: p.x, y: p.y }));
+
+              // Calculate area using shoelace formula
+              let area = 0;
+              for (let i = 0; i < points.length; i++) {
+                const j = (i + 1) % points.length;
+                area += points[i].x * points[j].y;
+                area -= points[j].x * points[i].y;
+              }
+              area = Math.abs(area) / 2;
+
+              addWalkableBoundary({
+                points,
+                area,
+                perimeter: calculatePerimeter(points),
+                terrainType: config.terrainType,
+                fenceStyle: config.fenceStyle,
+                fenceHeight: config.fenceHeight,
+                enableAITexture: false,
+                sourceDetectedBoundaryId: boundaries[index]?.id,
+              });
+            });
+
+            // Save to history
+            useAppStore.getState().saveToHistory();
+
+            // Auto-enter walkthrough mode
+            useAppStore.setState(state => ({
+              viewState: {
+                ...state.viewState,
+                viewMode: '3d-walkthrough',
+                is2DMode: false,
+              }
+            }));
+
+            // Show success toast
+            showToast('success', `Generated 3D world with ${newShapes.length} walkable areas! Use WASD to explore.`);
+
+            // Close modal
+            setBoundaryDetectionOpen(false);
+          }}
         />
       </Suspense>
 

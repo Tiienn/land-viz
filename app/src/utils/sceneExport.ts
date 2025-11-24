@@ -1,9 +1,15 @@
 import { logger } from './logger';
 
+// Maximum canvas dimension to prevent memory issues (16+ megapixels = ~64MB RAM)
+const MAX_CANVAS_DIMENSION = 4096;
+
 /**
  * Captures the entire scene (WebGL canvas + HTML overlays) as high-resolution PNG
  * Uses direct canvas capture for WebGL content, then composites HTML overlays
  * Applies white background for professional technical drawing output
+ *
+ * Canvas dimensions are capped at 4096x4096 to prevent memory issues.
+ * Resolution is automatically scaled down if needed.
  *
  * @param containerElement - The scene container DOM element (must include canvas and overlays)
  * @param resolution - Pixel ratio multiplier (2 = high quality, 4 = ultra quality)
@@ -33,10 +39,28 @@ export async function captureSceneSnapshot(
     const width = containerElement.offsetWidth;
     const height = containerElement.offsetHeight;
 
+    // Calculate effective resolution with size limits
+    // Cap canvas dimensions at MAX_CANVAS_DIMENSION to prevent memory issues
+    const maxDimension = Math.max(width, height);
+    const effectiveResolution = Math.min(
+      resolution,
+      MAX_CANVAS_DIMENSION / maxDimension
+    );
+
+    if (effectiveResolution < resolution) {
+      console.log(`[Scene Export] Resolution capped from ${resolution}x to ${effectiveResolution.toFixed(2)}x (max dimension: ${MAX_CANVAS_DIMENSION}px)`);
+    }
+
+    // Calculate final canvas dimensions
+    const finalWidth = Math.floor(width * effectiveResolution);
+    const finalHeight = Math.floor(height * effectiveResolution);
+
+    console.log(`[Scene Export] Canvas size: ${finalWidth}x${finalHeight} (${(finalWidth * finalHeight / 1000000).toFixed(1)}MP)`);
+
     // Create a new canvas for compositing
     const compositeCanvas = document.createElement('canvas');
-    compositeCanvas.width = width * resolution;
-    compositeCanvas.height = height * resolution;
+    compositeCanvas.width = finalWidth;
+    compositeCanvas.height = finalHeight;
     const ctx = compositeCanvas.getContext('2d');
 
     if (!ctx) {
@@ -44,7 +68,7 @@ export async function captureSceneSnapshot(
     }
 
     // Scale for high resolution
-    ctx.scale(resolution, resolution);
+    ctx.scale(effectiveResolution, effectiveResolution);
 
     // Enable high-quality rendering
     ctx.imageSmoothingEnabled = true;
@@ -108,9 +132,52 @@ async function drawHTMLOverlays(
 
   console.log(`[Scene Export] Processing ${htmlOverlays.length} HTML overlays`);
 
-  // Track drawn labels with position to detect duplicates within proximity
-  const drawnLabels: Array<{ text: string; x: number; y: number }> = [];
+  // Track drawn labels with position using spatial grid for O(1) duplicate detection
+  // Spatial grid divides the scene into cells and only checks nearby cells
   const PROXIMITY_THRESHOLD = 30; // pixels - if same text within 30px, it's a duplicate
+  const GRID_SIZE = PROXIMITY_THRESHOLD; // Grid cell size matches proximity threshold
+  const spatialGrid = new Map<string, Array<{ text: string; x: number; y: number }>>();
+
+  // Helper: Get grid key for a position
+  const getGridKey = (x: number, y: number): string => {
+    const gridX = Math.floor(x / GRID_SIZE);
+    const gridY = Math.floor(y / GRID_SIZE);
+    return `${gridX},${gridY}`;
+  };
+
+  // Helper: Check if a label is a duplicate (O(1) average case)
+  const isDuplicateLabel = (text: string, x: number, y: number): boolean => {
+    const centerKey = getGridKey(x, y);
+    const [centerX, centerY] = centerKey.split(',').map(Number);
+
+    // Check 3x3 grid around the point (9 cells max)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = `${centerX + dx},${centerY + dy}`;
+        const nearbyLabels = spatialGrid.get(key);
+
+        if (nearbyLabels) {
+          for (const label of nearbyLabels) {
+            if (label.text === text) {
+              const distance = Math.sqrt(Math.pow(label.x - x, 2) + Math.pow(label.y - y, 2));
+              if (distance < PROXIMITY_THRESHOLD) {
+                return true; // Duplicate found
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // Helper: Add label to spatial grid
+  const addLabelToGrid = (text: string, x: number, y: number): void => {
+    const key = getGridKey(x, y);
+    const cell = spatialGrid.get(key) || [];
+    cell.push({ text, x, y });
+    spatialGrid.set(key, cell);
+  };
 
   for (const overlay of htmlOverlays) {
     const element = overlay as HTMLElement;
@@ -134,20 +201,14 @@ async function drawHTMLOverlays(
 
     const trimmedText = text.trim();
 
-    // Check if we've already drawn this text within proximity threshold
-    const isDuplicate = drawnLabels.some(drawn => {
-      const isSameText = drawn.text === trimmedText;
-      const distance = Math.sqrt(Math.pow(drawn.x - x, 2) + Math.pow(drawn.y - y, 2));
-      return isSameText && distance < PROXIMITY_THRESHOLD;
-    });
-
-    if (isDuplicate) {
+    // Check if we've already drawn this text within proximity threshold (O(1) with spatial grid)
+    if (isDuplicateLabel(trimmedText, x, y)) {
       console.log(`[Scene Export] Skipping duplicate: "${trimmedText.substring(0, 20)}..." at (${Math.round(x)}, ${Math.round(y)})`);
       continue;
     }
 
-    // Record this label
-    drawnLabels.push({ text: trimmedText, x, y });
+    // Record this label in spatial grid
+    addLabelToGrid(trimmedText, x, y);
     console.log(`[Scene Export] Drawing label: "${trimmedText.substring(0, 20)}..." at (${Math.round(x)}, ${Math.round(y)})`);
 
     const computedStyle = window.getComputedStyle(element);

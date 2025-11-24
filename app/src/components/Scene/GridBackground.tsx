@@ -85,6 +85,7 @@ const InfiniteGrid: React.FC<InfiniteGridProps> = ({
       },
       transparent: true,
       side: THREE.DoubleSide,
+      depthWrite: false, // Prevent z-fighting with terrain
     });
   }, [size, divisions, colorGrid, colorCenterLine, distance]);
 
@@ -100,16 +101,17 @@ const InfiniteGrid: React.FC<InfiniteGridProps> = ({
   // Infinite grid plane that follows camera
   useFrame(() => {
     if (gridRef.current && camera) {
-      // Keep grid centered on camera position but locked to Y=0
+      // Keep grid centered on camera position but locked to Y=-0.01
       gridRef.current.position.x = camera.position.x;
+      gridRef.current.position.y = -0.01; // Maintain offset below terrain
       gridRef.current.position.z = camera.position.z;
     }
   });
 
   return (
-    <mesh 
+    <mesh
       ref={gridRef}
-      position={[0, 0, 0]} 
+      position={[0, -0.01, 0]} // Slightly below terrain to prevent z-fighting
       rotation={[-Math.PI / 2, 0, 0]}
       renderOrder={-1}
     >

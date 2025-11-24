@@ -25,6 +25,7 @@ import type { ConversionActions } from '../types/conversion';
 import type { ContextMenuState, ContextMenuType } from '../types/contextMenu';
 import { useTextStore } from './useTextStore'; // Phase 4: Import for text grouping
 import { invalidateLayerThumbnail } from '../services/thumbnailService'; // Phase 3: Thumbnail invalidation
+import type { WalkableBoundary, TerrainType, FenceStyle } from '../services/boundaryDetection/types'; // Phase 1: Walkable boundaries
 
 interface AppStore extends AppState {
   // Layer actions
@@ -258,12 +259,31 @@ interface AppStore extends AppState {
   clearConversion: () => void;
   setInputError: (error: string | null) => void;
 
-  // View Mode actions (2D/3D)
+  // View Mode actions (2D/3D/Walkthrough)
   setViewMode: (mode: '2D' | '3D') => void;
   toggleViewMode: () => void;
   setZoom2D: (zoom: number) => void;
   saveCurrentView: () => void;
   restorePerspectiveView: () => void;
+
+  // Walkthrough mode actions
+  updateWalkthroughPosition: (position: Point3D) => void;
+  updateWalkthroughRotation: (rotation: { x: number; y: number }) => void;
+  updateWalkthroughVelocity: (velocity: Point3D) => void;
+  setWalkthroughMoving: (isMoving: boolean) => void;
+  setWalkthroughJumping: (isJumping: boolean) => void;
+  toggleWalkthroughPerspective: () => void;
+  setWalkthroughPointerLocked: (locked: boolean) => void;
+
+  // Walkable boundary actions (Phase 1: AI Walkthrough Terrain Generation)
+  walkableBoundaries: WalkableBoundary[];
+  addWalkableBoundary: (boundary: Omit<WalkableBoundary, 'id' | 'created'>) => void;
+  removeWalkableBoundary: (id: string) => void;
+  updateWalkableBoundary: (id: string, updates: Partial<WalkableBoundary>) => void;
+  clearWalkableBoundaries: () => void;
+  getActiveWalkableBoundary: () => WalkableBoundary | null;
+  setActiveWalkableBoundaryId: (id: string | null) => void;
+  activeWalkableBoundaryId: string | null;
 
   // Context menu actions
   openContextMenu: (
@@ -557,6 +577,9 @@ const createInitialState = (): AppState => {
       present: '',
       future: [],
     },
+    migrations: {
+      snappingTypesV1: false,
+    },
     renderTrigger: 0,
     presets: {
       presetsModal: {
@@ -587,6 +610,7 @@ const createInitialState = (): AppState => {
     },
     viewState: {
       is2DMode: false,
+      viewMode: '3d-orbit' as const, // Default to 3D orbit view
       cameraType: 'perspective' as const,
       viewAngle: '3d' as const,
       zoom2D: 1,
@@ -597,6 +621,15 @@ const createInitialState = (): AppState => {
         startTime: 0,
         duration: 300,
       },
+      walkthroughState: {
+        position: { x: 0, y: 1.7, z: 5 }, // Eye level (1.7m) above ground, 5m from origin
+        rotation: { x: 0, y: 0 }, // Pitch and yaw
+        velocity: { x: 0, y: 0, z: 0 },
+        isMoving: false,
+        isJumping: false,
+        perspectiveMode: 'first-person' as const, // Default to first-person view
+        pointerLocked: false, // Track if pointer lock is active
+      },
     },
     shiftKeyPressed: false, // Task 4.2: Shift key state for disabling snapping
     contextMenu: {
@@ -605,6 +638,9 @@ const createInitialState = (): AppState => {
       position: { x: 0, y: 0 },
       targetShapeId: null,
     },
+    // Phase 1: Walkable boundaries for AI Walkthrough Terrain Generation
+    walkableBoundaries: [] as WalkableBoundary[],
+    activeWalkableBoundaryId: null as string | null,
   };
   
   // Set the present state to JSON representation of the base state
@@ -5787,14 +5823,76 @@ export const useAppStore = create<AppStore>()(
 
       toggleViewMode: () => {
         set(
-          state => ({
-            viewState: {
-              ...state.viewState,
-              is2DMode: !state.viewState.is2DMode,
-              cameraType: state.viewState.is2DMode ? 'perspective' : 'orthographic',
-              viewAngle: state.viewState.is2DMode ? '3d' : 'top'
+          state => {
+            // Cycle through view modes: 2d → 3d-orbit → 2d
+            // Note: Walkthrough mode is accessed via "3D World" button only
+            const nextMode = (() => {
+              switch (state.viewState.viewMode) {
+                case '2d':
+                  return '3d-orbit';
+                case '3d-orbit':
+                  return '2d';
+                case '3d-walkthrough':
+                  return '2d'; // Exit walkthrough back to 2D
+                default:
+                  return '3d-orbit';
+              }
+            })();
+
+            // When entering walkthrough mode, position camera to see all shapes
+            let walkthroughState = state.viewState.walkthroughState;
+            if (nextMode === '3d-walkthrough' && state.shapes.length > 0) {
+              // Calculate center of all shapes
+              let minX = Infinity, maxX = -Infinity;
+              let minZ = Infinity, maxZ = -Infinity;
+
+              state.shapes.forEach(shape => {
+                shape.points.forEach(point => {
+                  minX = Math.min(minX, point.x);
+                  maxX = Math.max(maxX, point.x);
+                  minZ = Math.min(minZ, point.z || point.y || 0); // Handle 2D points
+                  maxZ = Math.max(maxZ, point.z || point.y || 0); // Handle 2D points
+                });
+              });
+
+              // Calculate center and offset camera to view the scene
+              const centerX = (minX + maxX) / 2;
+              const centerZ = (minZ + maxZ) / 2;
+              const sceneWidth = maxX - minX;
+              const sceneDepth = maxZ - minZ;
+
+              console.log('[toggleViewMode] Scene bounds:', { minX, maxX, minZ, maxZ });
+              console.log('[toggleViewMode] Scene center:', { centerX, centerZ });
+              console.log('[toggleViewMode] Scene dimensions:', { sceneWidth, sceneDepth });
+
+              // Position camera closer for first-person view (not overview distance)
+              // For walkthrough, we want to be 10-20m back to see buildings clearly
+              const offsetDistance = 15; // Fixed 15m distance for first-person view
+              const cameraZ = centerZ + offsetDistance; // Behind the shapes
+              const cameraY = 1.7; // Eye level
+
+              console.log('[toggleViewMode] Camera position:', { x: centerX, y: cameraY, z: cameraZ });
+              console.log('[toggleViewMode] Offset distance:', offsetDistance);
+
+              walkthroughState = {
+                ...walkthroughState!,
+                position: { x: centerX, y: cameraY, z: cameraZ },
+                rotation: { x: 0, y: 0 }, // Look down -Z axis (default forward direction)
+                velocity: { x: 0, y: 0, z: 0 },
+              };
             }
-          }),
+
+            return {
+              viewState: {
+                ...state.viewState,
+                viewMode: nextMode,
+                is2DMode: nextMode === '2d', // Keep for backward compatibility
+                cameraType: nextMode === '2d' ? 'orthographic' : 'perspective',
+                viewAngle: nextMode === '2d' ? 'top' : '3d',
+                walkthroughState,
+              }
+            };
+          },
           false,
           'toggleViewMode'
         );
@@ -5841,6 +5939,190 @@ export const useAppStore = create<AppStore>()(
           }),
           false,
           'restorePerspectiveView'
+        );
+      },
+
+      // Walkthrough mode state management
+      updateWalkthroughPosition: (position: Point3D) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              walkthroughState: {
+                ...state.viewState.walkthroughState!,
+                position
+              }
+            }
+          }),
+          false,
+          'updateWalkthroughPosition'
+        );
+      },
+
+      updateWalkthroughRotation: (rotation: { x: number; y: number }) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              walkthroughState: {
+                ...state.viewState.walkthroughState!,
+                rotation
+              }
+            }
+          }),
+          false,
+          'updateWalkthroughRotation'
+        );
+      },
+
+      updateWalkthroughVelocity: (velocity: Point3D) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              walkthroughState: {
+                ...state.viewState.walkthroughState!,
+                velocity
+              }
+            }
+          }),
+          false,
+          'updateWalkthroughVelocity'
+        );
+      },
+
+      setWalkthroughMoving: (isMoving: boolean) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              walkthroughState: {
+                ...state.viewState.walkthroughState!,
+                isMoving
+              }
+            }
+          }),
+          false,
+          'setWalkthroughMoving'
+        );
+      },
+
+      setWalkthroughJumping: (isJumping: boolean) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              walkthroughState: {
+                ...state.viewState.walkthroughState!,
+                isJumping
+              }
+            }
+          }),
+          false,
+          'setWalkthroughJumping'
+        );
+      },
+
+      toggleWalkthroughPerspective: () => {
+        set(
+          state => {
+            const currentMode = state.viewState.walkthroughState?.perspectiveMode || 'first-person';
+            const newMode = currentMode === 'first-person' ? 'third-person' : 'first-person';
+
+            return {
+              viewState: {
+                ...state.viewState,
+                walkthroughState: {
+                  ...state.viewState.walkthroughState!,
+                  perspectiveMode: newMode
+                }
+              }
+            };
+          },
+          false,
+          'toggleWalkthroughPerspective'
+        );
+      },
+
+      setWalkthroughPointerLocked: (locked: boolean) => {
+        set(
+          state => ({
+            viewState: {
+              ...state.viewState,
+              walkthroughState: {
+                ...state.viewState.walkthroughState!,
+                pointerLocked: locked
+              }
+            }
+          }),
+          false,
+          'setWalkthroughPointerLocked'
+        );
+      },
+
+      // Phase 1: Walkable boundary actions (AI Walkthrough Terrain Generation)
+      addWalkableBoundary: (boundary) => {
+        const id = `walkable-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const newBoundary: WalkableBoundary = {
+          ...boundary,
+          id,
+          created: new Date(),
+        };
+        set(
+          state => ({
+            walkableBoundaries: [...state.walkableBoundaries, newBoundary],
+            activeWalkableBoundaryId: id, // Auto-activate the new boundary
+          }),
+          false,
+          'addWalkableBoundary'
+        );
+      },
+
+      removeWalkableBoundary: (id) => {
+        set(
+          state => ({
+            walkableBoundaries: state.walkableBoundaries.filter(b => b.id !== id),
+            activeWalkableBoundaryId: state.activeWalkableBoundaryId === id ? null : state.activeWalkableBoundaryId,
+          }),
+          false,
+          'removeWalkableBoundary'
+        );
+      },
+
+      updateWalkableBoundary: (id, updates) => {
+        set(
+          state => ({
+            walkableBoundaries: state.walkableBoundaries.map(b =>
+              b.id === id ? { ...b, ...updates } : b
+            ),
+          }),
+          false,
+          'updateWalkableBoundary'
+        );
+      },
+
+      clearWalkableBoundaries: () => {
+        set(
+          {
+            walkableBoundaries: [],
+            activeWalkableBoundaryId: null,
+          },
+          false,
+          'clearWalkableBoundaries'
+        );
+      },
+
+      getActiveWalkableBoundary: () => {
+        const state = get();
+        if (!state.activeWalkableBoundaryId) return null;
+        return state.walkableBoundaries.find(b => b.id === state.activeWalkableBoundaryId) || null;
+      },
+
+      setActiveWalkableBoundaryId: (id) => {
+        set(
+          { activeWalkableBoundaryId: id },
+          false,
+          'setActiveWalkableBoundaryId'
         );
       },
 
