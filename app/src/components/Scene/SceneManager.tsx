@@ -21,6 +21,7 @@ import EnvironmentalRocks from './EnvironmentalRocks';
 import FloatingParticles from './FloatingParticles';
 import PlayerCharacter from './PlayerCharacter';
 import BoundaryFenceRenderer from './BoundaryFenceRenderer'; // Phase 1: Walkable boundary fences
+import BoundaryProximityWall from './BoundaryProximityWall'; // Distance-based boundary walls
 import MeasurementRenderer from './MeasurementRenderer';
 import PrecisionLinePreview from './PrecisionLinePreview';
 import InfiniteGrid from './GridBackground';
@@ -132,6 +133,26 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
   // Phase 1: Get walkable boundaries for fence rendering
   const walkableBoundaries = useAppStore(state => state.walkableBoundaries || []);
+
+  // Get shapes for shape-based boundary extraction (when no explicit walkable boundaries)
+  const shapes = useAppStore(state => state.shapes);
+
+  // Extract boundaries from shapes for proximity walls (fallback when no walkable boundaries)
+  const shapeBoundaries = React.useMemo(() => {
+    // Convert shapes to boundary points for proximity walls
+    return shapes.map(shape => {
+      // Get points in 2D format (x, y where y maps to z in 3D)
+      const points = shape.points.map(p => ({
+        x: p.x,
+        y: p.z !== undefined ? p.z : p.y // Handle both 2D and 3D point formats
+      }));
+      return {
+        id: shape.id,
+        points,
+        type: shape.type
+      };
+    }).filter(b => b.points.length >= 3); // Only closed shapes with 3+ points
+  }, [shapes]);
 
   // Calculate appropriate distance limits for snap indicators
   // 3D camera is at distance ~113 units, 2D camera is at ~100 units
@@ -275,6 +296,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
           />
 
           {/* Atmospheric fog for depth perception (adjustable density) */}
+          {/* IMPORTANT: Far distance must be less than sky sphere (5000m) but large enough to see the sky */}
           <fog
             attach="fog"
             args={[
@@ -282,10 +304,10 @@ const SceneContent: React.FC<SceneContentProps> = ({
               skySettings.skyType === 'sunset' ? '#FF8C69' :
               skySettings.skyType === 'night' ? '#1A2332' :
               skySettings.skyType === 'overcast' ? '#C0C5D0' : '#A8D5FF',
-              // Near distance (fog starts)
-              100 - skySettings.fogDensity * 50,
-              // Far distance (fog ends) - lower = denser fog
-              1200 - skySettings.fogDensity * 600
+              // Near distance (fog starts) - pushed further for clearer view
+              200 - skySettings.fogDensity * 100,
+              // Far distance (fog ends) - much higher to show sky (4000m max to stay inside 5000m sky sphere)
+              4000 - skySettings.fogDensity * 1500
             ]}
           />
 
@@ -337,6 +359,21 @@ const SceneContent: React.FC<SceneContentProps> = ({
                 closed={true}
               />
             )
+          ))}
+
+          {/* Distance-based boundary proximity walls */}
+          {/* Shows semi-transparent walls when approaching shape boundaries */}
+          {shapeBoundaries.map(boundary => (
+            <BoundaryProximityWall
+              key={`proximity-wall-${boundary.id}`}
+              points={boundary.points}
+              height={30}
+              fadeStartDistance={20}
+              fadeEndDistance={5}
+              maxOpacity={0.4}
+              color="#00DDFF"
+              closed={boundary.type !== 'line' && boundary.type !== 'polyline'}
+            />
           ))}
 
           {/* Player character (visible only in third-person mode) */}
