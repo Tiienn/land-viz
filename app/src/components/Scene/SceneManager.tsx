@@ -295,28 +295,30 @@ const SceneContent: React.FC<SceneContentProps> = ({
             enableStars={skySettings.enableStars}
           />
 
-          {/* Atmospheric fog for depth perception (adjustable density) */}
-          {/* IMPORTANT: Far distance must be less than sky sphere (5000m) but large enough to see the sky */}
-          <fog
-            attach="fog"
-            args={[
-              // Fog color based on sky type
-              skySettings.skyType === 'sunset' ? '#FF8C69' :
-              skySettings.skyType === 'night' ? '#1A2332' :
-              skySettings.skyType === 'overcast' ? '#C0C5D0' : '#A8D5FF',
-              // Near distance (fog starts) - pushed further for clearer view
-              200 - skySettings.fogDensity * 100,
-              // Far distance (fog ends) - much higher to show sky (4000m max to stay inside 5000m sky sphere)
-              4000 - skySettings.fogDensity * 1500
-            ]}
-          />
+          {/* Atmospheric fog - only enabled if fog density > 0 */}
+          {/* When disabled, the sky sphere is fully visible */}
+          {skySettings.fogDensity > 0.1 && (
+            <fog
+              attach="fog"
+              args={[
+                // Fog color based on sky type
+                skySettings.skyType === 'sunset' ? '#FF8C69' :
+                skySettings.skyType === 'night' ? '#1A2332' :
+                skySettings.skyType === 'overcast' ? '#C0C5D0' : '#A8D5FF',
+                // Near distance (fog starts) - very far for clear view
+                500,
+                // Far distance (fog ends) - at horizon
+                2000
+              ]}
+            />
+          )}
 
           {/* DUAL TERRAIN SYSTEM - Base + Rolling Hills */}
-          {/* Base flat terrain for vegetation to sit on */}
+          {/* Base flat terrain for vegetation to sit on - very large to push horizon away */}
           <TerrainRenderer
-            size={500}
+            size={2000}
             terrainType="grass"
-            textureRepeat={50}
+            textureRepeat={200}
           />
 
           {/* Organic rolling hills on top for depth */}
