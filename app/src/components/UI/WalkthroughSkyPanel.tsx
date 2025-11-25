@@ -16,7 +16,10 @@ export interface SkySettings {
   cloudDensity: number;
   enableStars: boolean;
   sunElevation: number;
+  sunAzimuth: number;
   fogDensity: number;
+  enableAutoCycle: boolean;
+  cycleSpeed: number; // 1 = normal (24 min full cycle), 10 = fast (2.4 min)
 }
 
 // Default sky settings
@@ -26,7 +29,10 @@ const DEFAULT_SKY_SETTINGS: SkySettings = {
   cloudDensity: 0.5,
   enableStars: true,
   sunElevation: 45,
+  sunAzimuth: 120,
   fogDensity: 0.5,
+  enableAutoCycle: false,
+  cycleSpeed: 1,
 };
 
 // Sky type presets with descriptions
@@ -125,6 +131,44 @@ export default function WalkthroughSkyPanel() {
     setSettings(newSettings);
     dispatchSkySettingsChange(newSettings);
   };
+
+  // Listen for auto-cycle updates from SkyRenderer
+  useEffect(() => {
+    const handleAutoCycleUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        skyType: SkyType;
+        sunElevation: number;
+        sunAzimuth: number;
+      }>;
+
+      // Only update if auto-cycle is enabled
+      if (settings.enableAutoCycle) {
+        const { skyType: newSkyType, sunElevation: newElevation, sunAzimuth: newAzimuth } = customEvent.detail;
+
+        // Update local state without triggering a new dispatch
+        setSettings(prev => ({
+          ...prev,
+          skyType: newSkyType,
+          sunElevation: newElevation,
+          sunAzimuth: newAzimuth,
+        }));
+
+        // Update global settings
+        globalSkySettings = {
+          ...globalSkySettings,
+          skyType: newSkyType,
+          sunElevation: newElevation,
+          sunAzimuth: newAzimuth,
+        };
+
+        // Dispatch change event for SceneManager
+        window.dispatchEvent(new CustomEvent('sky-settings-change', { detail: globalSkySettings }));
+      }
+    };
+
+    window.addEventListener('sky-auto-cycle-update', handleAutoCycleUpdate);
+    return () => window.removeEventListener('sky-auto-cycle-update', handleAutoCycleUpdate);
+  }, [settings.enableAutoCycle]);
 
   // Don't render if not in walkthrough mode
   if (viewMode !== '3d-walkthrough') {
@@ -275,26 +319,54 @@ export default function WalkthroughSkyPanel() {
             </div>
           )}
 
-          {/* Sun Elevation Slider */}
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '11px', color: '#666', marginBottom: '4px' }}>
-              Sun Height: {settings.sunElevation}°
+          {/* Sun Position Section */}
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 500 }}>
+              ☀️ Sun Position
             </label>
-            <input
-              type="range"
-              min="5"
-              max="85"
-              step="5"
-              value={settings.sunElevation}
-              onChange={(e) => updateSetting('sunElevation', parseInt(e.target.value))}
-              style={{ width: '100%', cursor: 'pointer' }}
-            />
+
+            {/* Sun Elevation Slider */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '10px', color: '#888', marginBottom: '2px' }}>
+                Height: {settings.sunElevation}°
+              </label>
+              <input
+                type="range"
+                min="5"
+                max="85"
+                step="5"
+                value={settings.sunElevation}
+                onChange={(e) => updateSetting('sunElevation', parseInt(e.target.value))}
+                style={{ width: '100%', cursor: 'pointer' }}
+              />
+            </div>
+
+            {/* Sun Azimuth Slider */}
+            <div>
+              <label style={{ display: 'block', fontSize: '10px', color: '#888', marginBottom: '2px' }}>
+                Direction: {settings.sunAzimuth}° ({
+                  settings.sunAzimuth < 45 ? 'N' :
+                  settings.sunAzimuth < 135 ? 'E' :
+                  settings.sunAzimuth < 225 ? 'S' :
+                  settings.sunAzimuth < 315 ? 'W' : 'N'
+                })
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="359"
+                step="15"
+                value={settings.sunAzimuth}
+                onChange={(e) => updateSetting('sunAzimuth', parseInt(e.target.value))}
+                style={{ width: '100%', cursor: 'pointer' }}
+              />
+            </div>
           </div>
 
           {/* Fog Density Slider */}
           <div style={{ marginBottom: '12px' }}>
             <label style={{ display: 'block', fontSize: '11px', color: '#666', marginBottom: '4px' }}>
-              Fog: {Math.round(settings.fogDensity * 100)}%
+              🌫️ Fog: {Math.round(settings.fogDensity * 100)}%
             </label>
             <input
               type="range"
@@ -305,6 +377,50 @@ export default function WalkthroughSkyPanel() {
               onChange={(e) => updateSetting('fogDensity', parseFloat(e.target.value))}
               style={{ width: '100%', cursor: 'pointer' }}
             />
+          </div>
+
+          {/* Auto Day/Night Cycle */}
+          <div style={{
+            marginBottom: '12px',
+            padding: '10px',
+            background: settings.enableAutoCycle ? 'rgba(74, 158, 255, 0.1)' : '#f9f9f9',
+            borderRadius: '8px',
+            border: settings.enableAutoCycle ? '1px solid rgba(74, 158, 255, 0.3)' : '1px solid #eee',
+          }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              color: '#333',
+              cursor: 'pointer',
+              marginBottom: settings.enableAutoCycle ? '8px' : '0',
+            }}>
+              <input
+                type="checkbox"
+                checked={settings.enableAutoCycle}
+                onChange={(e) => updateSetting('enableAutoCycle', e.target.checked)}
+                style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+              />
+              <span>🔄 Auto Day/Night Cycle</span>
+            </label>
+
+            {settings.enableAutoCycle && (
+              <div style={{ paddingLeft: '22px' }}>
+                <label style={{ display: 'block', fontSize: '10px', color: '#666', marginBottom: '2px' }}>
+                  Speed: {settings.cycleSpeed}x ({Math.round(24 / settings.cycleSpeed)} min/cycle)
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={settings.cycleSpeed}
+                  onChange={(e) => updateSetting('cycleSpeed', parseInt(e.target.value))}
+                  style={{ width: '100%', cursor: 'pointer' }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Shortcuts Help */}

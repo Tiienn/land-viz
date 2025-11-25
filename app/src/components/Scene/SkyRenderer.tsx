@@ -50,6 +50,16 @@ export interface SkyRendererProps {
    * Enable stars for night/sunset (default: true)
    */
   enableStars?: boolean;
+
+  /**
+   * Enable automatic day/night cycle (default: false)
+   */
+  enableAutoCycle?: boolean;
+
+  /**
+   * Cycle speed multiplier (1 = 24 min cycle, 10 = 2.4 min cycle)
+   */
+  cycleSpeed?: number;
 }
 
 /**
@@ -340,6 +350,128 @@ function Stars({ skyType }: { skyType: 'day' | 'sunset' | 'night' | 'overcast' }
   );
 }
 
+/**
+ * Lens Flare Effect - Creates sun glare streaks
+ */
+function LensFlare({
+  sunPosition,
+  skyType,
+}: {
+  sunPosition: THREE.Vector3;
+  skyType: 'day' | 'sunset' | 'night' | 'overcast';
+}) {
+  const flareGroupRef = useRef<THREE.Group>(null);
+
+  // Only show lens flare for day and sunset
+  if (skyType === 'night' || skyType === 'overcast') {
+    return null;
+  }
+
+  const flareColor = skyType === 'sunset' ? '#FF6B35' : '#FFFACD';
+  const flareOpacity = skyType === 'sunset' ? 0.4 : 0.25;
+
+  // Create radial flare pattern
+  const flareCount = 6;
+  const flares = [];
+
+  for (let i = 0; i < flareCount; i++) {
+    const angle = (i / flareCount) * Math.PI * 2;
+    const length = 200 + Math.random() * 100;
+    const width = 8 + Math.random() * 12;
+
+    flares.push(
+      <mesh
+        key={i}
+        position={sunPosition}
+        rotation={[0, 0, angle]}
+      >
+        <planeGeometry args={[length, width]} />
+        <meshBasicMaterial
+          color={flareColor}
+          transparent
+          opacity={flareOpacity * (0.5 + Math.random() * 0.5)}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+    );
+  }
+
+  return <group ref={flareGroupRef}>{flares}</group>;
+}
+
+/**
+ * Auto-cycle controller - Dispatches sky changes over time
+ */
+function AutoCycleController({
+  enabled,
+  speed,
+}: {
+  enabled: boolean;
+  speed: number;
+}) {
+  const timeRef = useRef(0);
+  const lastDispatchRef = useRef(0);
+
+  useFrame((state, delta) => {
+    if (!enabled) return;
+
+    // Accumulate time (scaled by speed)
+    // At speed 1: full cycle = 24 minutes (1440 seconds)
+    // At speed 10: full cycle = 2.4 minutes (144 seconds)
+    timeRef.current += delta * speed;
+
+    // Convert to time of day (0-24 hours mapped to 0-1440 seconds at speed 1)
+    const cycleLength = 1440 / speed; // seconds for full cycle
+    const normalizedTime = (timeRef.current % cycleLength) / cycleLength; // 0-1
+    const hourOfDay = normalizedTime * 24; // 0-24 hours
+
+    // Only dispatch every 0.5 seconds to avoid flooding
+    if (state.clock.elapsedTime - lastDispatchRef.current < 0.5) return;
+    lastDispatchRef.current = state.clock.elapsedTime;
+
+    // Determine sky type based on hour
+    let newSkyType: 'day' | 'sunset' | 'night' | 'overcast';
+    let newElevation: number;
+
+    if (hourOfDay >= 5 && hourOfDay < 7) {
+      // Dawn (5am - 7am)
+      newSkyType = 'sunset';
+      newElevation = 10 + (hourOfDay - 5) * 15; // 10° to 40°
+    } else if (hourOfDay >= 7 && hourOfDay < 17) {
+      // Day (7am - 5pm)
+      newSkyType = 'day';
+      // Sun rises from 40° at 7am, peaks at noon (80°), descends to 40° at 5pm
+      const dayProgress = (hourOfDay - 7) / 10; // 0-1
+      newElevation = 40 + Math.sin(dayProgress * Math.PI) * 45;
+    } else if (hourOfDay >= 17 && hourOfDay < 19) {
+      // Dusk (5pm - 7pm)
+      newSkyType = 'sunset';
+      newElevation = 40 - (hourOfDay - 17) * 15; // 40° to 10°
+    } else {
+      // Night (7pm - 5am)
+      newSkyType = 'night';
+      newElevation = 30; // Moon position
+    }
+
+    // Calculate sun azimuth (moves from East to West during day)
+    // 6am = 90° (East), 12pm = 180° (South), 6pm = 270° (West)
+    const newAzimuth = 90 + (hourOfDay / 24) * 360;
+
+    // Dispatch sky settings change
+    window.dispatchEvent(new CustomEvent('sky-auto-cycle-update', {
+      detail: {
+        skyType: newSkyType,
+        sunElevation: Math.round(newElevation),
+        sunAzimuth: Math.round(newAzimuth % 360),
+      }
+    }));
+  });
+
+  return null;
+}
+
 export default function SkyRenderer({
   skyType = 'day',
   showSun = true,
@@ -348,6 +480,8 @@ export default function SkyRenderer({
   enableClouds = true,
   cloudDensity = 0.5,
   enableStars = true,
+  enableAutoCycle = false,
+  cycleSpeed = 1,
 }: SkyRendererProps) {
   const colors = SKY_COLORS[skyType];
 
@@ -383,6 +517,9 @@ export default function SkyRenderer({
 
   return (
     <group>
+      {/* Auto-cycle controller */}
+      <AutoCycleController enabled={enableAutoCycle} speed={cycleSpeed} />
+
       {/* Sky sphere with gradient */}
       <mesh geometry={skyGeometry}>
         <meshBasicMaterial
@@ -404,6 +541,11 @@ export default function SkyRenderer({
             fog={false}
           />
         </sprite>
+      )}
+
+      {/* Lens flare effect */}
+      {showSun && sunElevation > 15 && (
+        <LensFlare sunPosition={sunPosition} skyType={skyType} />
       )}
 
       {/* Animated 3D clouds */}

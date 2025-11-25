@@ -267,11 +267,13 @@ const SceneContent: React.FC<SceneContentProps> = ({
           <SkyRenderer
             skyType={skySettings.skyType}
             showSun={true}
-            sunAzimuth={120}
+            sunAzimuth={skySettings.sunAzimuth}
             sunElevation={skySettings.sunElevation}
             enableClouds={skySettings.enableClouds}
             cloudDensity={skySettings.cloudDensity}
             enableStars={skySettings.enableStars}
+            enableAutoCycle={skySettings.enableAutoCycle}
+            cycleSpeed={skySettings.cycleSpeed}
           />
 
           {/* Atmospheric fog for depth perception (adjustable density) */}
