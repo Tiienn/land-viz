@@ -35,23 +35,13 @@ function getShapeColor(shape: Shape, index: number): string {
 }
 
 /**
- * Create 3D geometry for a rectangle shape
+ * Create walls-only geometry for a rectangle shape (no roof/floor)
+ * This allows the player to see the sky from inside the shape
  */
-function createBoxGeometry(shape: Shape, height: number): THREE.BoxGeometry {
-  // Calculate dimensions from points
+function createWallsGeometry(shape: Shape, height: number): THREE.BufferGeometry {
   const points = shape.points;
 
-  if (shape.type === 'rectangle' && points.length === 4) {
-    // For rectangles, calculate width and depth from corners
-    // Use point.z || point.y to support shapes drawn in 2D mode (which only have x, y)
-    const width = Math.abs(points[1].x - points[0].x);
-    const depth = Math.abs((points[2].z || points[2].y) - (points[0].z || points[0].y));
-
-    return new THREE.BoxGeometry(width, height, depth);
-  }
-
-  // Fallback for other quad shapes
-  // Use point.z || point.y to support shapes drawn in 2D mode
+  // Get bounds
   const minX = Math.min(...points.map(p => p.x));
   const maxX = Math.max(...points.map(p => p.x));
   const minZ = Math.min(...points.map(p => p.z || p.y));
@@ -60,17 +50,109 @@ function createBoxGeometry(shape: Shape, height: number): THREE.BoxGeometry {
   const width = maxX - minX;
   const depth = maxZ - minZ;
 
-  return new THREE.BoxGeometry(width, height, depth);
+  // Create 4 wall planes and merge them
+  const walls: THREE.BufferGeometry[] = [];
+
+  // Wall thickness for visibility
+  const thickness = 0.15;
+
+  // Front wall (positive Z)
+  const frontWall = new THREE.BoxGeometry(width + thickness * 2, height, thickness);
+  frontWall.translate(0, 0, depth / 2);
+  walls.push(frontWall);
+
+  // Back wall (negative Z)
+  const backWall = new THREE.BoxGeometry(width + thickness * 2, height, thickness);
+  backWall.translate(0, 0, -depth / 2);
+  walls.push(backWall);
+
+  // Right wall (positive X)
+  const rightWall = new THREE.BoxGeometry(thickness, height, depth);
+  rightWall.translate(width / 2, 0, 0);
+  walls.push(rightWall);
+
+  // Left wall (negative X)
+  const leftWall = new THREE.BoxGeometry(thickness, height, depth);
+  leftWall.translate(-width / 2, 0, 0);
+  walls.push(leftWall);
+
+  // Merge all walls into one geometry
+  const mergedGeometry = mergeBufferGeometries(walls);
+
+  // Dispose individual wall geometries
+  walls.forEach(w => w.dispose());
+
+  return mergedGeometry || new THREE.BufferGeometry();
 }
 
 /**
- * Create 3D geometry for a circle shape
+ * Helper to merge multiple buffer geometries into one
  */
-function createCylinderGeometry(shape: Shape, height: number): THREE.CylinderGeometry {
+function mergeBufferGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
+  if (geometries.length === 0) return null;
+
+  let totalVertices = 0;
+  let totalIndices = 0;
+
+  // Calculate total sizes
+  geometries.forEach(geo => {
+    const pos = geo.getAttribute('position');
+    if (pos) totalVertices += pos.count;
+    const idx = geo.getIndex();
+    if (idx) totalIndices += idx.count;
+  });
+
+  // Create merged arrays
+  const positions = new Float32Array(totalVertices * 3);
+  const normals = new Float32Array(totalVertices * 3);
+  const uvs = new Float32Array(totalVertices * 2);
+  const indices: number[] = [];
+
+  let vertexOffset = 0;
+  let indexOffset = 0;
+
+  geometries.forEach(geo => {
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+    const norm = geo.getAttribute('normal') as THREE.BufferAttribute;
+    const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+    const idx = geo.getIndex();
+
+    if (pos) {
+      positions.set(pos.array as Float32Array, vertexOffset * 3);
+    }
+    if (norm) {
+      normals.set(norm.array as Float32Array, vertexOffset * 3);
+    }
+    if (uv) {
+      uvs.set(uv.array as Float32Array, vertexOffset * 2);
+    }
+    if (idx) {
+      for (let i = 0; i < idx.count; i++) {
+        indices.push(idx.getX(i) + indexOffset);
+      }
+    }
+
+    if (pos) {
+      indexOffset = vertexOffset + pos.count;
+      vertexOffset += pos.count;
+    }
+  });
+
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  merged.setIndex(indices);
+
+  return merged;
+}
+
+/**
+ * Create open-top cylinder geometry (walls only, no top cap)
+ */
+function createOpenCylinderGeometry(shape: Shape, height: number): THREE.CylinderGeometry {
   const points = shape.points;
 
-  // Calculate radius from points
-  // Use point.z || point.y to support shapes drawn in 2D mode
   let radius = 1;
   if (points.length >= 2) {
     const dx = points[1].x - points[0].x;
@@ -78,9 +160,10 @@ function createCylinderGeometry(shape: Shape, height: number): THREE.CylinderGeo
     radius = Math.sqrt(dx * dx + dz * dz);
   }
 
-  // 32 segments for smooth cylinder
-  return new THREE.CylinderGeometry(radius, radius, height, 32);
+  // Create cylinder with open ends (no top or bottom caps)
+  return new THREE.CylinderGeometry(radius, radius, height, 32, 1, true);
 }
+
 
 /**
  * Create extruded 3D geometry for polygon shapes
@@ -159,11 +242,13 @@ const Shape3DMesh = React.memo(({ shape, color, defaultHeight }: Shape3DMeshProp
       console.log(`[Shape3DMesh] Points:`, shape.points);
 
       if (shape.type === 'rectangle') {
-        geo = createBoxGeometry(shape, defaultHeight);
-        console.log(`[Shape3DMesh] Created box geometry:`, geo ? 'SUCCESS' : 'FAILED');
+        // Use walls-only geometry (no roof) so player can see sky from inside
+        geo = createWallsGeometry(shape, defaultHeight);
+        console.log(`[Shape3DMesh] Created walls geometry:`, geo ? 'SUCCESS' : 'FAILED');
       } else if (shape.type === 'circle') {
-        geo = createCylinderGeometry(shape, defaultHeight);
-        console.log(`[Shape3DMesh] Created cylinder geometry:`, geo ? 'SUCCESS' : 'FAILED');
+        // Use open cylinder (no top cap) so player can see sky from inside
+        geo = createOpenCylinderGeometry(shape, defaultHeight);
+        console.log(`[Shape3DMesh] Created open cylinder geometry:`, geo ? 'SUCCESS' : 'FAILED');
       } else if (shape.type === 'polygon' || shape.type === 'polyline') {
         geo = createExtrudeGeometry(shape, defaultHeight);
         offset = 0; // Extrude geometry already positioned correctly
